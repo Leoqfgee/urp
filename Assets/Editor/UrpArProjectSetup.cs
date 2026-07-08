@@ -10,6 +10,7 @@ using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 using UnityEngine.XR.Management;
 
 namespace Urp.ArDemo.Editor
@@ -142,6 +143,8 @@ namespace Urp.ArDemo.Editor
             GameObject xrOrigin = new GameObject("XR Origin");
             var origin = xrOrigin.AddComponent<Unity.XR.CoreUtils.XROrigin>();
             xrOrigin.AddComponent<OrbTrackingPlaceholder>();
+            var planeManager = xrOrigin.AddComponent<UnityEngine.XR.ARFoundation.ARPlaneManager>();
+            var raycastManager = xrOrigin.AddComponent<UnityEngine.XR.ARFoundation.ARRaycastManager>();
 
             GameObject cameraOffset = new GameObject("Camera Offset");
             cameraOffset.transform.SetParent(xrOrigin.transform, false);
@@ -178,12 +181,20 @@ namespace Urp.ArDemo.Editor
 
             GameObject canvasObject = CreateCanvas(out Text statusText, out GameObject infoPanel);
             var controller = canvasObject.AddComponent<RepairOverlayController>();
+            AssignSerializedReference(controller, "artifactRoot", artifact.transform);
             AssignSerializedReference(controller, "repairRoot", repair.transform);
             AssignSerializedReference(controller, "infoPanel", infoPanel);
             AssignSerializedReference(controller, "statusText", statusText);
 
+            var placement = xrOrigin.AddComponent<ARPlacementController>();
+            AssignSerializedReference(placement, "raycastManager", raycastManager);
+            AssignSerializedReference(placement, "arCamera", camera);
+            AssignSerializedReference(placement, "trackedContentRoot", contentRoot.transform);
+            AssignSerializedReference(placement, "statusText", statusText);
+
             var tracker = xrOrigin.GetComponent<OrbTrackingPlaceholder>();
             AssignSerializedReference(tracker, "trackedContentRoot", contentRoot.transform);
+            CreateEventSystem();
 
             EditorSceneManager.SaveScene(scene, ScenePath);
             EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
@@ -208,20 +219,24 @@ namespace Urp.ArDemo.Editor
             GameObject canvasObject = new GameObject("Demo UI");
             Canvas canvas = canvasObject.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvasObject.AddComponent<CanvasScaler>();
+            CanvasScaler scaler = canvasObject.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1080f, 1920f);
+            scaler.matchWidthOrHeight = 0.5f;
             canvasObject.AddComponent<GraphicRaycaster>();
 
-            statusText = CreateText(canvasObject.transform, "Status Text", "URP AR Demo", new Vector2(0.5f, 1f), new Vector2(0f, -40f), 20, TextAnchor.MiddleCenter);
+            statusText = CreateText(canvasObject.transform, "Status Text", "URP AR Demo", new Vector2(0.5f, 1f), new Vector2(0f, -44f), new Vector2(960f, 90f), 24, TextAnchor.MiddleCenter);
             infoPanel = new GameObject("Info Panel");
             infoPanel.transform.SetParent(canvasObject.transform, false);
             RectTransform panelRect = infoPanel.AddComponent<RectTransform>();
             panelRect.anchorMin = new Vector2(0.05f, 0.05f);
-            panelRect.anchorMax = new Vector2(0.95f, 0.23f);
+            panelRect.anchorMax = new Vector2(0.95f, 0.17f);
             panelRect.offsetMin = Vector2.zero;
             panelRect.offsetMax = Vector2.zero;
             Image panelImage = infoPanel.AddComponent<Image>();
             panelImage.color = new Color(0f, 0f, 0f, 0.56f);
-            CreateText(infoPanel.transform, "Artifact Info", "Reconstructed artifact model plus virtual restoration overlay.", new Vector2(0.5f, 0.5f), Vector2.zero, 18, TextAnchor.MiddleCenter);
+            CreateText(infoPanel.transform, "Artifact Info", "Tap a surface to place the artifact. Use Before/After to compare repair.", new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(900f, 90f), 24, TextAnchor.MiddleCenter);
+            CreateControls(canvasObject.transform);
 
             return canvasObject;
         }
@@ -247,14 +262,72 @@ namespace Urp.ArDemo.Editor
             return artifact;
         }
 
-        private static Text CreateText(Transform parent, string name, string value, Vector2 anchor, Vector2 position, int fontSize, TextAnchor alignment)
+        private static void CreateControls(Transform parent)
+        {
+            GameObject row = new GameObject("Control Row");
+            row.transform.SetParent(parent, false);
+            RectTransform rowRect = row.AddComponent<RectTransform>();
+            rowRect.anchorMin = new Vector2(0.05f, 0.18f);
+            rowRect.anchorMax = new Vector2(0.95f, 0.18f);
+            rowRect.pivot = new Vector2(0.5f, 0f);
+            rowRect.anchoredPosition = Vector2.zero;
+            rowRect.sizeDelta = new Vector2(0f, 190f);
+
+            GridLayoutGroup grid = row.AddComponent<GridLayoutGroup>();
+            grid.cellSize = new Vector2(205f, 78f);
+            grid.spacing = new Vector2(12f, 12f);
+            grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
+            grid.constraintCount = 4;
+            grid.childAlignment = TextAnchor.MiddleCenter;
+
+            CreateButton(row.transform, "Before", "RepairOverlayController", "ShowBeforeRepair");
+            CreateButton(row.transform, "After", "RepairOverlayController", "ShowAfterRepair");
+            CreateButton(row.transform, "Repair", "RepairOverlayController", "ToggleRepair");
+            CreateButton(row.transform, "Info", "RepairOverlayController", "ToggleInfo");
+            CreateButton(row.transform, "Left", "RepairOverlayController", "RotateLeft");
+            CreateButton(row.transform, "Right", "RepairOverlayController", "RotateRight");
+            CreateButton(row.transform, "Reset", "RepairOverlayController", "ResetRepair");
+            CreateButton(row.transform, "Place", "ARPlacementController", "PlaceInFrontOfCamera");
+        }
+
+        private static void CreateButton(Transform parent, string label, string componentName, string methodName)
+        {
+            GameObject buttonObject = new GameObject($"{label} Button");
+            buttonObject.transform.SetParent(parent, false);
+            Image image = buttonObject.AddComponent<Image>();
+            image.color = new Color(0.08f, 0.12f, 0.16f, 0.82f);
+            Button button = buttonObject.AddComponent<Button>();
+
+            CreateText(buttonObject.transform, $"{label} Label", label, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(190f, 70f), 24, TextAnchor.MiddleCenter);
+
+            string targetName = componentName == "ARPlacementController" ? "XR Origin" : "Demo UI";
+            GameObject target = GameObject.Find(targetName);
+            if (target == null)
+            {
+                return;
+            }
+
+            Component component = target.GetComponent(componentName);
+            if (component == null)
+            {
+                return;
+            }
+
+            UnityEngine.Events.UnityAction action = (UnityEngine.Events.UnityAction)Delegate.CreateDelegate(
+                typeof(UnityEngine.Events.UnityAction),
+                component,
+                methodName);
+            button.onClick.AddListener(action);
+        }
+
+        private static Text CreateText(Transform parent, string name, string value, Vector2 anchor, Vector2 position, Vector2 size, int fontSize, TextAnchor alignment)
         {
             GameObject textObject = new GameObject(name);
             textObject.transform.SetParent(parent, false);
             RectTransform rect = textObject.AddComponent<RectTransform>();
             rect.anchorMin = anchor;
             rect.anchorMax = anchor;
-            rect.sizeDelta = new Vector2(900f, 90f);
+            rect.sizeDelta = size;
             rect.anchoredPosition = position;
             Text text = textObject.AddComponent<Text>();
             text.text = value;
@@ -263,6 +336,13 @@ namespace Urp.ArDemo.Editor
             text.alignment = alignment;
             text.color = Color.white;
             return text;
+        }
+
+        private static void CreateEventSystem()
+        {
+            GameObject eventSystem = new GameObject("EventSystem");
+            eventSystem.AddComponent<EventSystem>();
+            eventSystem.AddComponent<UnityEngine.InputSystem.UI.InputSystemUIInputModule>();
         }
 
         private static void AssignSerializedReference(UnityEngine.Object target, string propertyName, UnityEngine.Object value)

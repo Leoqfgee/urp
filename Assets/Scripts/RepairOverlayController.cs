@@ -5,6 +5,7 @@ namespace Urp.ArDemo
 {
     public sealed class RepairOverlayController : MonoBehaviour
     {
+        [SerializeField] private Transform artifactRoot;
         [SerializeField] private Transform repairRoot;
         [SerializeField] private GameObject infoPanel;
         [SerializeField] private Text statusText;
@@ -35,6 +36,49 @@ namespace Urp.ArDemo
             bool nextState = !repairRoot.gameObject.activeSelf;
             repairRoot.gameObject.SetActive(nextState);
             UpdateStatus(nextState ? "Virtual repair is visible." : "Virtual repair is hidden.");
+        }
+
+        public void ToggleArtifact()
+        {
+            if (artifactRoot == null)
+            {
+                UpdateStatus("No artifact model assigned.");
+                return;
+            }
+
+            bool nextState = !artifactRoot.gameObject.activeSelf;
+            artifactRoot.gameObject.SetActive(nextState);
+            UpdateStatus(nextState ? "Reconstructed artifact is visible." : "Reconstructed artifact is hidden.");
+        }
+
+        public void ShowBeforeRepair()
+        {
+            if (repairRoot != null)
+            {
+                repairRoot.gameObject.SetActive(false);
+            }
+
+            if (artifactRoot != null)
+            {
+                artifactRoot.gameObject.SetActive(true);
+            }
+
+            UpdateStatus("Before repair: reconstructed damaged artifact only.");
+        }
+
+        public void ShowAfterRepair()
+        {
+            if (artifactRoot != null)
+            {
+                artifactRoot.gameObject.SetActive(true);
+            }
+
+            if (repairRoot != null)
+            {
+                repairRoot.gameObject.SetActive(true);
+            }
+
+            UpdateStatus("After repair: virtual restoration overlay enabled.");
         }
 
         public void ToggleInfo()
