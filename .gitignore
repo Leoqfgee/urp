@@ -19,3 +19,7 @@ sysinfo.txt
 .vs/
 .idea/
 .vscode/
+
+# Installed locally from Unity Asset Store.
+Assets/OpenCV+Unity/
+Assets/OpenCV+Unity.meta

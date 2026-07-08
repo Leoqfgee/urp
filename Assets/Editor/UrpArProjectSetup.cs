@@ -19,6 +19,7 @@ namespace Urp.ArDemo.Editor
     {
         private const string ScenePath = "Assets/Scenes/UrpARPrototype.unity";
         private const string ReconstructedArtifactPath = "Assets/Models/ReconstructedArtifact/real.obj";
+        private const string OrbTargetImagePath = "Assets/Textures/Targets/orb_target.jpg";
 
         [MenuItem("URP AR/Setup Prototype Scene")]
         public static void SetupPrototypeScene()
@@ -87,7 +88,8 @@ namespace Urp.ArDemo.Editor
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
             PlayerSettings.SetScriptingBackend(BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
-            PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
+            PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARMv7;
+            PlayerSettings.allowUnsafeCode = true;
             PlayerSettings.defaultInterfaceOrientation = UIOrientation.Portrait;
             PlayerSettings.SetUseDefaultGraphicsAPIs(BuildTarget.Android, false);
             PlayerSettings.SetGraphicsAPIs(BuildTarget.Android, new[] { GraphicsDeviceType.OpenGLES3 });
@@ -156,7 +158,7 @@ namespace Urp.ArDemo.Editor
             camera.clearFlags = CameraClearFlags.SolidColor;
             camera.backgroundColor = Color.black;
             cameraObject.AddComponent<AudioListener>();
-            cameraObject.AddComponent<UnityEngine.XR.ARFoundation.ARCameraManager>();
+            var cameraManager = cameraObject.AddComponent<UnityEngine.XR.ARFoundation.ARCameraManager>();
             cameraObject.AddComponent<UnityEngine.XR.ARFoundation.ARCameraBackground>();
             origin.Camera = camera;
 
@@ -186,19 +188,39 @@ namespace Urp.ArDemo.Editor
             AssignSerializedReference(controller, "infoPanel", infoPanel);
             AssignSerializedReference(controller, "statusText", statusText);
 
-            var placement = xrOrigin.AddComponent<ARPlacementController>();
-            AssignSerializedReference(placement, "raycastManager", raycastManager);
-            AssignSerializedReference(placement, "arCamera", camera);
-            AssignSerializedReference(placement, "trackedContentRoot", contentRoot.transform);
-            AssignSerializedReference(placement, "statusText", statusText);
+            var orbTracker = xrOrigin.AddComponent<OrbImageTrackingController>();
+            AssignSerializedReference(orbTracker, "cameraManager", cameraManager);
+            AssignSerializedReference(orbTracker, "arCamera", camera);
+            AssignSerializedReference(orbTracker, "trackedContentRoot", contentRoot.transform);
+            AssignSerializedReference(orbTracker, "statusText", statusText);
+            AssignSerializedReference(orbTracker, "targetTexture", LoadOrbTargetTexture());
 
             var tracker = xrOrigin.GetComponent<OrbTrackingPlaceholder>();
             AssignSerializedReference(tracker, "trackedContentRoot", contentRoot.transform);
             CreateEventSystem();
-            CreateControls(canvasObject.transform, controller, placement);
+            CreateControls(canvasObject.transform, controller);
 
             EditorSceneManager.SaveScene(scene, ScenePath);
             EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
+        }
+
+        private static Texture2D LoadOrbTargetTexture()
+        {
+            TextureImporter importer = AssetImporter.GetAtPath(OrbTargetImagePath) as TextureImporter;
+            if (importer != null)
+            {
+                importer.isReadable = true;
+                importer.textureCompression = TextureImporterCompression.Uncompressed;
+                importer.SaveAndReimport();
+            }
+
+            Texture2D texture = AssetDatabase.LoadAssetAtPath<Texture2D>(OrbTargetImagePath);
+            if (texture == null)
+            {
+                throw new FileNotFoundException($"ORB target image not found: {OrbTargetImagePath}");
+            }
+
+            return texture;
         }
 
         private static Material CreateMaterial(string name, Color color)
@@ -236,7 +258,7 @@ namespace Urp.ArDemo.Editor
             panelRect.offsetMax = Vector2.zero;
             Image panelImage = infoPanel.AddComponent<Image>();
             panelImage.color = new Color(0f, 0f, 0f, 0.56f);
-            CreateText(infoPanel.transform, "Artifact Info", "Tap a surface to place the artifact. Use Before/After to compare repair.", new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(900f, 90f), 24, TextAnchor.MiddleCenter);
+            CreateText(infoPanel.transform, "Artifact Info", "ORB tracking locks onto the target image, then overlays the reconstructed artifact and virtual repair part.", new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(900f, 90f), 24, TextAnchor.MiddleCenter);
 
             return canvasObject;
         }
@@ -262,7 +284,7 @@ namespace Urp.ArDemo.Editor
             return artifact;
         }
 
-        private static void CreateControls(Transform parent, RepairOverlayController repairController, ARPlacementController placementController)
+        private static void CreateControls(Transform parent, RepairOverlayController repairController)
         {
             GameObject row = new GameObject("Control Row");
             row.transform.SetParent(parent, false);
@@ -287,7 +309,6 @@ namespace Urp.ArDemo.Editor
             CreateButton(row.transform, "Left", repairController.RotateLeft);
             CreateButton(row.transform, "Right", repairController.RotateRight);
             CreateButton(row.transform, "Reset", repairController.ResetRepair);
-            CreateButton(row.transform, "Place", placementController.PlaceAtScreenCenter);
         }
 
         private static void CreateButton(Transform parent, string label, UnityEngine.Events.UnityAction action)
