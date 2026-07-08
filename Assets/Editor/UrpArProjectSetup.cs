@@ -17,6 +17,7 @@ namespace Urp.ArDemo.Editor
     public static class UrpArProjectSetup
     {
         private const string ScenePath = "Assets/Scenes/UrpARPrototype.unity";
+        private const string ReconstructedArtifactPath = "Assets/Models/ReconstructedArtifact/real.obj";
 
         [MenuItem("URP AR/Setup Prototype Scene")]
         public static void SetupPrototypeScene()
@@ -159,18 +160,15 @@ namespace Urp.ArDemo.Editor
             GameObject contentRoot = new GameObject("Tracked Artifact Root");
             contentRoot.transform.position = new Vector3(0f, 0f, 1.25f);
 
-            GameObject repair = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            repair.name = "Placeholder Virtual Repair Part";
-            repair.transform.SetParent(contentRoot.transform, false);
-            repair.transform.localPosition = new Vector3(0f, 0.22f, 0f);
-            repair.transform.localScale = new Vector3(0.35f, 0.08f, 0.35f);
-            repair.GetComponent<Renderer>().sharedMaterial = CreateMaterial("VirtualRepairPreview", new Color(0.1f, 0.72f, 0.85f, 0.82f));
+            GameObject artifact = CreateReconstructedArtifact();
+            artifact.transform.SetParent(contentRoot.transform, false);
 
-            GameObject baseHint = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            baseHint.name = "Physical Artifact Alignment Hint";
-            baseHint.transform.SetParent(contentRoot.transform, false);
-            baseHint.transform.localScale = new Vector3(0.34f, 0.42f, 0.34f);
-            baseHint.GetComponent<Renderer>().sharedMaterial = CreateMaterial("PhysicalArtifactHint", new Color(0.75f, 0.55f, 0.35f, 0.35f));
+            GameObject repair = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            repair.name = "Virtual Repair Part";
+            repair.transform.SetParent(contentRoot.transform, false);
+            repair.transform.localPosition = new Vector3(0f, 0.12f, 0f);
+            repair.transform.localScale = new Vector3(0.22f, 0.045f, 0.22f);
+            repair.GetComponent<Renderer>().sharedMaterial = CreateMaterial("VirtualRepairPreview", new Color(0.1f, 0.72f, 0.85f, 0.82f));
 
             GameObject lightObject = new GameObject("Directional Light");
             Light light = lightObject.AddComponent<Light>();
@@ -223,9 +221,30 @@ namespace Urp.ArDemo.Editor
             panelRect.offsetMax = Vector2.zero;
             Image panelImage = infoPanel.AddComponent<Image>();
             panelImage.color = new Color(0f, 0f, 0f, 0.56f);
-            CreateText(infoPanel.transform, "Artifact Info", "Cultural heritage AR prototype: physical object plus virtual restoration overlay.", new Vector2(0.5f, 0.5f), Vector2.zero, 18, TextAnchor.MiddleCenter);
+            CreateText(infoPanel.transform, "Artifact Info", "Reconstructed artifact model plus virtual restoration overlay.", new Vector2(0.5f, 0.5f), Vector2.zero, 18, TextAnchor.MiddleCenter);
 
             return canvasObject;
+        }
+
+        private static GameObject CreateReconstructedArtifact()
+        {
+            AssetDatabase.ImportAsset(ReconstructedArtifactPath, ImportAssetOptions.ForceUpdate);
+            GameObject importedModel = AssetDatabase.LoadAssetAtPath<GameObject>(ReconstructedArtifactPath);
+            if (importedModel == null)
+            {
+                GameObject fallback = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                fallback.name = "Physical Artifact Alignment Hint";
+                fallback.transform.localScale = new Vector3(0.2f, 0.32f, 0.2f);
+                fallback.GetComponent<Renderer>().sharedMaterial = CreateMaterial("PhysicalArtifactHint", new Color(0.75f, 0.55f, 0.35f, 0.35f));
+                return fallback;
+            }
+
+            GameObject artifact = (GameObject)PrefabUtility.InstantiatePrefab(importedModel);
+            artifact.name = "Reconstructed Artifact Model";
+            artifact.transform.localPosition = Vector3.zero;
+            artifact.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
+            artifact.transform.localScale = Vector3.one * 0.18f;
+            return artifact;
         }
 
         private static Text CreateText(Transform parent, string name, string value, Vector2 anchor, Vector2 position, int fontSize, TextAnchor alignment)
