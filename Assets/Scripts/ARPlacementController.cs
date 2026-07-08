@@ -88,6 +88,17 @@ namespace Urp.ArDemo
             PlaceInFrontOfCamera();
         }
 
+        public void PlaceAtScreenCenter()
+        {
+            if (arCamera == null)
+            {
+                PlaceInFrontOfCamera();
+                return;
+            }
+
+            TryPlaceAtScreenPosition(new Vector2(Screen.width * 0.5f, Screen.height * 0.5f));
+        }
+
         private void TryPlaceAtScreenPosition(Vector2 screenPosition)
         {
             if (raycastManager == null || trackedContentRoot == null)
@@ -97,7 +108,7 @@ namespace Urp.ArDemo
 
             if (!raycastManager.Raycast(screenPosition, Hits, TrackableType.PlaneWithinPolygon | TrackableType.FeaturePoint))
             {
-                UpdateStatus("No surface found. Move the phone slowly and try again.");
+                PlaceByCameraProjection(screenPosition);
                 return;
             }
 
@@ -105,6 +116,28 @@ namespace Urp.ArDemo
             trackedContentRoot.SetPositionAndRotation(hitPose.position, hitPose.rotation);
             trackedContentRoot.gameObject.SetActive(true);
             UpdateStatus("Model placed on detected surface.");
+        }
+
+        private void PlaceByCameraProjection(Vector2 screenPosition)
+        {
+            if (trackedContentRoot == null || arCamera == null)
+            {
+                return;
+            }
+
+            Ray ray = arCamera.ScreenPointToRay(screenPosition);
+            trackedContentRoot.position = ray.origin + ray.direction.normalized * defaultDistance;
+
+            Vector3 forward = arCamera.transform.forward;
+            forward.y = 0f;
+            if (forward.sqrMagnitude < 0.001f)
+            {
+                forward = arCamera.transform.forward;
+            }
+
+            trackedContentRoot.rotation = Quaternion.LookRotation(forward.normalized, Vector3.up);
+            trackedContentRoot.gameObject.SetActive(true);
+            UpdateStatus("No AR surface yet. Model placed by camera direction.");
         }
 
         private void UpdateStatus(string message)

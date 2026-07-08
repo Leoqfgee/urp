@@ -195,6 +195,7 @@ namespace Urp.ArDemo.Editor
             var tracker = xrOrigin.GetComponent<OrbTrackingPlaceholder>();
             AssignSerializedReference(tracker, "trackedContentRoot", contentRoot.transform);
             CreateEventSystem();
+            CreateControls(canvasObject.transform, controller, placement);
 
             EditorSceneManager.SaveScene(scene, ScenePath);
             EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
@@ -236,7 +237,6 @@ namespace Urp.ArDemo.Editor
             Image panelImage = infoPanel.AddComponent<Image>();
             panelImage.color = new Color(0f, 0f, 0f, 0.56f);
             CreateText(infoPanel.transform, "Artifact Info", "Tap a surface to place the artifact. Use Before/After to compare repair.", new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(900f, 90f), 24, TextAnchor.MiddleCenter);
-            CreateControls(canvasObject.transform);
 
             return canvasObject;
         }
@@ -262,7 +262,7 @@ namespace Urp.ArDemo.Editor
             return artifact;
         }
 
-        private static void CreateControls(Transform parent)
+        private static void CreateControls(Transform parent, RepairOverlayController repairController, ARPlacementController placementController)
         {
             GameObject row = new GameObject("Control Row");
             row.transform.SetParent(parent, false);
@@ -280,17 +280,17 @@ namespace Urp.ArDemo.Editor
             grid.constraintCount = 4;
             grid.childAlignment = TextAnchor.MiddleCenter;
 
-            CreateButton(row.transform, "Before", "RepairOverlayController", "ShowBeforeRepair");
-            CreateButton(row.transform, "After", "RepairOverlayController", "ShowAfterRepair");
-            CreateButton(row.transform, "Repair", "RepairOverlayController", "ToggleRepair");
-            CreateButton(row.transform, "Info", "RepairOverlayController", "ToggleInfo");
-            CreateButton(row.transform, "Left", "RepairOverlayController", "RotateLeft");
-            CreateButton(row.transform, "Right", "RepairOverlayController", "RotateRight");
-            CreateButton(row.transform, "Reset", "RepairOverlayController", "ResetRepair");
-            CreateButton(row.transform, "Place", "ARPlacementController", "PlaceInFrontOfCamera");
+            CreateButton(row.transform, "Before", repairController.ShowBeforeRepair);
+            CreateButton(row.transform, "After", repairController.ShowAfterRepair);
+            CreateButton(row.transform, "Repair", repairController.ToggleRepair);
+            CreateButton(row.transform, "Info", repairController.ToggleInfo);
+            CreateButton(row.transform, "Left", repairController.RotateLeft);
+            CreateButton(row.transform, "Right", repairController.RotateRight);
+            CreateButton(row.transform, "Reset", repairController.ResetRepair);
+            CreateButton(row.transform, "Place", placementController.PlaceAtScreenCenter);
         }
 
-        private static void CreateButton(Transform parent, string label, string componentName, string methodName)
+        private static void CreateButton(Transform parent, string label, UnityEngine.Events.UnityAction action)
         {
             GameObject buttonObject = new GameObject($"{label} Button");
             buttonObject.transform.SetParent(parent, false);
@@ -299,24 +299,6 @@ namespace Urp.ArDemo.Editor
             Button button = buttonObject.AddComponent<Button>();
 
             CreateText(buttonObject.transform, $"{label} Label", label, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(190f, 70f), 24, TextAnchor.MiddleCenter);
-
-            string targetName = componentName == "ARPlacementController" ? "XR Origin" : "Demo UI";
-            GameObject target = GameObject.Find(targetName);
-            if (target == null)
-            {
-                return;
-            }
-
-            Component component = target.GetComponent(componentName);
-            if (component == null)
-            {
-                return;
-            }
-
-            UnityEngine.Events.UnityAction action = (UnityEngine.Events.UnityAction)Delegate.CreateDelegate(
-                typeof(UnityEngine.Events.UnityAction),
-                component,
-                methodName);
             button.onClick.AddListener(action);
         }
 
