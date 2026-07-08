@@ -4,6 +4,7 @@ using UnityEditor;
 using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
 using UnityEditor.SceneManagement;
+using UnityEditor.XR.ARSubsystems;
 using UnityEditor.XR.Management;
 using UnityEditor.XR.Management.Metadata;
 using UnityEngine;
@@ -11,6 +12,7 @@ using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
+using UnityEngine.XR.ARSubsystems;
 using UnityEngine.XR.Management;
 
 namespace Urp.ArDemo.Editor
@@ -19,6 +21,8 @@ namespace Urp.ArDemo.Editor
     {
         private const string ScenePath = "Assets/Scenes/UrpARPrototype.unity";
         private const string ReconstructedArtifactPath = "Assets/Models/ReconstructedArtifact/real.obj";
+        private const string TargetImagePath = "Assets/Textures/Targets/coconut_juice_target.jpg";
+        private const string ReferenceImageLibraryPath = "Assets/Textures/Targets/CoconutJuiceReferenceImages.asset";
 
         [MenuItem("URP AR/Setup Prototype Scene")]
         public static void SetupPrototypeScene()
@@ -68,6 +72,7 @@ namespace Urp.ArDemo.Editor
                 "Assets/Prefabs",
                 "Assets/Scripts",
                 "Assets/Textures",
+                "Assets/Textures/Targets",
             };
 
             foreach (string folder in folders)
@@ -143,8 +148,10 @@ namespace Urp.ArDemo.Editor
             GameObject xrOrigin = new GameObject("XR Origin");
             var origin = xrOrigin.AddComponent<Unity.XR.CoreUtils.XROrigin>();
             xrOrigin.AddComponent<OrbTrackingPlaceholder>();
-            var planeManager = xrOrigin.AddComponent<UnityEngine.XR.ARFoundation.ARPlaneManager>();
-            var raycastManager = xrOrigin.AddComponent<UnityEngine.XR.ARFoundation.ARRaycastManager>();
+            var trackedImageManager = xrOrigin.AddComponent<UnityEngine.XR.ARFoundation.ARTrackedImageManager>();
+            trackedImageManager.referenceLibrary = CreateReferenceImageLibrary();
+            trackedImageManager.requestedMaxNumberOfMovingImages = 1;
+            trackedImageManager.enabled = true;
 
             GameObject cameraOffset = new GameObject("Camera Offset");
             cameraOffset.transform.SetParent(xrOrigin.transform, false);
@@ -162,6 +169,7 @@ namespace Urp.ArDemo.Editor
 
             GameObject contentRoot = new GameObject("Tracked Artifact Root");
             contentRoot.transform.position = new Vector3(0f, 0f, 1.25f);
+            contentRoot.SetActive(false);
 
             GameObject artifact = CreateReconstructedArtifact();
             artifact.transform.SetParent(contentRoot.transform, false);
@@ -186,16 +194,15 @@ namespace Urp.ArDemo.Editor
             AssignSerializedReference(controller, "infoPanel", infoPanel);
             AssignSerializedReference(controller, "statusText", statusText);
 
-            var placement = xrOrigin.AddComponent<ARPlacementController>();
-            AssignSerializedReference(placement, "raycastManager", raycastManager);
-            AssignSerializedReference(placement, "arCamera", camera);
-            AssignSerializedReference(placement, "trackedContentRoot", contentRoot.transform);
-            AssignSerializedReference(placement, "statusText", statusText);
+            var imageTracker = xrOrigin.AddComponent<ImageTrackedRepairController>();
+            AssignSerializedReference(imageTracker, "trackedImageManager", trackedImageManager);
+            AssignSerializedReference(imageTracker, "trackedContentRoot", contentRoot.transform);
+            AssignSerializedReference(imageTracker, "statusText", statusText);
 
             var tracker = xrOrigin.GetComponent<OrbTrackingPlaceholder>();
             AssignSerializedReference(tracker, "trackedContentRoot", contentRoot.transform);
             CreateEventSystem();
-            CreateControls(canvasObject.transform, controller, placement);
+            CreateControls(canvasObject.transform, controller);
 
             EditorSceneManager.SaveScene(scene, ScenePath);
             EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
@@ -215,6 +222,37 @@ namespace Urp.ArDemo.Editor
             return material;
         }
 
+        private static XRReferenceImageLibrary CreateReferenceImageLibrary()
+        {
+            AssetDatabase.ImportAsset(TargetImagePath, ImportAssetOptions.ForceUpdate);
+            Texture2D texture = AssetDatabase.LoadAssetAtPath<Texture2D>(TargetImagePath);
+            if (texture == null)
+            {
+                throw new FileNotFoundException($"Target image not found: {TargetImagePath}");
+            }
+
+            XRReferenceImageLibrary library = AssetDatabase.LoadAssetAtPath<XRReferenceImageLibrary>(ReferenceImageLibraryPath);
+            if (library == null)
+            {
+                library = ScriptableObject.CreateInstance<XRReferenceImageLibrary>();
+                AssetDatabase.CreateAsset(library, ReferenceImageLibraryPath);
+            }
+
+            while (library.count > 0)
+            {
+                library.RemoveAt(0);
+            }
+
+            library.Add();
+            library.SetName(0, "coconut_juice_label");
+            library.SetTexture(0, texture, true);
+            library.SetSpecifySize(0, true);
+            library.SetSize(0, new Vector2(0.09f, 0.16f));
+            EditorUtility.SetDirty(library);
+            AssetDatabase.SaveAssets();
+            return library;
+        }
+
         private static GameObject CreateCanvas(out Text statusText, out GameObject infoPanel)
         {
             GameObject canvasObject = new GameObject("Demo UI");
@@ -226,7 +264,7 @@ namespace Urp.ArDemo.Editor
             scaler.matchWidthOrHeight = 0.5f;
             canvasObject.AddComponent<GraphicRaycaster>();
 
-            statusText = CreateText(canvasObject.transform, "Status Text", "URP AR Demo", new Vector2(0.5f, 1f), new Vector2(0f, -44f), new Vector2(960f, 90f), 24, TextAnchor.MiddleCenter);
+            statusText = CreateText(canvasObject.transform, "Status Text", "Point the camera at the coconut juice label.", new Vector2(0.5f, 1f), new Vector2(0f, -44f), new Vector2(960f, 90f), 24, TextAnchor.MiddleCenter);
             infoPanel = new GameObject("Info Panel");
             infoPanel.transform.SetParent(canvasObject.transform, false);
             RectTransform panelRect = infoPanel.AddComponent<RectTransform>();
@@ -236,7 +274,7 @@ namespace Urp.ArDemo.Editor
             panelRect.offsetMax = Vector2.zero;
             Image panelImage = infoPanel.AddComponent<Image>();
             panelImage.color = new Color(0f, 0f, 0f, 0.56f);
-            CreateText(infoPanel.transform, "Artifact Info", "Tap a surface to place the artifact. Use Before/After to compare repair.", new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(900f, 90f), 24, TextAnchor.MiddleCenter);
+            CreateText(infoPanel.transform, "Artifact Info", "Image tracking mode: scan the coconut juice label to show the restoration overlay.", new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(900f, 90f), 24, TextAnchor.MiddleCenter);
 
             return canvasObject;
         }
@@ -262,7 +300,7 @@ namespace Urp.ArDemo.Editor
             return artifact;
         }
 
-        private static void CreateControls(Transform parent, RepairOverlayController repairController, ARPlacementController placementController)
+        private static void CreateControls(Transform parent, RepairOverlayController repairController)
         {
             GameObject row = new GameObject("Control Row");
             row.transform.SetParent(parent, false);
@@ -287,7 +325,7 @@ namespace Urp.ArDemo.Editor
             CreateButton(row.transform, "Left", repairController.RotateLeft);
             CreateButton(row.transform, "Right", repairController.RotateRight);
             CreateButton(row.transform, "Reset", repairController.ResetRepair);
-            CreateButton(row.transform, "Place", placementController.PlaceAtScreenCenter);
+            CreateButton(row.transform, "Hide", repairController.ToggleArtifact);
         }
 
         private static void CreateButton(Transform parent, string label, UnityEngine.Events.UnityAction action)
