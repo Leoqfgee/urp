@@ -89,9 +89,11 @@ namespace Urp.ArDemo.Editor
         {
             PlayerSettings.productName = "URP AR 数字修复";
             PlayerSettings.companyName = "qfgeeee";
+            PlayerSettings.bundleVersion = "0.2";
             PlayerSettings.SetApplicationIdentifier(BuildTargetGroup.Android, "com.qfgeeee.urpardemo");
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
+            PlayerSettings.Android.bundleVersionCode = 2;
             PlayerSettings.SetScriptingBackend(BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
             PlayerSettings.allowUnsafeCode = true;
@@ -182,7 +184,6 @@ namespace Urp.ArDemo.Editor
 
             GameObject application = new GameObject("URP Application");
             var overlayController = application.AddComponent<RepairOverlayController>();
-            AssignSerializedReference(overlayController, "repairRoot", repair.transform);
 
             var orbTracker = xrOrigin.AddComponent<OrbImageTrackingController>();
             AssignSerializedReference(orbTracker, "cameraManager", cameraManager);
@@ -370,9 +371,12 @@ namespace Urp.ArDemo.Editor
             GameObject importedModel = AssetDatabase.LoadAssetAtPath<GameObject>(MeshroomProcessedCapPath);
             if (importedModel != null)
             {
+                GameObject repairRoot = new GameObject("Meshroom Bottle Cap Repair");
                 GameObject cap = (GameObject)PrefabUtility.InstantiatePrefab(importedModel);
                 cap.name = "Meshroom Processed Bottle Cap Repair Model";
-                cap.transform.localPosition = Vector3.zero;
+                cap.transform.SetParent(repairRoot.transform, false);
+                // The tracked anchor is the bottle-mouth contact plane, not the cap center.
+                cap.transform.localPosition = new Vector3(0f, 0.5f, 0f);
                 cap.transform.localRotation = Quaternion.identity;
                 cap.transform.localScale = Vector3.one;
                 Material repairMaterial = CreateMaterial("MeshroomCapRepairMaterial", new Color(0.88f, 0.97f, 1f, 1f));
@@ -380,7 +384,7 @@ namespace Urp.ArDemo.Editor
                 repairMaterial.SetColor("_EmissionColor", new Color(0.04f, 0.16f, 0.20f, 1f));
                 repairMaterial.SetFloat("_Glossiness", 0.45f);
                 ApplyMaterialToRenderers(cap, repairMaterial);
-                return cap;
+                return repairRoot;
             }
 
             Debug.LogWarning($"Processed Meshroom cap model missing, using fallback primitive: {MeshroomProcessedCapPath}");
@@ -421,7 +425,7 @@ namespace Urp.ArDemo.Editor
             GameObject cap = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             cap.name = "Virtual Repair Bottle Cap";
             cap.transform.SetParent(capRoot.transform, false);
-            cap.transform.localPosition = Vector3.zero;
+            cap.transform.localPosition = new Vector3(0f, 0.5f, 0f);
             cap.transform.localScale = new Vector3(1f, 0.5f, 1f);
             cap.GetComponent<Renderer>().sharedMaterial = capMaterial;
             return capRoot;

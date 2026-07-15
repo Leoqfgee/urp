@@ -123,21 +123,19 @@ namespace Urp.ArDemo
         private GameObject BuildTrackingCameraPage()
         {
             GameObject page = CreatePage("三维跟踪相机", false);
-            CreateHeader(page.transform, "残缺饮料瓶虚拟修复", () => ShowPage(Page.TrackingSelection));
-            trackingStatus = CreateStatusBar(page.transform, "点击开始识别，并让瓶身与瓶口同时进入画面。", 0.855f);
+            CreateHeader(page.transform, "三维跟踪模式", () => ShowPage(Page.TrackingSelection));
+            trackingStatus = CreateStatusBar(page.transform, "正在准备瓶盖初始位姿。", 0.855f);
 
-            GameObject controls = CreatePanel(page.transform, "三维跟踪控制", new Color32(7, 15, 25, 158),
-                new Vector2(0.04f, 0.025f), new Vector2(0.96f, 0.20f));
-            CreateButton(controls.transform, "开始识别", new Vector2(0.02f, 0.53f), new Vector2(0.48f, 0.95f),
-                repairController != null ? repairController.StartRecognition : (Action)null, CameraButton, Color.white, 27);
-            CreateButton(controls.transform, "重新识别", new Vector2(0.52f, 0.53f), new Vector2(0.98f, 0.95f),
-                repairController != null ? repairController.ResetRecognition : (Action)null, CameraButton, Color.white, 27);
-            CreateButton(controls.transform, "修复前", new Vector2(0.02f, 0.05f), new Vector2(0.32f, 0.47f),
-                repairController != null ? repairController.ShowBeforeRepair : (Action)null, CameraButton, Color.white, 26);
-            CreateButton(controls.transform, "修复后", new Vector2(0.35f, 0.05f), new Vector2(0.65f, 0.47f),
-                repairController != null ? repairController.ShowAfterRepair : (Action)null, Accent, Color.white, 26);
-            CreateButton(controls.transform, "文字介绍", new Vector2(0.68f, 0.05f), new Vector2(0.98f, 0.47f),
-                ShowInformation, CameraButton, Color.white, 24);
+            GameObject controls = CreatePanel(page.transform, "论文式跟踪控制", Color.clear,
+                new Vector2(0.035f, 0.42f), new Vector2(0.25f, 0.82f));
+            CreateButton(controls.transform, "开始", new Vector2(0.02f, 0.77f), new Vector2(0.98f, 0.98f),
+                repairController != null ? repairController.StartRecognition : (Action)null, Surface, Ink, 30);
+            CreateButton(controls.transform, "重置", new Vector2(0.02f, 0.52f), new Vector2(0.98f, 0.73f),
+                repairController != null ? repairController.ResetRecognition : (Action)null, Surface, Ink, 30);
+            CreateButton(controls.transform, "文字介绍", new Vector2(0.02f, 0.27f), new Vector2(0.98f, 0.48f),
+                ShowInformation, Surface, Ink, 26);
+            CreateButton(controls.transform, "返回", new Vector2(0.02f, 0.02f), new Vector2(0.98f, 0.23f),
+                () => ShowPage(Page.TrackingSelection), Surface, Ink, 30);
             return page;
         }
 
@@ -261,7 +259,11 @@ namespace Urp.ArDemo
 
             if (action != null)
             {
-                button.onClick.AddListener(() => action());
+                button.onClick.AddListener(() =>
+                {
+                    Debug.Log($"URP button clicked: {label}");
+                    action();
+                });
             }
 
             CreateText(buttonObject.transform, label, fontSize, foreground,

@@ -31,6 +31,8 @@ namespace Urp.ArDemo
         [SerializeField] private float maxReprojectionErrorPixels = 4.5f;
         [SerializeField] private float lostPoseGraceSeconds = 0.65f;
         [SerializeField] private float maxViewportJump = 0.18f;
+        [SerializeField] private Vector3 initialPreviewLocalPosition = new Vector3(0f, 0.11f, 0.55f);
+        [SerializeField] private Vector3 initialPreviewLocalEulerAngles = Vector3.zero;
 
         private readonly List<TrackedTarget> targets = new List<TrackedTarget>();
         private Texture2D frameTexture;
@@ -38,7 +40,8 @@ namespace Urp.ArDemo
         private float nextLostStatusTime;
         private float lastValidPoseTime = -10f;
         private bool hasSmoothedPose;
-        private bool trackingEnabled;
+        private bool modeEnabled;
+        private bool recognitionRunning;
         private int activeTargetIndex = -1;
         private int searchCursor;
         private int consecutiveActiveTargetMisses;
@@ -91,7 +94,7 @@ namespace Urp.ArDemo
 
         private void Update()
         {
-            if (!trackingEnabled || Time.unscaledTime < nextProcessTime)
+            if (!modeEnabled || !recognitionRunning || Time.unscaledTime < nextProcessTime)
             {
                 return;
             }
@@ -112,27 +115,27 @@ namespace Urp.ArDemo
         public void ResetTracking()
         {
             hasSmoothedPose = false;
-            trackingEnabled = true;
+            recognitionRunning = false;
             activeTargetIndex = -1;
             searchCursor = 0;
             consecutiveActiveTargetMisses = 0;
             consecutivePoseJumps = 0;
             lastValidPoseTime = -10f;
             nextProcessTime = 0f;
-            if (trackedContentRoot != null)
-            {
-                trackedContentRoot.gameObject.SetActive(false);
-            }
-
-            UpdateStatus("已重置识别，请将无瓶盖饮料瓶完整放入画面。");
+            ShowInitialPose();
+            UpdateStatus("已恢复瓶盖初始位姿。移动手机使瓶盖与真实瓶口大致对齐，再点击开始。");
         }
 
         public void StartRecognition()
         {
-            trackingEnabled = true;
+            if (!modeEnabled)
+            {
+                return;
+            }
+
+            recognitionRunning = true;
             nextProcessTime = 0f;
-            HideRepairModel(true);
-            UpdateStatus("正在识别残缺饮料瓶，请保持瓶口和瓶身文字清晰可见。");
+            UpdateStatus("已开始 ORB 三维跟踪。请保持瓶口和瓶身文字清晰可见。");
         }
 
         public void SetRepairVisible(bool visible)
@@ -146,8 +149,14 @@ namespace Urp.ArDemo
 
         public void SetTrackingEnabled(bool enabled)
         {
-            trackingEnabled = enabled;
-            if (!enabled)
+            modeEnabled = enabled;
+            recognitionRunning = false;
+            if (enabled)
+            {
+                ShowInitialPose();
+                UpdateStatus("瓶盖已按初始位姿显示。移动手机使其与瓶口大致对齐，再点击开始。");
+            }
+            else
             {
                 HideRepairModel(true);
             }
@@ -278,7 +287,10 @@ namespace Urp.ArDemo
 
                 if (bestTarget == null || bestResult.poseValid == 0)
                 {
-                    HideRepairModel(false);
+                    if (hasSmoothedPose)
+                    {
+                        HideRepairModel(false);
+                    }
                     if (Time.unscaledTime >= nextLostStatusTime)
                     {
                         nextLostStatusTime = Time.unscaledTime + lostStatusIntervalSeconds;
@@ -416,9 +428,7 @@ namespace Urp.ArDemo
             Vector2 rawViewport = OrientedToSourceViewport(
                 new Vector2(result.anchorX01, result.anchorY01),
                 rotationClockwise);
-            Vector3 uncorrectedWorld = arCamera.transform.TransformPoint(cameraLocalAnchor);
-            Vector3 uncorrectedViewport = arCamera.WorldToViewportPoint(uncorrectedWorld);
-            Vector2 targetViewport = ResolveDisplayViewport(rawViewport, uncorrectedViewport);
+            Vector2 targetViewport = ResolveDisplayViewport(rawViewport);
             if (targetViewport.x < 0.02f || targetViewport.x > 0.98f
                 || targetViewport.y < 0.02f || targetViewport.y > 0.98f)
             {
@@ -447,6 +457,8 @@ namespace Urp.ArDemo
 
             Vector3 upInCamera = TransformModelDirection(result, bottleUpInModel);
             Vector3 forwardInCamera = TransformModelDirection(result, bottleForwardInModel);
+            upInCamera = UndoFrameRotation(upInCamera, rotationClockwise);
+            forwardInCamera = UndoFrameRotation(forwardInCamera, rotationClockwise);
             Vector3 targetUp = arCamera.transform.TransformDirection(CvToUnity(upInCamera)).normalized;
             Vector3 targetForward = arCamera.transform.TransformDirection(CvToUnity(forwardInCamera)).normalized;
             targetForward = Vector3.ProjectOnPlane(targetForward, targetUp).normalized;
@@ -461,46 +473,19 @@ namespace Urp.ArDemo
             return true;
         }
 
-        private Vector2 ResolveDisplayViewport(Vector2 sourceViewport, Vector3 uncorrectedViewport)
+        private Vector2 ResolveDisplayViewport(Vector2 sourceViewport)
         {
             if (!hasDisplayMatrix)
             {
-                return sourceViewport;
+                return new Vector2(sourceViewport.x, 1f - sourceViewport.y);
             }
 
-            Vector2[] candidates =
-            {
-                TransformViewport(displayMatrix.inverse, sourceViewport),
-                TransformViewport(displayMatrix, sourceViewport),
-                TransformViewport(displayMatrix.transpose, sourceViewport),
-                TransformViewport(displayMatrix.inverse.transpose, sourceViewport)
-            };
-            Vector2 reference = new Vector2(uncorrectedViewport.x, uncorrectedViewport.y);
-            Vector2 best = candidates[0];
-            float bestDistance = float.MaxValue;
-            for (int i = 0; i < candidates.Length; i++)
-            {
-                Vector2 candidate = candidates[i];
-                if (!float.IsFinite(candidate.x) || !float.IsFinite(candidate.y))
-                {
-                    continue;
-                }
-
-                float distance = Vector2.SqrMagnitude(candidate - reference);
-                if (distance < bestDistance)
-                {
-                    bestDistance = distance;
-                    best = candidate;
-                }
-            }
-
-            return best;
-        }
-
-        private static Vector2 TransformViewport(Matrix4x4 matrix, Vector2 uv)
-        {
-            Vector3 transformed = matrix.MultiplyPoint3x4(new Vector3(uv.x, uv.y, 1f));
-            return new Vector2(transformed.x, transformed.y);
+            // ARCoreBackground.shader maps display UV to camera texture UV as:
+            // displayMatrix * (screenX, 1-screenY, 1, 0). Invert that exact
+            // operation to place the CPU-image repair anchor on the displayed frame.
+            Vector2 textureUv = new Vector2(sourceViewport.x, 1f - sourceViewport.y);
+            Vector4 displayInput = displayMatrix.inverse * new Vector4(textureUv.x, textureUv.y, 1f, 0f);
+            return new Vector2(displayInput.x, 1f - displayInput.y);
         }
 
         private static Vector2 OrientedToSourceViewport(Vector2 oriented, int rotationClockwise)
@@ -535,6 +520,21 @@ namespace Urp.ArDemo
         private static Vector3 CvToUnity(Vector3 point)
         {
             return new Vector3(point.x, -point.y, point.z);
+        }
+
+        private static Vector3 UndoFrameRotation(Vector3 point, int rotationClockwise)
+        {
+            switch (rotationClockwise)
+            {
+                case 90:
+                    return new Vector3(point.y, -point.x, point.z);
+                case 180:
+                    return new Vector3(-point.x, -point.y, point.z);
+                case 270:
+                    return new Vector3(-point.y, point.x, point.z);
+                default:
+                    return point;
+            }
         }
 
         private void ApplyLightingConsistency(float measuredLuminance)
@@ -591,6 +591,21 @@ namespace Urp.ArDemo
             }
 
             hasSmoothedPose = false;
+        }
+
+        private void ShowInitialPose()
+        {
+            if (trackedContentRoot == null || arCamera == null)
+            {
+                return;
+            }
+
+            hasSmoothedPose = false;
+            trackedContentRoot.SetParent(arCamera.transform, false);
+            trackedContentRoot.localPosition = initialPreviewLocalPosition;
+            trackedContentRoot.localRotation = Quaternion.Euler(initialPreviewLocalEulerAngles);
+            trackedContentRoot.localScale = Vector3.one * pnpRepairScale;
+            trackedContentRoot.gameObject.SetActive(repairVisibleRequested);
         }
 
         private void UpdateStatus(string message)
