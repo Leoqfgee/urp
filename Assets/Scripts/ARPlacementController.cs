@@ -59,7 +59,7 @@ namespace Urp.ArDemo
         public void ToggleTapPlacement()
         {
             allowTapPlacement = !allowTapPlacement;
-            UpdateStatus(allowTapPlacement ? "Tap placement enabled." : "Tap placement locked.");
+            UpdateStatus(allowTapPlacement ? "已开启点击放置。" : "已锁定点击放置。");
         }
 
         public void PlaceInFrontOfCamera()
@@ -80,7 +80,7 @@ namespace Urp.ArDemo
             trackedContentRoot.position = cameraTransform.position + forward.normalized * defaultDistance;
             trackedContentRoot.rotation = Quaternion.LookRotation(forward.normalized, Vector3.up);
             trackedContentRoot.gameObject.SetActive(true);
-            UpdateStatus("Model placed in front of camera. Tap a surface to reposition.");
+            UpdateStatus("已把修复结果放到摄像头前方，可继续对准瓶身识别。");
         }
 
         public void ResetPlacement()
@@ -115,7 +115,7 @@ namespace Urp.ArDemo
             Pose hitPose = Hits[0].pose;
             trackedContentRoot.SetPositionAndRotation(hitPose.position, hitPose.rotation);
             trackedContentRoot.gameObject.SetActive(true);
-            UpdateStatus("Model placed on detected surface.");
+            UpdateStatus("已放置到检测到的平面上。");
         }
 
         private void PlaceByCameraProjection(Vector2 screenPosition)
@@ -137,7 +137,7 @@ namespace Urp.ArDemo
 
             trackedContentRoot.rotation = Quaternion.LookRotation(forward.normalized, Vector3.up);
             trackedContentRoot.gameObject.SetActive(true);
-            UpdateStatus("No AR surface yet. Model placed by camera direction.");
+            UpdateStatus("暂未检测到平面，已按摄像头方向临时放置。");
         }
 
         private void UpdateStatus(string message)

@@ -1,25 +1,28 @@
-# URP AR Prototype
+# URP AR
 
-This Unity project is the summer-task prototype for the cultural heritage digital restoration and AR presentation system.
+Unity Android prototype for the cultural heritage digital restoration and AR presentation project.
 
-Current build focus:
+## Implemented application flow
 
-- Android AR app built with Unity 2022.3 LTS and AR Foundation.
-- ORB feature matching through the locally installed `OpenCV plus Unity` Asset Store plugin.
-- A cropped real-object target image at `Assets/Textures/Targets/orb_target.jpg`.
-- The reconstructed artifact model plus a virtual repair overlay are shown only after ORB finds the target.
+- Three-dimensional resource viewer for the reconstructed damaged bottle and complete bottle.
+- ORB three-dimensional tracking mode with 13 local feature/point databases, PnP pose estimation, reprojection validation, display-coordinate correction, temporal smoothing, bottle-neck occlusion, and local luminance adaptation.
+- Planar marker and SLAM mode using an AR Foundation reference-image library, ARCore plane mapping, and a persistent world anchor.
+- Chinese navigation and working controls for start, reset, before/after comparison, rotate, zoom, marker detection, and project information.
 
-Local dependency:
+## Tracking data
 
-- Install `OpenCV plus Unity` from Unity Asset Store before opening or building this project.
-- The plugin folder is intentionally ignored by Git because Asset Store packages should not be redistributed as raw plugin source in this repository.
+- Actual object: cap-missing coconut drink bottle.
+- Repair part: processed Meshroom bottle-cap reconstruction.
+- ORB 3D databases: `Assets/OrbModels/`.
+- Planar marker: `Assets/Textures/Targets/orb_target.jpg`.
 
-Build:
+The Android ORB/PnP implementation is the project-owned native plugin under `Native/UrpOrbNative`. It is built for `arm64-v8a` with OpenCV 4.10 and does not depend on the Asset Store demo plugin at runtime.
 
-- Unity menu: `URP AR/Setup Prototype Scene`
-- Command-line build method: `Urp.ArDemo.Editor.UrpArProjectSetup.BuildAndroidFromCommandLine`
-- APK output: `Builds/urp-ar-demo.apk`
+## Build
 
-Important limitation:
+- Unity version: 2022.3.62f2.
+- Unity menu: `URP AR/Setup Prototype Scene`.
+- Command-line method: `Urp.ArDemo.Editor.UrpArProjectSetup.BuildAndroidFromCommandLine`.
+- APK output: `Builds/urp-ar-demo.apk`.
 
-- The free OpenCV plugin imported locally only includes Android `armeabi-v7a` native libraries, so this prototype build targets ARMv7 for testing. A production Android app should use an OpenCV package or native build that includes `arm64-v8a`.
+For the planar-marker mode, display or print the supplied marker image at the physical size configured in the reference-image library before selecting `检测平面标志`.

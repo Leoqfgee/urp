@@ -5,136 +5,78 @@ namespace Urp.ArDemo
 {
     public sealed class RepairOverlayController : MonoBehaviour
     {
-        [SerializeField] private Transform artifactRoot;
         [SerializeField] private Transform repairRoot;
-        [SerializeField] private GameObject infoPanel;
         [SerializeField] private Text statusText;
-        [SerializeField] private float rotationStepDegrees = 15f;
-        [SerializeField] private float minScale = 0.25f;
-        [SerializeField] private float maxScale = 3.0f;
+        [SerializeField] private OrbImageTrackingController orbTracker;
 
-        private Vector3 initialScale = Vector3.one;
+        private bool showRepair = true;
+
+        public bool ShowRepair => showRepair;
+
+        public void BindStatusText(Text value)
+        {
+            statusText = value;
+        }
 
         private void Awake()
         {
-            if (repairRoot != null)
-            {
-                initialScale = repairRoot.localScale;
-            }
-
-            UpdateStatus("AR demo ready. Point the camera at the target object.");
+            ApplyRepairVisibility();
         }
 
-        public void ToggleRepair()
+        public void StartRecognition()
         {
-            if (repairRoot == null)
+            showRepair = true;
+            ApplyRepairVisibility();
+            if (orbTracker != null)
             {
-                UpdateStatus("No repair model assigned.");
-                return;
+                orbTracker.StartRecognition();
             }
-
-            bool nextState = !repairRoot.gameObject.activeSelf;
-            repairRoot.gameObject.SetActive(nextState);
-            UpdateStatus(nextState ? "Virtual repair is visible." : "Virtual repair is hidden.");
-        }
-
-        public void ToggleArtifact()
-        {
-            if (artifactRoot == null)
+            else
             {
-                UpdateStatus("No artifact model assigned.");
-                return;
+                UpdateStatus("识别模块未加载。");
             }
-
-            bool nextState = !artifactRoot.gameObject.activeSelf;
-            artifactRoot.gameObject.SetActive(nextState);
-            UpdateStatus(nextState ? "Reconstructed artifact is visible." : "Reconstructed artifact is hidden.");
         }
 
         public void ShowBeforeRepair()
         {
-            if (repairRoot != null)
-            {
-                repairRoot.gameObject.SetActive(false);
-            }
-
-            if (artifactRoot != null)
-            {
-                artifactRoot.gameObject.SetActive(true);
-            }
-
-            UpdateStatus("Before repair: reconstructed damaged artifact only.");
+            showRepair = false;
+            ApplyRepairVisibility();
+            UpdateStatus("修复前：仅显示真实的无瓶盖饮料瓶。");
         }
 
         public void ShowAfterRepair()
         {
-            if (artifactRoot != null)
+            showRepair = true;
+            if (orbTracker == null || !orbTracker.HasTrackedPose)
             {
-                artifactRoot.gameObject.SetActive(true);
+                UpdateStatus("尚未获得稳定瓶身位姿，请先点击开始识别并对准瓶身。");
+                return;
             }
 
+            ApplyRepairVisibility();
+            UpdateStatus("修复后：虚拟瓶盖已按瓶口位姿进行叠加。");
+        }
+
+        public void ResetRecognition()
+        {
+            showRepair = true;
+            ApplyRepairVisibility();
+            if (orbTracker != null)
+            {
+                orbTracker.ResetTracking();
+            }
+            else
+            {
+                UpdateStatus("识别模块未加载。");
+            }
+        }
+
+        private void ApplyRepairVisibility()
+        {
             if (repairRoot != null)
             {
-                repairRoot.gameObject.SetActive(true);
+                repairRoot.gameObject.SetActive(showRepair);
             }
-
-            UpdateStatus("After repair: virtual restoration overlay enabled.");
-        }
-
-        public void ToggleInfo()
-        {
-            if (infoPanel == null)
-            {
-                return;
-            }
-
-            infoPanel.SetActive(!infoPanel.activeSelf);
-        }
-
-        public void RotateLeft()
-        {
-            Rotate(-rotationStepDegrees);
-        }
-
-        public void RotateRight()
-        {
-            Rotate(rotationStepDegrees);
-        }
-
-        public void SetScale(float value)
-        {
-            if (repairRoot == null)
-            {
-                return;
-            }
-
-            float clamped = Mathf.Clamp(value, minScale, maxScale);
-            repairRoot.localScale = initialScale * clamped;
-            UpdateStatus($"Repair scale: {clamped:0.00}x");
-        }
-
-        public void ResetRepair()
-        {
-            if (repairRoot == null)
-            {
-                return;
-            }
-
-            repairRoot.localRotation = Quaternion.identity;
-            repairRoot.localScale = initialScale;
-            repairRoot.gameObject.SetActive(true);
-            UpdateStatus("Virtual repair reset.");
-        }
-
-        private void Rotate(float degrees)
-        {
-            if (repairRoot == null)
-            {
-                UpdateStatus("No repair model assigned.");
-                return;
-            }
-
-            repairRoot.Rotate(Vector3.up, degrees, Space.Self);
         }
 
         private void UpdateStatus(string message)

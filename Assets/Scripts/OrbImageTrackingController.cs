@@ -1,11 +1,10 @@
-using System;
 using System.Collections.Generic;
-using OpenCvSharp;
 using Unity.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.XR.ARFoundation;
 using UnityEngine.XR.ARSubsystems;
+using Urp.ArDemo.Native;
 
 namespace Urp.ArDemo
 {
@@ -15,44 +14,85 @@ namespace Urp.ArDemo
         [SerializeField] private Camera arCamera;
         [SerializeField] private Transform trackedContentRoot;
         [SerializeField] private Text statusText;
-        [SerializeField] private Texture2D targetTexture;
-        [SerializeField] private float processIntervalSeconds = 0.3f;
+        [SerializeField] private TextAsset[] orbModelFiles;
+        [SerializeField] private float processIntervalSeconds = 0.22f;
         [SerializeField] private int maxFrameWidth = 640;
+        [SerializeField] private int searchTargetsPerFrame = 2;
         [SerializeField] private int minGoodMatches = 18;
         [SerializeField] private float ratioTest = 0.72f;
-        [SerializeField] private float placementDistance = 0.75f;
-        [SerializeField] private float targetPhysicalWidthMeters = 0.09f;
+        [SerializeField] private float smoothing = 0.35f;
+        [SerializeField] private Vector3 repairAnchorInModel = new Vector3(0.43f, -4.38f, 0.24f);
+        [SerializeField] private Vector3[] repairAnchorsByModel;
+        [SerializeField] private Vector3 bottleUpInModel = new Vector3(0f, -1f, 0f);
+        [SerializeField] private Vector3 bottleForwardInModel = new Vector3(0f, 0f, 1f);
+        [SerializeField] private float modelUnitsToMeters = 0.18f;
+        [SerializeField] private float pnpRepairScale = 1f;
+        [SerializeField] private float lostStatusIntervalSeconds = 1.5f;
+        [SerializeField] private float maxReprojectionErrorPixels = 4.5f;
+        [SerializeField] private float lostPoseGraceSeconds = 0.65f;
+        [SerializeField] private float maxViewportJump = 0.18f;
 
-        private ORB orb;
-        private BFMatcher matcher;
-        private KeyPoint[] targetKeypoints = Array.Empty<KeyPoint>();
-        private Mat targetDescriptors;
+        private readonly List<TrackedTarget> targets = new List<TrackedTarget>();
         private Texture2D frameTexture;
         private float nextProcessTime;
+        private float nextLostStatusTime;
+        private float lastValidPoseTime = -10f;
+        private bool hasSmoothedPose;
+        private bool trackingEnabled;
+        private int activeTargetIndex = -1;
+        private int searchCursor;
+        private int consecutiveActiveTargetMisses;
+        private int consecutivePoseJumps;
+        private Vector2 lastAcceptedViewport;
+        private bool hasDisplayMatrix;
+        private Matrix4x4 displayMatrix = Matrix4x4.identity;
+        private Renderer[] repairRenderers;
+        private MaterialPropertyBlock materialProperties;
+        private float smoothedLuminance = 0.8f;
+
+        public bool HasTrackedPose => hasSmoothedPose
+            && trackedContentRoot != null
+            && trackedContentRoot.gameObject.activeInHierarchy;
 
         private void Awake()
         {
+            materialProperties = new MaterialPropertyBlock();
             if (trackedContentRoot != null)
             {
                 trackedContentRoot.gameObject.SetActive(false);
+                repairRenderers = trackedContentRoot.GetComponentsInChildren<Renderer>(true);
             }
 
-            orb = ORB.Create(900);
-            matcher = new BFMatcher(NormTypes.Hamming, false);
             BuildTargetFeatures();
-            UpdateStatus("ORB ready. Point camera at the target object.");
+        }
+
+        private void OnEnable()
+        {
+            if (cameraManager != null)
+            {
+                cameraManager.frameReceived += OnCameraFrameReceived;
+            }
+        }
+
+        private void OnDisable()
+        {
+            if (cameraManager != null)
+            {
+                cameraManager.frameReceived -= OnCameraFrameReceived;
+            }
         }
 
         private void OnDestroy()
         {
-            targetDescriptors?.Dispose();
-            matcher?.Dispose();
-            orb?.Dispose();
+            for (int i = 0; i < targets.Count; i++)
+            {
+                targets[i].Tracker?.Dispose();
+            }
         }
 
         private void Update()
         {
-            if (Time.unscaledTime < nextProcessTime)
+            if (!trackingEnabled || Time.unscaledTime < nextProcessTime)
             {
                 return;
             }
@@ -61,33 +101,97 @@ namespace Urp.ArDemo
             ProcessCameraFrame();
         }
 
+        private void OnCameraFrameReceived(ARCameraFrameEventArgs eventArgs)
+        {
+            if (eventArgs.displayMatrix.HasValue)
+            {
+                displayMatrix = eventArgs.displayMatrix.Value;
+                hasDisplayMatrix = true;
+            }
+        }
+
+        public void ResetTracking()
+        {
+            hasSmoothedPose = false;
+            trackingEnabled = true;
+            activeTargetIndex = -1;
+            searchCursor = 0;
+            consecutiveActiveTargetMisses = 0;
+            consecutivePoseJumps = 0;
+            lastValidPoseTime = -10f;
+            nextProcessTime = 0f;
+            if (trackedContentRoot != null)
+            {
+                trackedContentRoot.gameObject.SetActive(false);
+            }
+
+            UpdateStatus("已重置识别，请将无瓶盖饮料瓶完整放入画面。");
+        }
+
+        public void StartRecognition()
+        {
+            trackingEnabled = true;
+            nextProcessTime = 0f;
+            UpdateStatus("正在识别残缺饮料瓶，请保持瓶口和瓶身文字清晰可见。");
+        }
+
+        public void SetTrackingEnabled(bool enabled)
+        {
+            trackingEnabled = enabled;
+            if (!enabled)
+            {
+                HideRepairModel(true);
+            }
+        }
+
+        public void BindStatusText(Text value)
+        {
+            statusText = value;
+        }
+
         private void BuildTargetFeatures()
         {
-            if (targetTexture == null)
+            targets.Clear();
+            if (orbModelFiles == null || orbModelFiles.Length == 0)
             {
-                UpdateStatus("No ORB target texture assigned.");
+                UpdateStatus("没有加载残缺饮料瓶的 ORB 三维特征库。");
                 return;
             }
 
-            using (Mat targetMat = OpenCvSharp.Unity.TextureToMat(targetTexture))
-            using (Mat gray = new Mat())
+            for (int i = 0; i < orbModelFiles.Length; i++)
             {
-                Cv2.CvtColor(targetMat, gray, ColorConversionCodes.BGR2GRAY);
-                targetDescriptors = new Mat();
-                orb.DetectAndCompute(gray, null, out targetKeypoints, targetDescriptors);
+                TextAsset model = orbModelFiles[i];
+                if (model == null)
+                {
+                    continue;
+                }
+
+                NativeOrbTracker tracker = new NativeOrbTracker(1400, ratioTest, minGoodMatches, maxFrameWidth);
+                if (!tracker.IsValid || !tracker.SetModel(model))
+                {
+                    tracker.Dispose();
+                    continue;
+                }
+
+                Vector3 repairAnchor = repairAnchorInModel;
+                if (repairAnchorsByModel != null && i < repairAnchorsByModel.Length)
+                {
+                    repairAnchor = repairAnchorsByModel[i];
+                }
+
+                tracker.SetRepairAnchor(repairAnchor);
+                targets.Add(new TrackedTarget(tracker, repairAnchor, i + 1));
             }
+
+            UpdateStatus(targets.Count > 0
+                ? $"已加载 {targets.Count} 组 ORB 三维特征，等待识别残缺饮料瓶。"
+                : "ORB 三维特征库加载失败。");
         }
 
         private void ProcessCameraFrame()
         {
-            if (cameraManager == null || arCamera == null || trackedContentRoot == null)
+            if (cameraManager == null || arCamera == null || trackedContentRoot == null || targets.Count == 0)
             {
-                return;
-            }
-
-            if (targetDescriptors == null || targetDescriptors.Empty() || targetKeypoints.Length < 8)
-            {
-                UpdateStatus("ORB target has too few features.");
                 return;
             }
 
@@ -99,36 +203,97 @@ namespace Urp.ArDemo
             try
             {
                 Texture2D texture = ConvertCpuImage(cpuImage);
-                using (Mat frameMat = OpenCvSharp.Unity.TextureToMat(texture))
-                using (Mat gray = new Mat())
-                using (Mat resized = ResizeForTracking(frameMat))
-                using (Mat frameDescriptors = new Mat())
+                CameraIntrinsics intrinsics = GetCameraIntrinsics(
+                    cpuImage.width,
+                    cpuImage.height,
+                    texture.width,
+                    texture.height);
+                int rotationClockwise = ResolveFrameRotation(texture.width, texture.height);
+                byte[] frameRgba = NativeOrbTracker.GetRgbaBytes(texture);
+
+                TrackedTarget bestTarget = null;
+                NativeOrbResult bestResult = default;
+                int bestTargetIndex = -1;
+                bool hasResult = false;
+
+                if (activeTargetIndex >= 0 && activeTargetIndex < targets.Count)
                 {
-                    Cv2.CvtColor(resized, gray, ColorConversionCodes.BGR2GRAY);
-                    orb.DetectAndCompute(gray, null, out KeyPoint[] frameKeypoints, frameDescriptors);
-                    if (frameDescriptors.Empty() || frameKeypoints.Length < 8)
+                    TrackedTarget activeTarget = targets[activeTargetIndex];
+                    bool tracked = activeTarget.Tracker.Track(
+                        frameRgba,
+                        texture.width,
+                        texture.height,
+                        intrinsics,
+                        rotationClockwise,
+                        out NativeOrbResult activeResult);
+                    bestResult = activeResult;
+                    hasResult = true;
+                    if (tracked)
                     {
-                        SetTracked(false, "ORB: not enough camera features.");
-                        return;
+                        bestTarget = activeTarget;
+                        bestTargetIndex = activeTargetIndex;
+                        consecutiveActiveTargetMisses = 0;
                     }
-
-                    DMatch[][] knnMatches = matcher.KnnMatch(targetDescriptors, frameDescriptors, 2);
-                    List<DMatch> goodMatches = FilterGoodMatches(knnMatches);
-                    if (goodMatches.Count < minGoodMatches)
+                    else if (++consecutiveActiveTargetMisses >= 3)
                     {
-                        SetTracked(false, $"ORB: {goodMatches.Count}/{minGoodMatches} matches.");
-                        return;
+                        activeTargetIndex = -1;
+                        consecutiveActiveTargetMisses = 0;
                     }
-
-                    if (!TryEstimateTargetCenter(goodMatches, frameKeypoints, out Vector2 center01, out float relativeWidth))
-                    {
-                        SetTracked(false, "ORB: homography failed.");
-                        return;
-                    }
-
-                    ApplyTrackedPlacement(center01, Mathf.Max(relativeWidth, 0.05f));
-                    SetTracked(true, $"ORB tracking: {goodMatches.Count} matches.");
                 }
+
+                if (bestTarget == null && activeTargetIndex < 0)
+                {
+                    int checks = Mathf.Clamp(searchTargetsPerFrame, 1, targets.Count);
+                    for (int offset = 0; offset < checks; offset++)
+                    {
+                        int index = (searchCursor + offset) % targets.Count;
+                        TrackedTarget candidate = targets[index];
+                        candidate.Tracker.Track(
+                            frameRgba,
+                            texture.width,
+                            texture.height,
+                            intrinsics,
+                            rotationClockwise,
+                            out NativeOrbResult result);
+                        if (!hasResult || IsBetterResult(result, bestResult))
+                        {
+                            bestResult = result;
+                            bestTarget = result.poseValid != 0 ? candidate : null;
+                            bestTargetIndex = result.poseValid != 0 ? index : -1;
+                            hasResult = true;
+                        }
+                    }
+
+                    searchCursor = (searchCursor + checks) % targets.Count;
+                }
+
+                if (bestTarget == null || bestResult.poseValid == 0)
+                {
+                    HideRepairModel(false);
+                    if (Time.unscaledTime >= nextLostStatusTime)
+                    {
+                        nextLostStatusTime = Time.unscaledTime + lostStatusIntervalSeconds;
+                        UpdateStatus($"未获得稳定三维位姿：最高匹配点 {bestResult.goodMatches}/{minGoodMatches}。");
+                    }
+
+                    return;
+                }
+
+                activeTargetIndex = bestTargetIndex;
+                consecutiveActiveTargetMisses = 0;
+                if (!TryApplyTrackedOverlayPose(bestResult, bestTarget.RepairAnchor, rotationClockwise, out string rejectionReason))
+                {
+                    HideRepairModel(false);
+                    UpdateStatus($"已识别瓶身，但位姿未通过叠加校验：{rejectionReason}");
+                    return;
+                }
+
+                trackedContentRoot.gameObject.SetActive(true);
+                lastValidPoseTime = Time.unscaledTime;
+                ApplyLightingConsistency(bestResult.localLuminance);
+                UpdateStatus(
+                    $"已识别残缺瓶视角 {bestTarget.Index}：匹配点 {bestResult.goodMatches}，" +
+                    $"PnP 内点 {bestResult.poseInliers}，重投影误差 {bestResult.reprojectionError:F1}px，叠加稳定。");
             }
             finally
             {
@@ -136,23 +301,72 @@ namespace Urp.ArDemo
             }
         }
 
+        private static bool IsBetterResult(NativeOrbResult current, NativeOrbResult best)
+        {
+            if (current.poseValid != best.poseValid)
+            {
+                return current.poseValid > best.poseValid;
+            }
+
+            if (current.poseValid != 0 && !Mathf.Approximately(current.reprojectionError, best.reprojectionError))
+            {
+                return current.reprojectionError < best.reprojectionError;
+            }
+
+            if (current.poseInliers != best.poseInliers)
+            {
+                return current.poseInliers > best.poseInliers;
+            }
+
+            return current.goodMatches > best.goodMatches;
+        }
+
+        private CameraIntrinsics GetCameraIntrinsics(int sourceWidth, int sourceHeight, int outputWidth, int outputHeight)
+        {
+            float scaleX = outputWidth / (float)Mathf.Max(1, sourceWidth);
+            float scaleY = outputHeight / (float)Mathf.Max(1, sourceHeight);
+            if (cameraManager.TryGetIntrinsics(out XRCameraIntrinsics intrinsics))
+            {
+                return new CameraIntrinsics(
+                    intrinsics.focalLength.x * scaleX,
+                    intrinsics.focalLength.y * scaleY,
+                    intrinsics.principalPoint.x * scaleX,
+                    intrinsics.principalPoint.y * scaleY);
+            }
+
+            float focal = Mathf.Max(outputWidth, outputHeight) * 0.9f;
+            return new CameraIntrinsics(focal, focal, outputWidth * 0.5f, outputHeight * 0.5f);
+        }
+
+        private static int ResolveFrameRotation(int width, int height)
+        {
+            if (Screen.height >= Screen.width && width > height)
+            {
+                return Screen.orientation == ScreenOrientation.PortraitUpsideDown ? 270 : 90;
+            }
+
+            return 0;
+        }
+
         private Texture2D ConvertCpuImage(XRCpuImage cpuImage)
         {
-            XRCpuImage.ConversionParams conversionParams = new XRCpuImage.ConversionParams
+            int outputWidth = Mathf.Min(maxFrameWidth, cpuImage.width);
+            int outputHeight = Mathf.Max(1, Mathf.RoundToInt(cpuImage.height * (outputWidth / (float)cpuImage.width)));
+            XRCpuImage.ConversionParams parameters = new XRCpuImage.ConversionParams
             {
                 inputRect = new RectInt(0, 0, cpuImage.width, cpuImage.height),
-                outputDimensions = new Vector2Int(cpuImage.width, cpuImage.height),
+                outputDimensions = new Vector2Int(outputWidth, outputHeight),
                 outputFormat = TextureFormat.RGBA32,
-                transformation = XRCpuImage.Transformation.MirrorY
+                transformation = XRCpuImage.Transformation.None
             };
 
-            int size = cpuImage.GetConvertedDataSize(conversionParams);
+            int size = cpuImage.GetConvertedDataSize(parameters);
             using (NativeArray<byte> buffer = new NativeArray<byte>(size, Allocator.Temp))
             {
-                cpuImage.Convert(conversionParams, buffer);
-                if (frameTexture == null || frameTexture.width != cpuImage.width || frameTexture.height != cpuImage.height)
+                cpuImage.Convert(parameters, buffer);
+                if (frameTexture == null || frameTexture.width != outputWidth || frameTexture.height != outputHeight)
                 {
-                    frameTexture = new Texture2D(cpuImage.width, cpuImage.height, TextureFormat.RGBA32, false);
+                    frameTexture = new Texture2D(outputWidth, outputHeight, TextureFormat.RGBA32, false);
                 }
 
                 frameTexture.LoadRawTextureData(buffer);
@@ -162,126 +376,212 @@ namespace Urp.ArDemo
             return frameTexture;
         }
 
-        private Mat ResizeForTracking(Mat source)
+        private bool TryApplyTrackedOverlayPose(
+            NativeOrbResult result,
+            Vector3 repairAnchor,
+            int rotationClockwise,
+            out string rejectionReason)
         {
-            if (source.Width <= maxFrameWidth)
+            rejectionReason = string.Empty;
+            if (result.anchorVisible == 0)
             {
-                return source.Clone();
+                rejectionReason = "瓶口锚点不在画面内";
+                return false;
             }
 
-            double scale = (double)maxFrameWidth / source.Width;
-            Mat resized = new Mat();
-            Cv2.Resize(source, resized, new Size(maxFrameWidth, (int)(source.Height * scale)));
-            return resized;
-        }
-
-        private List<DMatch> FilterGoodMatches(DMatch[][] knnMatches)
-        {
-            List<DMatch> good = new List<DMatch>();
-            foreach (DMatch[] pair in knnMatches)
+            if (!float.IsFinite(result.reprojectionError) || result.reprojectionError > maxReprojectionErrorPixels)
             {
-                if (pair.Length >= 2 && pair[0].Distance < ratioTest * pair[1].Distance)
+                rejectionReason = $"重投影误差 {result.reprojectionError:F1}px 过大";
+                return false;
+            }
+
+            Vector3 anchorInCamera = TransformModelPoint(result, repairAnchor);
+            Vector3 cameraLocalAnchor = CvToUnity(anchorInCamera) * modelUnitsToMeters;
+            float depthMeters = cameraLocalAnchor.z;
+            if (depthMeters < 0.08f || depthMeters > 5f)
+            {
+                rejectionReason = "估计距离超出有效范围";
+                return false;
+            }
+
+            Vector2 rawViewport = OrientedToSourceViewport(
+                new Vector2(result.anchorX01, result.anchorY01),
+                rotationClockwise);
+            Vector3 uncorrectedWorld = arCamera.transform.TransformPoint(cameraLocalAnchor);
+            Vector3 uncorrectedViewport = arCamera.WorldToViewportPoint(uncorrectedWorld);
+            Vector2 targetViewport = ResolveDisplayViewport(rawViewport, uncorrectedViewport);
+            if (targetViewport.x < 0.02f || targetViewport.x > 0.98f
+                || targetViewport.y < 0.02f || targetViewport.y > 0.98f)
+            {
+                rejectionReason = "校正后的瓶口位置超出屏幕";
+                return false;
+            }
+
+            if (hasSmoothedPose && Vector2.Distance(lastAcceptedViewport, targetViewport) > maxViewportJump)
+            {
+                consecutivePoseJumps++;
+                if (consecutivePoseJumps < 3)
                 {
-                    good.Add(pair[0]);
-                }
-            }
-
-            return good;
-        }
-
-        private bool TryEstimateTargetCenter(List<DMatch> goodMatches, KeyPoint[] frameKeypoints, out Vector2 center01, out float relativeWidth)
-        {
-            center01 = new Vector2(0.5f, 0.5f);
-            relativeWidth = 0.2f;
-
-            List<Point2d> targetPoints = new List<Point2d>();
-            List<Point2d> framePoints = new List<Point2d>();
-            foreach (DMatch match in goodMatches)
-            {
-                Point2f targetPoint = targetKeypoints[match.QueryIdx].Pt;
-                Point2f framePoint = frameKeypoints[match.TrainIdx].Pt;
-                targetPoints.Add(new Point2d(targetPoint.X, targetPoint.Y));
-                framePoints.Add(new Point2d(framePoint.X, framePoint.Y));
-            }
-
-            using (Mat homography = Cv2.FindHomography(targetPoints, framePoints, HomographyMethods.Ransac, 4.0))
-            {
-                if (homography == null || homography.Empty())
-                {
+                    rejectionReason = "检测到位姿跳变，正在复核";
                     return false;
                 }
+            }
+            else
+            {
+                consecutivePoseJumps = 0;
+            }
 
-                Point2d[] corners =
-                {
-                    new Point2d(0, 0),
-                    new Point2d(targetTexture.width, 0),
-                    new Point2d(targetTexture.width, targetTexture.height),
-                    new Point2d(0, targetTexture.height)
-                };
+            Ray anchorRay = arCamera.ViewportPointToRay(new Vector3(targetViewport.x, targetViewport.y, 0f));
+            Vector3 rayInCamera = arCamera.transform.InverseTransformDirection(anchorRay.direction);
+            float rayDistance = depthMeters / Mathf.Max(0.001f, rayInCamera.z);
+            Vector3 targetPosition = anchorRay.origin + anchorRay.direction * rayDistance;
 
-                Point2d[] projected = PerspectiveTransform(corners, homography);
-                double minX = projected[0].X;
-                double maxX = projected[0].X;
-                double minY = projected[0].Y;
-                double maxY = projected[0].Y;
-                foreach (Point2d point in projected)
+            Vector3 upInCamera = TransformModelDirection(result, bottleUpInModel);
+            Vector3 forwardInCamera = TransformModelDirection(result, bottleForwardInModel);
+            Vector3 targetUp = arCamera.transform.TransformDirection(CvToUnity(upInCamera)).normalized;
+            Vector3 targetForward = arCamera.transform.TransformDirection(CvToUnity(forwardInCamera)).normalized;
+            targetForward = Vector3.ProjectOnPlane(targetForward, targetUp).normalized;
+            if (targetForward.sqrMagnitude < 0.0001f)
+            {
+                targetForward = Vector3.ProjectOnPlane(arCamera.transform.forward, targetUp).normalized;
+            }
+
+            Quaternion targetRotation = Quaternion.LookRotation(targetForward, targetUp);
+            ApplySmoothedPose(targetPosition, targetRotation, Vector3.one * pnpRepairScale);
+            lastAcceptedViewport = targetViewport;
+            return true;
+        }
+
+        private Vector2 ResolveDisplayViewport(Vector2 sourceViewport, Vector3 uncorrectedViewport)
+        {
+            if (!hasDisplayMatrix)
+            {
+                return sourceViewport;
+            }
+
+            Vector2[] candidates =
+            {
+                TransformViewport(displayMatrix.inverse, sourceViewport),
+                TransformViewport(displayMatrix, sourceViewport),
+                TransformViewport(displayMatrix.transpose, sourceViewport),
+                TransformViewport(displayMatrix.inverse.transpose, sourceViewport)
+            };
+            Vector2 reference = new Vector2(uncorrectedViewport.x, uncorrectedViewport.y);
+            Vector2 best = candidates[0];
+            float bestDistance = float.MaxValue;
+            for (int i = 0; i < candidates.Length; i++)
+            {
+                Vector2 candidate = candidates[i];
+                if (!float.IsFinite(candidate.x) || !float.IsFinite(candidate.y))
                 {
-                    minX = Math.Min(minX, point.X);
-                    maxX = Math.Max(maxX, point.X);
-                    minY = Math.Min(minY, point.Y);
-                    maxY = Math.Max(maxY, point.Y);
+                    continue;
                 }
 
-                double width = Math.Max(1.0, maxX - minX);
-                double height = Math.Max(1.0, maxY - minY);
-                center01 = new Vector2((float)((minX + width * 0.5) / maxFrameWidth), (float)(1.0 - ((minY + height * 0.5) / (maxFrameWidth * ((float)frameTexture.height / frameTexture.width)))));
-                relativeWidth = (float)(width / maxFrameWidth);
-                return true;
+                float distance = Vector2.SqrMagnitude(candidate - reference);
+                if (distance < bestDistance)
+                {
+                    bestDistance = distance;
+                    best = candidate;
+                }
             }
+
+            return best;
         }
 
-        private static Point2d[] PerspectiveTransform(Point2d[] points, Mat homography)
+        private static Vector2 TransformViewport(Matrix4x4 matrix, Vector2 uv)
         {
-            Point2d[] result = new Point2d[points.Length];
-            double h00 = homography.Get<double>(0, 0);
-            double h01 = homography.Get<double>(0, 1);
-            double h02 = homography.Get<double>(0, 2);
-            double h10 = homography.Get<double>(1, 0);
-            double h11 = homography.Get<double>(1, 1);
-            double h12 = homography.Get<double>(1, 2);
-            double h20 = homography.Get<double>(2, 0);
-            double h21 = homography.Get<double>(2, 1);
-            double h22 = homography.Get<double>(2, 2);
+            Vector3 transformed = matrix.MultiplyPoint3x4(new Vector3(uv.x, uv.y, 1f));
+            return new Vector2(transformed.x, transformed.y);
+        }
 
-            for (int i = 0; i < points.Length; i++)
+        private static Vector2 OrientedToSourceViewport(Vector2 oriented, int rotationClockwise)
+        {
+            switch (rotationClockwise)
             {
-                double x = points[i].X;
-                double y = points[i].Y;
-                double w = h20 * x + h21 * y + h22;
-                result[i] = new Point2d((h00 * x + h01 * y + h02) / w, (h10 * x + h11 * y + h12) / w);
+                case 90:
+                    return new Vector2(1f - oriented.y, oriented.x);
+                case 180:
+                    return new Vector2(1f - oriented.x, 1f - oriented.y);
+                case 270:
+                    return new Vector2(oriented.y, 1f - oriented.x);
+                default:
+                    return oriented;
+            }
+        }
+
+        private static Vector3 TransformModelPoint(NativeOrbResult result, Vector3 point)
+        {
+            return TransformModelDirection(result, point)
+                + new Vector3(result.tvecX, result.tvecY, result.tvecZ);
+        }
+
+        private static Vector3 TransformModelDirection(NativeOrbResult result, Vector3 direction)
+        {
+            return new Vector3(
+                result.r00 * direction.x + result.r01 * direction.y + result.r02 * direction.z,
+                result.r10 * direction.x + result.r11 * direction.y + result.r12 * direction.z,
+                result.r20 * direction.x + result.r21 * direction.y + result.r22 * direction.z);
+        }
+
+        private static Vector3 CvToUnity(Vector3 point)
+        {
+            return new Vector3(point.x, -point.y, point.z);
+        }
+
+        private void ApplyLightingConsistency(float measuredLuminance)
+        {
+            if (!float.IsFinite(measuredLuminance) || measuredLuminance <= 0f || repairRenderers == null)
+            {
+                return;
             }
 
-            return result;
+            smoothedLuminance = Mathf.Lerp(smoothedLuminance, Mathf.Clamp01(measuredLuminance), 0.2f);
+            float value = Mathf.Lerp(0.56f, 1f, smoothedLuminance);
+            Color color = new Color(value, value * 0.99f, value * 0.97f, 1f);
+            for (int i = 0; i < repairRenderers.Length; i++)
+            {
+                Renderer renderer = repairRenderers[i];
+                if (renderer == null || renderer.gameObject.name.Contains("Occlusion"))
+                {
+                    continue;
+                }
+
+                renderer.GetPropertyBlock(materialProperties);
+                materialProperties.SetColor("_Color", color);
+                renderer.SetPropertyBlock(materialProperties);
+            }
         }
 
-        private void ApplyTrackedPlacement(Vector2 center01, float relativeWidth)
+        private void ApplySmoothedPose(Vector3 position, Quaternion rotation, Vector3 scale)
         {
-            Vector3 screenPoint = new Vector3(center01.x * Screen.width, center01.y * Screen.height, 0f);
-            Ray ray = arCamera.ScreenPointToRay(screenPoint);
             trackedContentRoot.SetParent(null, true);
-            trackedContentRoot.position = ray.origin + ray.direction.normalized * placementDistance;
-            Vector3 forward = arCamera.transform.forward;
-            forward.y = 0f;
-            trackedContentRoot.rotation = forward.sqrMagnitude > 0.001f
-                ? Quaternion.LookRotation(forward.normalized, Vector3.up)
-                : arCamera.transform.rotation;
-            trackedContentRoot.localScale = Vector3.one * Mathf.Clamp(relativeWidth / targetPhysicalWidthMeters * 0.08f, 0.25f, 1.4f);
+            if (!hasSmoothedPose)
+            {
+                trackedContentRoot.SetPositionAndRotation(position, rotation);
+                trackedContentRoot.localScale = scale;
+                hasSmoothedPose = true;
+                return;
+            }
+
+            float amount = Mathf.Clamp01(smoothing);
+            trackedContentRoot.position = Vector3.Lerp(trackedContentRoot.position, position, amount);
+            trackedContentRoot.rotation = Quaternion.Slerp(trackedContentRoot.rotation, rotation, amount);
+            trackedContentRoot.localScale = Vector3.Lerp(trackedContentRoot.localScale, scale, amount);
         }
 
-        private void SetTracked(bool tracked, string message)
+        private void HideRepairModel(bool force)
         {
-            trackedContentRoot.gameObject.SetActive(tracked);
-            UpdateStatus(message);
+            if (!force && Time.unscaledTime - lastValidPoseTime <= lostPoseGraceSeconds)
+            {
+                return;
+            }
+
+            if (trackedContentRoot != null)
+            {
+                trackedContentRoot.gameObject.SetActive(false);
+            }
+
+            hasSmoothedPose = false;
         }
 
         private void UpdateStatus(string message)
@@ -290,6 +590,20 @@ namespace Urp.ArDemo
             {
                 statusText.text = message;
             }
+        }
+
+        private sealed class TrackedTarget
+        {
+            public TrackedTarget(NativeOrbTracker tracker, Vector3 repairAnchor, int index)
+            {
+                Tracker = tracker;
+                RepairAnchor = repairAnchor;
+                Index = index;
+            }
+
+            public NativeOrbTracker Tracker { get; }
+            public Vector3 RepairAnchor { get; }
+            public int Index { get; }
         }
     }
 }
