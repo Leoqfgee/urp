@@ -3,27 +3,21 @@ using System.IO;
 using UnityEditor;
 using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
-using UnityEditor.Events;
 using UnityEditor.SceneManagement;
 using UnityEditor.XR.Management;
 using UnityEditor.XR.Management.Metadata;
-using UnityEditor.XR.ARSubsystems;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
-using UnityEngine.UI;
 using UnityEngine.XR.Management;
 using UnityEngine.XR.ARFoundation;
-using UnityEngine.XR.ARSubsystems;
 
 namespace Urp.ArDemo.Editor
 {
     public static class UrpArProjectSetup
     {
         private const string ScenePath = "Assets/Scenes/UrpARPrototype.unity";
-        private const string OrbTargetImagePath = "Assets/Textures/Targets/orb_target.jpg";
-        private const string DamagedBottleViewsFolder = "Assets/Textures/Targets/DamagedBottleOrbViews";
         private const string OrbModelsFolder = "Assets/OrbModels";
         private const string ChineseFontPath = "Assets/Fonts/NotoSansSC-Regular.otf";
         private const string MeshroomFullPath = "Assets/Models/MeshroomBottle/texturedMesh.obj";
@@ -31,8 +25,6 @@ namespace Urp.ArDemo.Editor
         private const string MeshroomCapPath = "Assets/Models/MeshroomBottleCap/texturedMesh.obj";
         private const string MeshroomCleanedCapPath = "Assets/Models/MeshroomCapCleaned/meshroom_cap_cleaned.obj";
         private const string MeshroomProcessedCapPath = "Assets/Models/MeshroomCapProcessed/meshroom_cap_processed.obj";
-        private const string MarkerLibraryPath = "Assets/Textures/BottleMarkerLibrary.asset";
-        private const string PlanePrefabPath = "Assets/Prefabs/TrackedPlane.prefab";
 
         [MenuItem("URP AR/Setup Prototype Scene")]
         public static void SetupPrototypeScene()
@@ -81,9 +73,7 @@ namespace Urp.ArDemo.Editor
                 "Assets/Materials",
                 "Assets/Models",
                 "Assets/OrbModels",
-                "Assets/Prefabs",
                 "Assets/Scripts",
-                "Assets/Textures",
             };
 
             foreach (string folder in folders)
@@ -175,16 +165,6 @@ namespace Urp.ArDemo.Editor
             cameraObject.AddComponent<ARCameraBackground>();
             origin.Camera = camera;
 
-            ARPlaneManager planeManager = xrOrigin.AddComponent<ARPlaneManager>();
-            planeManager.requestedDetectionMode = PlaneDetectionMode.Horizontal | PlaneDetectionMode.Vertical;
-            planeManager.planePrefab = CreatePlanePrefab();
-            xrOrigin.AddComponent<ARRaycastManager>();
-
-            ARTrackedImageManager imageManager = xrOrigin.AddComponent<ARTrackedImageManager>();
-            imageManager.referenceLibrary = CreateMarkerLibrary();
-            imageManager.requestedMaxNumberOfMovingImages = 1;
-            imageManager.enabled = false;
-
             GameObject contentRoot = new GameObject("Tracked Repair Root");
             contentRoot.transform.position = new Vector3(0f, 0f, 1.25f);
             GameObject repair = CreateMeshroomBottleCapRepair();
@@ -193,13 +173,6 @@ namespace Urp.ArDemo.Editor
             repair.transform.localRotation = Quaternion.identity;
             repair.transform.localScale = Vector3.one * 0.02f;
             CreateBottleNeckOccluder(contentRoot.transform);
-
-            GameObject slamRepairRoot = new GameObject("SLAM Repair Root");
-            GameObject slamRepair = CreateMeshroomBottleCapRepair();
-            slamRepair.name = "SLAM Meshroom Bottle Cap";
-            slamRepair.transform.SetParent(slamRepairRoot.transform, false);
-            slamRepair.transform.localScale = Vector3.one * 0.02f;
-            slamRepairRoot.SetActive(false);
 
             GameObject lightObject = new GameObject("Directional Light");
             Light light = lightObject.AddComponent<Light>();
@@ -220,65 +193,17 @@ namespace Urp.ArDemo.Editor
             AssignSerializedReference(overlayController, "orbTracker", orbTracker);
 
             ModelViewerController modelViewer = CreateModelViewer(camera);
-            PlanarMarkerSlamController slamController = application.AddComponent<PlanarMarkerSlamController>();
-            AssignSerializedReference(slamController, "planeManager", planeManager);
-            AssignSerializedReference(slamController, "imageManager", imageManager);
-            AssignSerializedReference(slamController, "repairRoot", slamRepairRoot.transform);
 
             UrpAppController appController = application.AddComponent<UrpAppController>();
             AssignSerializedReference(appController, "chineseFont", AssetDatabase.LoadAssetAtPath<Font>(ChineseFontPath));
             AssignSerializedReference(appController, "orbTracker", orbTracker);
             AssignSerializedReference(appController, "repairController", overlayController);
             AssignSerializedReference(appController, "modelViewer", modelViewer);
-            AssignSerializedReference(appController, "slamController", slamController);
 
             CreateEventSystem();
 
             EditorSceneManager.SaveScene(scene, ScenePath);
             EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
-        }
-
-        private static XRReferenceImageLibrary CreateMarkerLibrary()
-        {
-            Texture2D marker = LoadOrbTargetTexture();
-            XRReferenceImageLibrary library = AssetDatabase.LoadAssetAtPath<XRReferenceImageLibrary>(MarkerLibraryPath);
-            if (library == null)
-            {
-                library = ScriptableObject.CreateInstance<XRReferenceImageLibrary>();
-                AssetDatabase.CreateAsset(library, MarkerLibraryPath);
-            }
-
-            while (library.count > 0)
-            {
-                library.RemoveAt(0);
-            }
-
-            library.Add();
-            library.SetName(0, "damaged_bottle_front_marker");
-            library.SetTexture(0, marker, true);
-            library.SetSpecifySize(0, true);
-            float height = 0.12f * marker.height / Mathf.Max(1f, marker.width);
-            library.SetSize(0, new Vector2(0.12f, height));
-            EditorUtility.SetDirty(library);
-            return library;
-        }
-
-        private static GameObject CreatePlanePrefab()
-        {
-            GameObject existing = AssetDatabase.LoadAssetAtPath<GameObject>(PlanePrefabPath);
-            if (existing != null)
-            {
-                return existing;
-            }
-
-            GameObject plane = new GameObject("Tracked Plane Visual");
-            plane.AddComponent<MeshFilter>();
-            MeshRenderer renderer = plane.AddComponent<MeshRenderer>();
-            renderer.sharedMaterial = CreateMaterial("TrackedPlaneMaterial", new Color(0.10f, 0.75f, 0.55f, 0.22f));
-            plane.AddComponent<ARPlaneMeshVisualizer>();
-            GameObject prefab = PrefabUtility.SaveAsPrefabAsset(plane, PlanePrefabPath);
-            UnityEngine.Object.DestroyImmediate(plane);
-            return prefab;
         }
 
         private static ModelViewerController CreateModelViewer(Camera arCamera)
@@ -388,25 +313,6 @@ namespace Urp.ArDemo.Editor
             }
         }
 
-        private static Texture2D LoadOrbTargetTexture()
-        {
-            TextureImporter importer = AssetImporter.GetAtPath(OrbTargetImagePath) as TextureImporter;
-            if (importer != null)
-            {
-                importer.isReadable = true;
-                importer.textureCompression = TextureImporterCompression.Uncompressed;
-                importer.SaveAndReimport();
-            }
-
-            Texture2D texture = AssetDatabase.LoadAssetAtPath<Texture2D>(OrbTargetImagePath);
-            if (texture == null)
-            {
-                throw new FileNotFoundException($"ORB target image not found: {OrbTargetImagePath}");
-            }
-
-            return texture;
-        }
-
         private static TextAsset[] LoadOrbModelFiles()
         {
             string[] guids = AssetDatabase.FindAssets("t:TextAsset", new[] { OrbModelsFolder });
@@ -438,65 +344,6 @@ namespace Urp.ArDemo.Editor
             return models.ToArray();
         }
 
-        private static Texture2D[] LoadDamagedBottleTargetTextures()
-        {
-            string[] guids = AssetDatabase.FindAssets("t:Texture2D", new[] { DamagedBottleViewsFolder });
-            Array.Sort(guids, (a, b) => string.CompareOrdinal(AssetDatabase.GUIDToAssetPath(a), AssetDatabase.GUIDToAssetPath(b)));
-
-            var textures = new System.Collections.Generic.List<Texture2D>();
-            foreach (string guid in guids)
-            {
-                string path = AssetDatabase.GUIDToAssetPath(guid);
-                if (!path.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) || path.Contains("contact_sheet"))
-                {
-                    continue;
-                }
-
-                TextureImporter importer = AssetImporter.GetAtPath(path) as TextureImporter;
-                if (importer != null)
-                {
-                    importer.isReadable = true;
-                    importer.textureCompression = TextureImporterCompression.Uncompressed;
-                    importer.SaveAndReimport();
-                }
-
-                Texture2D texture = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
-                if (texture != null)
-                {
-                    textures.Add(texture);
-                }
-            }
-
-            return textures.ToArray();
-        }
-
-        private static Vector2[] CreateRepairAnchors()
-        {
-            return new[]
-            {
-                new Vector2(0.50f, 0.065f),
-                new Vector2(0.50f, 0.065f),
-                new Vector2(0.54f, 0.070f),
-                new Vector2(0.51f, 0.065f),
-                new Vector2(0.45f, 0.080f),
-                new Vector2(0.49f, 0.070f),
-                new Vector2(0.50f, 0.040f),
-                new Vector2(0.52f, 0.040f),
-                new Vector2(0.52f, 0.070f),
-                new Vector2(0.50f, 0.060f),
-                new Vector2(0.50f, 0.035f),
-                new Vector2(0.50f, 0.050f),
-                new Vector2(0.50f, 0.130f),
-                new Vector2(0.52f, 0.120f),
-                new Vector2(0.54f, 0.090f),
-                new Vector2(0.52f, 0.120f),
-                new Vector2(0.50f, 0.070f),
-                new Vector2(0.49f, 0.070f),
-                new Vector2(0.49f, 0.075f),
-                new Vector2(0.50f, 0.080f),
-            };
-        }
-
         private static Vector3[] CreateRepairAnchorsInModel()
         {
             return new[]
@@ -515,71 +362,6 @@ namespace Urp.ArDemo.Editor
                 new Vector3(0.405407f, -4.563286f, 0.330579f),
                 new Vector3(0.419225f, -4.523258f, 0.348041f),
             };
-        }
-
-        private static float[] CreateTargetViewYawDegrees()
-        {
-            return new[]
-            {
-                0f,
-                25f,
-                70f,
-                130f,
-                180f,
-                -120f,
-                -35f,
-                10f,
-                60f,
-                160f,
-                -20f,
-                0f,
-                70f,
-                180f,
-                60f,
-                20f,
-                20f,
-                -60f,
-                -110f,
-                0f,
-            };
-        }
-
-        private static GameObject CreateCanvas(out Text statusText)
-        {
-            GameObject canvasObject = new GameObject("Demo UI");
-            Canvas canvas = canvasObject.AddComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            CanvasScaler scaler = canvasObject.AddComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1080f, 1920f);
-            scaler.matchWidthOrHeight = 0.5f;
-            canvasObject.AddComponent<GraphicRaycaster>();
-
-            statusText = CreateText(
-                canvasObject.transform,
-                "Status Text",
-                "请对准没盖子的饮料瓶，系统会识别瓶身并叠加修复瓶盖。",
-                new Vector2(0.5f, 1f),
-                new Vector2(0f, -44f),
-                new Vector2(1000f, 90f),
-                24,
-                TextAnchor.MiddleCenter);
-
-            return canvasObject;
-        }
-
-        private static GameObject CreateDamagedBottleGuide()
-        {
-            GameObject guide = new GameObject("Damaged Bottle Alignment Guide");
-
-            GameObject neck = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            neck.name = "Bottle Mouth Occlusion Guide";
-            neck.transform.SetParent(guide.transform, false);
-            neck.transform.localPosition = new Vector3(0f, 0f, 0f);
-            neck.transform.localScale = new Vector3(0.085f, 0.018f, 0.085f);
-            neck.GetComponent<Renderer>().sharedMaterial = CreateMaterial("DamagedBottleNeckGuide", new Color(0.3f, 0.85f, 0.62f, 0.18f));
-
-            return guide;
         }
 
         private static GameObject CreateMeshroomBottleCapRepair()
@@ -643,61 +425,6 @@ namespace Urp.ArDemo.Editor
             cap.transform.localScale = new Vector3(1f, 0.5f, 1f);
             cap.GetComponent<Renderer>().sharedMaterial = capMaterial;
             return capRoot;
-        }
-
-        private static void CreateControls(Transform parent, RepairOverlayController repairController)
-        {
-            GameObject row = new GameObject("Control Row");
-            row.transform.SetParent(parent, false);
-            RectTransform rowRect = row.AddComponent<RectTransform>();
-            rowRect.anchorMin = new Vector2(0.08f, 0.035f);
-            rowRect.anchorMax = new Vector2(0.92f, 0.035f);
-            rowRect.pivot = new Vector2(0.5f, 0f);
-            rowRect.anchoredPosition = Vector2.zero;
-            rowRect.sizeDelta = new Vector2(0f, 170f);
-
-            GridLayoutGroup grid = row.AddComponent<GridLayoutGroup>();
-            grid.cellSize = new Vector2(430f, 72f);
-            grid.spacing = new Vector2(12f, 12f);
-            grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
-            grid.constraintCount = 2;
-            grid.childAlignment = TextAnchor.MiddleCenter;
-
-            CreateButton(row.transform, "开始识别", repairController.StartRecognition);
-            CreateButton(row.transform, "修复前", repairController.ShowBeforeRepair);
-            CreateButton(row.transform, "修复后", repairController.ShowAfterRepair);
-            CreateButton(row.transform, "重新识别", repairController.ResetRecognition);
-        }
-
-        private static void CreateButton(Transform parent, string label, UnityEngine.Events.UnityAction action)
-        {
-            GameObject buttonObject = new GameObject($"{label} Button");
-            buttonObject.transform.SetParent(parent, false);
-            Image image = buttonObject.AddComponent<Image>();
-            image.color = new Color(0.08f, 0.12f, 0.16f, 0.82f);
-            Button button = buttonObject.AddComponent<Button>();
-            CreateText(buttonObject.transform, $"{label} Label", label, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(236f, 70f), 23, TextAnchor.MiddleCenter);
-            UnityEventTools.AddPersistentListener(button.onClick, action);
-        }
-
-        private static Text CreateText(Transform parent, string name, string value, Vector2 anchor, Vector2 position, Vector2 size, int fontSize, TextAnchor alignment)
-        {
-            GameObject textObject = new GameObject(name);
-            textObject.transform.SetParent(parent, false);
-            RectTransform rect = textObject.AddComponent<RectTransform>();
-            rect.anchorMin = anchor;
-            rect.anchorMax = anchor;
-            rect.sizeDelta = size;
-            rect.anchoredPosition = position;
-            Text text = textObject.AddComponent<Text>();
-            text.text = value;
-            Font chineseFont = AssetDatabase.LoadAssetAtPath<Font>(ChineseFontPath);
-            text.font = chineseFont != null ? chineseFont : Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            text.fontSize = fontSize;
-            text.alignment = alignment;
-            text.color = Color.white;
-            text.raycastTarget = false;
-            return text;
         }
 
         private static Material CreateMaterial(string name, Color color)

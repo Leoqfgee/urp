@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace Urp.ArDemo
 {
@@ -7,6 +8,7 @@ namespace Urp.ArDemo
         [SerializeField] private Camera viewerCamera;
         [SerializeField] private Transform damagedModel;
         [SerializeField] private Transform completeModel;
+        [SerializeField] private Text statusText;
 
         private Transform activeModel;
         private float zoom = 1f;
@@ -27,14 +29,21 @@ namespace Urp.ArDemo
             }
         }
 
+        public void BindStatusText(Text value)
+        {
+            statusText = value;
+        }
+
         public void ShowDamagedModel()
         {
             SetActiveModel(damagedModel);
+            UpdateStatus("正在查看残缺饮料瓶三维重建模型。");
         }
 
         public void ShowCompleteModel()
         {
             SetActiveModel(completeModel);
+            UpdateStatus("正在查看完整饮料瓶三维重建模型。");
         }
 
         public void RotateModel()
@@ -42,6 +51,7 @@ namespace Urp.ArDemo
             if (activeModel != null)
             {
                 activeModel.Rotate(Vector3.up, 30f, Space.World);
+                UpdateStatus("模型已向右旋转 30°，也可以在模型区域单指拖动。");
             }
         }
 
@@ -49,6 +59,7 @@ namespace Urp.ArDemo
         {
             zoom = zoom < 1.1f ? 1.3f : zoom > 1.15f ? 0.82f : 1f;
             ApplyZoom();
+            UpdateStatus(zoom > 1f ? "模型已放大。" : zoom < 1f ? "模型已缩小。" : "模型已恢复原始大小。");
         }
 
         public void ResetView()
@@ -125,6 +136,14 @@ namespace Urp.ArDemo
             if (activeModel != null)
             {
                 activeModel.localScale = Vector3.one * zoom;
+            }
+        }
+
+        private void UpdateStatus(string message)
+        {
+            if (statusText != null)
+            {
+                statusText.text = message;
             }
         }
     }

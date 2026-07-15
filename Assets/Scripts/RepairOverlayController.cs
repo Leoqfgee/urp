@@ -20,15 +20,18 @@ namespace Urp.ArDemo
 
         private void Awake()
         {
-            ApplyRepairVisibility();
+            if (repairRoot != null)
+            {
+                repairRoot.gameObject.SetActive(false);
+            }
         }
 
         public void StartRecognition()
         {
             showRepair = true;
-            ApplyRepairVisibility();
             if (orbTracker != null)
             {
+                orbTracker.SetRepairVisible(true);
                 orbTracker.StartRecognition();
             }
             else
@@ -40,7 +43,15 @@ namespace Urp.ArDemo
         public void ShowBeforeRepair()
         {
             showRepair = false;
-            ApplyRepairVisibility();
+            if (orbTracker != null)
+            {
+                orbTracker.SetRepairVisible(false);
+            }
+            else
+            {
+                ApplyRepairVisibility();
+            }
+
             UpdateStatus("修复前：仅显示真实的无瓶盖饮料瓶。");
         }
 
@@ -53,16 +64,16 @@ namespace Urp.ArDemo
                 return;
             }
 
-            ApplyRepairVisibility();
+            orbTracker.SetRepairVisible(true);
             UpdateStatus("修复后：虚拟瓶盖已按瓶口位姿进行叠加。");
         }
 
         public void ResetRecognition()
         {
             showRepair = true;
-            ApplyRepairVisibility();
             if (orbTracker != null)
             {
+                orbTracker.SetRepairVisible(true);
                 orbTracker.ResetTracking();
             }
             else

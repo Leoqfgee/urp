@@ -49,10 +49,9 @@ namespace Urp.ArDemo
         private Renderer[] repairRenderers;
         private MaterialPropertyBlock materialProperties;
         private float smoothedLuminance = 0.8f;
+        private bool repairVisibleRequested = true;
 
-        public bool HasTrackedPose => hasSmoothedPose
-            && trackedContentRoot != null
-            && trackedContentRoot.gameObject.activeInHierarchy;
+        public bool HasTrackedPose => hasSmoothedPose;
 
         private void Awake()
         {
@@ -132,7 +131,17 @@ namespace Urp.ArDemo
         {
             trackingEnabled = true;
             nextProcessTime = 0f;
+            HideRepairModel(true);
             UpdateStatus("正在识别残缺饮料瓶，请保持瓶口和瓶身文字清晰可见。");
+        }
+
+        public void SetRepairVisible(bool visible)
+        {
+            repairVisibleRequested = visible;
+            if (trackedContentRoot != null)
+            {
+                trackedContentRoot.gameObject.SetActive(visible && hasSmoothedPose);
+            }
         }
 
         public void SetTrackingEnabled(bool enabled)
@@ -288,7 +297,7 @@ namespace Urp.ArDemo
                     return;
                 }
 
-                trackedContentRoot.gameObject.SetActive(true);
+                trackedContentRoot.gameObject.SetActive(repairVisibleRequested);
                 lastValidPoseTime = Time.unscaledTime;
                 ApplyLightingConsistency(bestResult.localLuminance);
                 UpdateStatus(

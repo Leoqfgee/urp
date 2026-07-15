@@ -12,27 +12,24 @@ namespace Urp.ArDemo
             Home,
             Resource,
             TrackingSelection,
-            TrackingCamera,
-            SlamSelection,
-            SlamCamera
+            TrackingCamera
         }
 
         [SerializeField] private Font chineseFont;
         [SerializeField] private OrbImageTrackingController orbTracker;
         [SerializeField] private RepairOverlayController repairController;
         [SerializeField] private ModelViewerController modelViewer;
-        [SerializeField] private PlanarMarkerSlamController slamController;
 
         private readonly Dictionary<Page, GameObject> pages = new Dictionary<Page, GameObject>();
         private Canvas canvas;
+        private Text resourceStatus;
         private Text trackingStatus;
-        private Text slamStatus;
         private GameObject infoModal;
 
         private static readonly Color Ink = new Color32(20, 48, 89, 255);
         private static readonly Color Accent = new Color32(23, 82, 155, 255);
-        private static readonly Color White = new Color32(250, 252, 255, 255);
-        private static readonly Color CameraButton = new Color32(15, 30, 45, 210);
+        private static readonly Color Surface = new Color32(250, 252, 255, 255);
+        private static readonly Color CameraButton = new Color32(15, 30, 45, 218);
 
         private void Awake()
         {
@@ -46,6 +43,7 @@ namespace Urp.ArDemo
             canvasObject.transform.SetParent(transform, false);
             canvas = canvasObject.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+
             CanvasScaler scaler = canvasObject.AddComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = new Vector2(1080f, 1920f);
@@ -54,17 +52,14 @@ namespace Urp.ArDemo
 
             pages[Page.Home] = BuildHomePage();
             pages[Page.Resource] = BuildResourcePage();
-            pages[Page.TrackingSelection] = BuildSelectionPage(
-                "三维跟踪模式",
-                () => ShowPage(Page.TrackingCamera),
-                () => ShowPage(Page.Home));
+            pages[Page.TrackingSelection] = BuildTrackingSelectionPage();
             pages[Page.TrackingCamera] = BuildTrackingCameraPage();
-            pages[Page.SlamSelection] = BuildSelectionPage(
-                "平面标志与SLAM模式",
-                () => ShowPage(Page.SlamCamera),
-                () => ShowPage(Page.Home));
-            pages[Page.SlamCamera] = BuildSlamCameraPage();
             infoModal = BuildInfoModal();
+
+            if (modelViewer != null)
+            {
+                modelViewer.BindStatusText(resourceStatus);
+            }
 
             if (orbTracker != null)
             {
@@ -75,25 +70,18 @@ namespace Urp.ArDemo
             {
                 repairController.BindStatusText(trackingStatus);
             }
-
-            if (slamController != null)
-            {
-                slamController.BindStatusText(slamStatus);
-            }
         }
 
         private GameObject BuildHomePage()
         {
             GameObject page = CreatePage("首页", true);
             CreateText(page.transform, "文化遗址数字修复及AR呈现系统", 48, Ink,
-                new Vector2(0.08f, 0.76f), new Vector2(0.92f, 0.91f), TextAnchor.MiddleCenter);
+                new Vector2(0.08f, 0.74f), new Vector2(0.92f, 0.88f), TextAnchor.MiddleCenter);
 
-            CreateButton(page.transform, "三维资源查看", new Vector2(0.14f, 0.54f), new Vector2(0.86f, 0.64f),
-                () => ShowPage(Page.Resource), White, Ink, 38);
-            CreateButton(page.transform, "三维跟踪模式", new Vector2(0.14f, 0.39f), new Vector2(0.86f, 0.49f),
-                () => ShowPage(Page.TrackingSelection), White, Ink, 38);
-            CreateButton(page.transform, "平面标志与SLAM模式", new Vector2(0.14f, 0.24f), new Vector2(0.86f, 0.34f),
-                () => ShowPage(Page.SlamSelection), White, Ink, 36);
+            CreateButton(page.transform, "三维资源查看", new Vector2(0.14f, 0.48f), new Vector2(0.86f, 0.59f),
+                () => ShowPage(Page.Resource), Surface, Ink, 38);
+            CreateButton(page.transform, "三维跟踪修复", new Vector2(0.14f, 0.31f), new Vector2(0.86f, 0.42f),
+                () => ShowPage(Page.TrackingSelection), Surface, Ink, 38);
             return page;
         }
 
@@ -101,43 +89,44 @@ namespace Urp.ArDemo
         {
             GameObject page = CreatePage("三维资源查看", false);
             CreateHeader(page.transform, "三维资源查看", () => ShowPage(Page.Home));
+            resourceStatus = CreateStatusBar(page.transform, "正在加载残缺饮料瓶三维模型。", 0.205f);
 
-            GameObject tabs = CreatePanel(page.transform, "模型切换", new Color32(245, 248, 252, 235),
-                new Vector2(0.10f, 0.22f), new Vector2(0.90f, 0.31f));
+            GameObject tabs = CreatePanel(page.transform, "模型切换", new Color32(245, 248, 252, 242),
+                new Vector2(0.08f, 0.105f), new Vector2(0.92f, 0.19f));
             CreateButton(tabs.transform, "残缺模型", new Vector2(0.02f, 0.08f), new Vector2(0.49f, 0.92f),
                 modelViewer != null ? modelViewer.ShowDamagedModel : (Action)null, Accent, Color.white, 28);
             CreateButton(tabs.transform, "完整模型", new Vector2(0.51f, 0.08f), new Vector2(0.98f, 0.92f),
-                modelViewer != null ? modelViewer.ShowCompleteModel : (Action)null, White, Ink, 28);
+                modelViewer != null ? modelViewer.ShowCompleteModel : (Action)null, Surface, Ink, 28);
 
-            CreateButton(page.transform, "旋转", new Vector2(0.10f, 0.12f), new Vector2(0.34f, 0.19f),
-                modelViewer != null ? modelViewer.RotateModel : (Action)null, White, Ink, 26);
-            CreateButton(page.transform, "缩放", new Vector2(0.38f, 0.12f), new Vector2(0.62f, 0.19f),
-                modelViewer != null ? modelViewer.ToggleZoom : (Action)null, White, Ink, 26);
-            CreateButton(page.transform, "文字介绍", new Vector2(0.66f, 0.12f), new Vector2(0.90f, 0.19f),
-                ShowInformation, White, Ink, 24);
+            CreateButton(page.transform, "旋转", new Vector2(0.08f, 0.025f), new Vector2(0.34f, 0.09f),
+                modelViewer != null ? modelViewer.RotateModel : (Action)null, Surface, Ink, 26);
+            CreateButton(page.transform, "缩放", new Vector2(0.37f, 0.025f), new Vector2(0.63f, 0.09f),
+                modelViewer != null ? modelViewer.ToggleZoom : (Action)null, Surface, Ink, 26);
+            CreateButton(page.transform, "文字介绍", new Vector2(0.66f, 0.025f), new Vector2(0.92f, 0.09f),
+                ShowInformation, Surface, Ink, 24);
             return page;
         }
 
-        private GameObject BuildSelectionPage(string title, Action selectAction, Action backAction)
+        private GameObject BuildTrackingSelectionPage()
         {
-            GameObject page = CreatePage(title, true);
-            CreateHeader(page.transform, title, backAction);
-            CreateText(page.transform, "请选择实际展示对象", 26, new Color32(75, 88, 110, 255),
+            GameObject page = CreatePage("三维跟踪修复", true);
+            CreateHeader(page.transform, "三维跟踪修复", () => ShowPage(Page.Home));
+            CreateText(page.transform, "选择展示对象", 28, new Color32(75, 88, 110, 255),
                 new Vector2(0.10f, 0.68f), new Vector2(0.90f, 0.74f), TextAnchor.MiddleCenter);
-            CreateButton(page.transform, "残缺饮料瓶（瓶盖缺失）", new Vector2(0.14f, 0.48f), new Vector2(0.86f, 0.60f),
-                selectAction, White, Ink, 34);
+            CreateButton(page.transform, "残缺饮料瓶（瓶盖缺失）", new Vector2(0.12f, 0.47f), new Vector2(0.88f, 0.59f),
+                () => ShowPage(Page.TrackingCamera), Surface, Ink, 32);
             CreateButton(page.transform, "返回", new Vector2(0.14f, 0.08f), new Vector2(0.86f, 0.16f),
-                backAction, White, Ink, 30);
+                () => ShowPage(Page.Home), Surface, Ink, 30);
             return page;
         }
 
         private GameObject BuildTrackingCameraPage()
         {
             GameObject page = CreatePage("三维跟踪相机", false);
-            CreateHeader(page.transform, "三维跟踪模式", () => ShowPage(Page.TrackingSelection));
-            trackingStatus = CreateStatusBar(page.transform, "点击开始识别，对准无瓶盖饮料瓶。", 0.885f);
+            CreateHeader(page.transform, "残缺饮料瓶虚拟修复", () => ShowPage(Page.TrackingSelection));
+            trackingStatus = CreateStatusBar(page.transform, "点击开始识别，并让瓶身与瓶口同时进入画面。", 0.855f);
 
-            GameObject controls = CreatePanel(page.transform, "三维跟踪控制", new Color32(7, 15, 25, 150),
+            GameObject controls = CreatePanel(page.transform, "三维跟踪控制", new Color32(7, 15, 25, 158),
                 new Vector2(0.04f, 0.025f), new Vector2(0.96f, 0.20f));
             CreateButton(controls.transform, "开始识别", new Vector2(0.02f, 0.53f), new Vector2(0.48f, 0.95f),
                 repairController != null ? repairController.StartRecognition : (Action)null, CameraButton, Color.white, 27);
@@ -152,35 +141,17 @@ namespace Urp.ArDemo
             return page;
         }
 
-        private GameObject BuildSlamCameraPage()
-        {
-            GameObject page = CreatePage("平面标志与SLAM相机", false);
-            CreateHeader(page.transform, "平面标志与SLAM模式", () => ShowPage(Page.SlamSelection));
-            slamStatus = CreateStatusBar(page.transform, "缓慢移动手机，先扫描瓶子周围环境。", 0.885f);
-
-            GameObject controls = CreatePanel(page.transform, "SLAM 控制", new Color32(7, 15, 25, 150),
-                new Vector2(0.035f, 0.025f), new Vector2(0.43f, 0.49f));
-            CreateVerticalButton(controls.transform, "保存并继续", 0.80f, slamController != null ? slamController.SaveAndContinue : (Action)null);
-            CreateVerticalButton(controls.transform, "检测平面标志", 0.64f, slamController != null ? slamController.DetectMarker : (Action)null);
-            CreateVerticalButton(controls.transform, "旋转", 0.48f, slamController != null ? slamController.RotateRepair : (Action)null);
-            CreateVerticalButton(controls.transform, "缩放", 0.32f, slamController != null ? slamController.ToggleRepairScale : (Action)null);
-            CreateVerticalButton(controls.transform, "文字介绍", 0.16f, ShowInformation);
-            CreateVerticalButton(controls.transform, "重新扫描", 0.00f, slamController != null ? slamController.ResetMode : (Action)null);
-            return page;
-        }
-
         private GameObject BuildInfoModal()
         {
-            GameObject modal = CreatePanel(canvas.transform, "项目说明", new Color32(10, 20, 32, 238),
-                new Vector2(0.08f, 0.20f), new Vector2(0.92f, 0.80f));
-            CreateText(modal.transform, "数字修复说明", 38, Color.white,
+            GameObject modal = CreatePanel(canvas.transform, "项目说明", new Color32(10, 20, 32, 242),
+                new Vector2(0.08f, 0.24f), new Vector2(0.92f, 0.76f));
+            CreateText(modal.transform, "残缺饮料瓶数字修复", 36, Color.white,
                 new Vector2(0.08f, 0.80f), new Vector2(0.92f, 0.94f), TextAnchor.MiddleCenter);
             CreateText(modal.transform,
-                "展示对象：生榨椰子汁饮料瓶（瓶盖缺失）\n\n" +
-                "三维跟踪模式使用 ORB 特征、三维点与 PnP 位姿估计，将虚拟修复瓶盖叠加到真实瓶口。\n\n" +
-                "平面标志与SLAM模式先扫描环境，再检测瓶身平面标志并建立空间锚点，适合物体静止时从多视角观察。\n\n" +
-                "模型来源：Meshroom 三维重建；修复部分：瓶盖模型。",
-                26, Color.white, new Vector2(0.10f, 0.24f), new Vector2(0.90f, 0.78f), TextAnchor.UpperLeft);
+                "展示对象：瓶盖缺失的生榨椰子汁饮料瓶。\n\n" +
+                "系统使用多视图 ORB 特征匹配和 PnP 三维位姿估计，定位真实瓶身与瓶口，并将 Meshroom 重建、清理后的虚拟瓶盖叠加到缺失位置。\n\n" +
+                "三维资源页面可查看残缺模型与完整模型。",
+                26, Color.white, new Vector2(0.10f, 0.24f), new Vector2(0.90f, 0.77f), TextAnchor.UpperLeft);
             CreateButton(modal.transform, "关闭", new Vector2(0.22f, 0.07f), new Vector2(0.78f, 0.18f),
                 () => modal.SetActive(false), Accent, Color.white, 28);
             modal.SetActive(false);
@@ -196,7 +167,6 @@ namespace Urp.ArDemo
 
             bool resource = page == Page.Resource;
             bool tracking = page == Page.TrackingCamera;
-            bool slam = page == Page.SlamCamera;
             if (modelViewer != null)
             {
                 modelViewer.SetViewerEnabled(resource);
@@ -212,15 +182,6 @@ namespace Urp.ArDemo
                 orbTracker.SetTrackingEnabled(tracking);
             }
 
-            if (slamController != null)
-            {
-                slamController.SetModeEnabled(slam);
-                if (slam)
-                {
-                    slamController.ResetMode();
-                }
-            }
-
             if (infoModal != null)
             {
                 infoModal.SetActive(false);
@@ -229,36 +190,34 @@ namespace Urp.ArDemo
 
         private void ShowInformation()
         {
-            infoModal.SetActive(true);
-            infoModal.transform.SetAsLastSibling();
+            if (infoModal != null)
+            {
+                infoModal.SetActive(true);
+                infoModal.transform.SetAsLastSibling();
+            }
         }
 
         private GameObject CreatePage(string name, bool opaque)
         {
-            GameObject page = CreatePanel(canvas.transform, name, opaque ? White : Color.clear, Vector2.zero, Vector2.one);
-            return page;
+            return CreatePanel(canvas.transform, name, opaque ? Surface : Color.clear, Vector2.zero, Vector2.one);
         }
 
         private void CreateHeader(Transform parent, string title, Action backAction)
         {
-            GameObject header = CreatePanel(parent, "顶部导航", new Color32(250, 252, 255, 245),
+            GameObject header = CreatePanel(parent, "顶部导航", new Color32(250, 252, 255, 248),
                 new Vector2(0f, 0.91f), new Vector2(1f, 1f));
-            CreateButton(header.transform, "<", new Vector2(0.02f, 0.10f), new Vector2(0.13f, 0.90f),
-                backAction, Color.clear, Ink, 48);
-            CreateText(header.transform, title, 36, Ink, new Vector2(0.14f, 0.08f), new Vector2(0.94f, 0.92f), TextAnchor.MiddleCenter);
+            CreateButton(header.transform, "‹", new Vector2(0.02f, 0.10f), new Vector2(0.13f, 0.90f),
+                backAction, Color.clear, Ink, 58);
+            CreateText(header.transform, title, 36, Ink,
+                new Vector2(0.14f, 0.08f), new Vector2(0.94f, 0.92f), TextAnchor.MiddleCenter);
         }
 
         private Text CreateStatusBar(Transform parent, string value, float bottom)
         {
-            GameObject bar = CreatePanel(parent, "状态栏", new Color32(12, 22, 32, 205),
-                new Vector2(0.08f, bottom), new Vector2(0.92f, bottom + 0.055f));
-            return CreateText(bar.transform, value, 22, Color.white, new Vector2(0.03f, 0f), new Vector2(0.97f, 1f), TextAnchor.MiddleCenter);
-        }
-
-        private void CreateVerticalButton(Transform parent, string label, float bottom, Action action)
-        {
-            CreateButton(parent, label, new Vector2(0.06f, bottom + 0.025f), new Vector2(0.94f, bottom + 0.145f),
-                action, White, Ink, label.Length > 5 ? 22 : 25);
+            GameObject bar = CreatePanel(parent, "状态栏", new Color32(12, 22, 32, 210),
+                new Vector2(0.06f, bottom), new Vector2(0.94f, bottom + 0.06f));
+            return CreateText(bar.transform, value, 22, Color.white,
+                new Vector2(0.03f, 0f), new Vector2(0.97f, 1f), TextAnchor.MiddleCenter);
         }
 
         private GameObject CreatePanel(Transform parent, string name, Color color, Vector2 anchorMin, Vector2 anchorMax)
@@ -290,12 +249,23 @@ namespace Urp.ArDemo
             Button button = buttonObject.AddComponent<Button>();
             button.targetGraphic = buttonObject.GetComponent<Image>();
             button.interactable = action != null;
+            button.navigation = new Navigation { mode = Navigation.Mode.None };
+
+            ColorBlock colors = button.colors;
+            colors.normalColor = Color.white;
+            colors.highlightedColor = new Color(0.92f, 0.96f, 1f, 1f);
+            colors.pressedColor = new Color(0.72f, 0.84f, 0.98f, 1f);
+            colors.selectedColor = colors.highlightedColor;
+            colors.fadeDuration = 0.08f;
+            button.colors = colors;
+
             if (action != null)
             {
                 button.onClick.AddListener(() => action());
             }
 
-            CreateText(buttonObject.transform, label, fontSize, foreground, Vector2.zero, Vector2.one, TextAnchor.MiddleCenter);
+            CreateText(buttonObject.transform, label, fontSize, foreground,
+                Vector2.zero, Vector2.one, TextAnchor.MiddleCenter);
             return button;
         }
 
