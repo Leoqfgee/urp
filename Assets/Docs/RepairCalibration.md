@@ -1,39 +1,29 @@
 # Coconut bottle repair calibration
 
-## Coordinate source
+## Canonical coordinate source
 
-All `Assets/OrbModels/bottle_view_*.bytes` files use the same Meshroom SfM
-world coordinate system. The old implementation assigned a different mouth
-anchor to each view even though their 3D points shared one frame. The new
-calibration uses one global mouth frame for every ORB database.
+All `Assets/OrbModels/bottle_*.bytes` records are stored in one mouth-centred
+canonical frame. The source SfM mouth centre was:
 
-The current global mouth center is the median of the 13 legacy anchors:
+`(0.419225, -4.514827, 0.314265)` source model units.
 
-`(0.419225, -4.514827, 0.314265)` model units.
-
-The old anchors span approximately `(0.169876, 0.103417, 0.169569)` model
-units, which explains visible jumps when the active ORB database changed.
+It is now canonical `(0, 0, 0)`, with `+X` right, `+Y` up and `+Z` toward the
+front reference. The registered cap uses the same frame, so the initial preview
+and PnP pose no longer extrapolate from the distant SfM world origin.
 
 ## Physical scale status
 
-The current `metersPerModelUnit` value is `0.18`. It is retained only as a
-provisional compatibility value. No caliper measurement is stored in the
-project, so `physicalScaleVerified` is false and the application must not claim
-millimetre-accurate registration.
+The supplied measurements are:
 
-To verify the scale, measure at least two distances on the same physical
-bottle, for example:
+1. bottle-mouth outer thread diameter: `34 mm`;
+2. cap outer diameter: `39 mm`;
+3. cap height: `10 mm`.
 
-1. bottle-mouth outside diameter;
-2. bottle height between two identifiable SfM points.
-
-For each measurement calculate:
-
-`metersPerModelUnit = physical distance in metres / model distance in units`
-
-The two results should agree within the measurement and reconstruction error.
-If they do not, the SfM reconstruction or selected model points must be
-rechecked.
+The canonical mouth diameter is `0.2` model units, therefore
+`metersPerModelUnit = 0.034 / 0.2 = 0.17`. The cap mesh is dimension-normalised
+to `39 x 10 mm` after registration. The estimated cap inner diameter is `35 mm`
+and estimated effective depth is `8 mm`; these estimates affect only the visual
+starting geometry and are not labelled as measurements.
 
 ## Mouth frame
 
@@ -65,5 +55,8 @@ Those target correspondences were derived from the assumed cap dimensions,
 not measured directly on the real bottle, so this is only a numerical fit to
 the provisional inputs and is not a verified physical-registration error.
 
-Until those points and the two physical dimensions are measured, the generated
-registered cap remains a provisional visual alignment, not a metrology result.
+The original four-point similarity fit remains a numerical source registration,
+then the mesh is moved to the canonical mouth frame and dimension-normalised.
+The physical dimensions are recorded, but the final camera overlay remains
+unverified until it is tested on the Android device from front, side and oblique
+views.

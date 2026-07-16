@@ -42,9 +42,9 @@ def main() -> None:
             raise SystemExit(f"{path.name}: insufficient 3D distribution")
     global_min = np.vstack([item[0] for item in ranges]).min(axis=0)
     global_max = np.vstack([item[1] for item in ranges]).max(axis=0)
-    if np.any(global_min < np.array([0.10, -4.70, 0.00])) \
-            or np.any(global_max > np.array([0.75, -3.00, 0.55])):
-        raise SystemExit("ORB models do not share the expected SfM coordinate domain")
+    if np.any(global_min < np.array([-0.35, -1.60, -0.20])) \
+            or np.any(global_max > np.array([0.35, 0.15, 0.25])):
+        raise SystemExit("ORB models do not share the expected canonical mouth domain")
     global_model_path = ROOT / "Assets/OrbModels/bottle_global.bytes"
     global_points = read_orb(global_model_path)
     if len(global_points) < 1000:
@@ -56,8 +56,12 @@ def main() -> None:
         )
     )
     mouth = np.asarray(calibration["mouth_center_in_model"])
-    if np.any(mouth < global_min - 0.2) or np.any(mouth > global_max + 0.2):
-        raise SystemExit("mouth frame lies outside the ORB coordinate domain")
+    if np.linalg.norm(mouth) > 1e-8:
+        raise SystemExit("mouth frame is not canonical zero")
+    if abs(calibration["meters_per_model_unit"] - 0.17) > 1e-8:
+        raise SystemExit("unexpected bottle physical scale")
+    if not calibration["physical_scale_verified"]:
+        raise SystemExit("supplied bottle measurements were not recorded")
 
     registration = json.loads(
         (
@@ -70,6 +74,16 @@ def main() -> None:
         raise SystemExit("cap registration has too few correspondences")
     if registration["rms_model_units"] > 0.001:
         raise SystemExit("cap registration RMS exceeds the configured offline limit")
+    cap_mesh = trimesh.load(
+        ROOT / "Assets/Models/RegisteredRepair/coconut_bottle_cap_registered.obj",
+        force="mesh",
+        process=False,
+    )
+    cap_size_m = np.asarray(cap_mesh.extents) * calibration["meters_per_model_unit"]
+    if abs(max(cap_size_m[0], cap_size_m[2]) - 0.039) > 0.0001:
+        raise SystemExit(f"cap diameter is not 39 mm: {cap_size_m}")
+    if abs(cap_size_m[1] - 0.010) > 0.0001:
+        raise SystemExit(f"cap height is not 10 mm: {cap_size_m}")
 
     mesh_reports = {}
     for path in sorted((ROOT / "Assets/Models").glob("*Processed/*.obj")):
@@ -94,6 +108,7 @@ def main() -> None:
         "orb_global_min": global_min.tolist(),
         "orb_global_max": global_max.tolist(),
         "calibration_status": calibration["status"],
+        "cap_size_meters": cap_size_m.tolist(),
         "cap_registration_rms_model_units": registration["rms_model_units"],
         "mesh_reports": mesh_reports,
     }

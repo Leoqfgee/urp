@@ -52,5 +52,49 @@
   ],
   "rms_model_units": 2.3016058332236825e-05,
   "max_error_model_units": 3.0082864917395884e-05,
-  "correspondence_count": 4
+  "correspondence_count": 4,
+  "coordinate_system": "bottle_mouth_canonical_x_right_y_up_z_front",
+  "source_mouth_origin_sfm": [
+    0.419225,
+    -4.514827,
+    0.314265
+  ],
+  "canonical_horizontal_recentering": [
+    -2.357300279198782e-06,
+    -2.928061864082565e-07,
+    -2.357300279198782e-06
+  ],
+  "physical_normalization_scale_xyz": [
+    1.0118734253649722,
+    0.5294548400250011,
+    1.0118734253649722
+  ],
+  "final_bounds_model_units": [
+    [
+      -0.11470588222421915,
+      0.0,
+      -0.11470588235294116
+    ],
+    [
+      0.11470588222421915,
+      0.058823529411764705,
+      0.11470588235294116
+    ]
+  ],
+  "final_size_model_units": [
+    0.2294117644484383,
+    0.058823529411764705,
+    0.22941176470588232
+  ],
+  "final_size_meters": [
+    0.038999999956234516,
+    0.01,
+    0.03899999999999999
+  ],
+  "dimension_sources": {
+    "cap_outer_diameter_m": 0.039,
+    "cap_height_m": 0.01,
+    "measurement_source": "user supplied 2026-07-16"
+  },
+  "device_overlay_verified": false
 }

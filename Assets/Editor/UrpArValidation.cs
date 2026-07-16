@@ -63,6 +63,23 @@ namespace Urp.ArDemo.Editor
                 catalog.objects.SingleOrDefault(item => item.objectId == "tissue");
             Require(bottle != null && bottle.HasTrackingAssets,
                 "Bottle profile tracking references are incomplete.");
+            Require(bottle.registeredOccluderPrefab != null,
+                "Bottle neck occluder is missing.");
+            Require(bottle.physicalScaleVerified
+                    && bottle.calibration != null
+                    && bottle.calibration.objectOriginInModel == Vector3.zero
+                    && bottle.calibration.mouthCenterInModel == Vector3.zero
+                    && Mathf.Abs(bottle.calibration.metersPerModelUnit - 0.17f) < 0.000001f
+                    && Mathf.Abs(bottle.calibration.expectedPhysicalNeckDiameter - 0.034f)
+                        < 0.000001f
+                    && Mathf.Abs(bottle.calibration.expectedPhysicalCapDiameter - 0.039f)
+                        < 0.000001f
+                    && Mathf.Abs(bottle.calibration.expectedPhysicalCapHeight - 0.010f)
+                        < 0.000001f,
+                "Bottle canonical physical calibration is incomplete.");
+            Require(bottle.physicalMeasurements.Length == 3
+                    && bottle.physicalMeasurements.All(item => item.verified),
+                "Bottle measurements are not recorded in the profile.");
             Require(tissue != null && tissue.damagedViewerPrefab != null,
                 "Tissue viewer profile is incomplete.");
             Require(tissue.orbModelDatabase == null && tissue.registeredRepairPrefab == null,
@@ -97,6 +114,9 @@ namespace Urp.ArDemo.Editor
         private static void ValidateGeneratedScene()
         {
             EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+            RestorationObjectCatalog catalog =
+                AssetDatabase.LoadAssetAtPath<RestorationObjectCatalog>(CatalogPath);
+            Require(catalog != null, "Restoration object catalog is missing.");
             Transform objectRoot = FindRequired("TrackedObjectPoseRoot");
             Transform alignment = FindRequired("ModelCoordinateAlignment");
             Require(alignment.IsChildOf(objectRoot), "Model alignment is outside pose root.");
@@ -137,6 +157,29 @@ namespace Urp.ArDemo.Editor
                 Require(button.targetGraphic != null && button.targetGraphic.raycastTarget,
                     $"Button cannot receive pointer input: {button.name}");
             }
+            RectTransform cardViewport =
+                FindChild(ui, "ObjectCardViewport") as RectTransform;
+            RectTransform cardContent =
+                FindChild(ui, "ObjectCardContent") as RectTransform;
+            Require(cardViewport != null && cardContent != null,
+                "Object selection layout is missing.");
+            LayoutRebuilder.ForceRebuildLayoutImmediate(cardContent);
+            Canvas.ForceUpdateCanvases();
+            Transform[] cards = cardContent.Cast<Transform>()
+                .Where(item => item.name.EndsWith(" Card", StringComparison.Ordinal))
+                .ToArray();
+            Require(cards.Length == catalog.objects.Count(item => item != null),
+                "Object selection cards do not match the catalog.");
+            Require(cards.All(item => ((RectTransform)item).rect.height >= 500f),
+                "Object selection cards collapsed to zero height.");
+            Bounds firstCardBounds = RectTransformUtility.CalculateRelativeRectTransformBounds(
+                cardViewport, (RectTransform)cards[0]);
+            Rect viewportRect = cardViewport.rect;
+            Require(firstCardBounds.max.x > viewportRect.xMin
+                    && firstCardBounds.min.x < viewportRect.xMax
+                    && firstCardBounds.max.y > viewportRect.yMin
+                    && firstCardBounds.min.y < viewportRect.yMax,
+                "The first object card is outside the visible selection viewport.");
             UnityEngine.Object.DestroyImmediate(ui.gameObject);
         }
 

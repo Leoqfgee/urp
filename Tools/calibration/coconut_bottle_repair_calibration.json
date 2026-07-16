@@ -1,19 +1,24 @@
 {
-  "status": "provisional_unverified",
-  "coordinate_system": "shared Meshroom SfM frame used by all bottle_view_*.bytes",
+  "status": "measurement_backed_visual_calibration",
+  "coordinate_system": "bottle mouth canonical frame: +X right, +Y up, +Z front",
+  "source_mouth_origin_sfm": [0.419225, -4.514827, 0.314265],
   "object_origin_in_model": [0.0, 0.0, 0.0],
-  "mouth_center_in_model": [0.419225, -4.514827, 0.314265],
-  "mouth_right_in_model": [0.519225, -4.514827, 0.314265],
-  "mouth_front_in_model": [0.419225, -4.514827, 0.214265],
-  "neck_axis_point_in_model": [0.419225, -4.314827, 0.314265],
-  "meters_per_model_unit": 0.18,
-  "physical_scale_verified": false,
-  "expected_physical_neck_diameter_m": 0.0,
-  "expected_physical_cap_diameter_m": 0.0408,
-  "expected_physical_cap_height_m": 0.02,
+  "mouth_center_in_model": [0.0, 0.0, 0.0],
+  "mouth_right_in_model": [0.1, 0.0, 0.0],
+  "mouth_front_in_model": [0.0, 0.0, 0.1],
+  "neck_axis_point_in_model": [0.0, -0.2, 0.0],
+  "meters_per_model_unit": 0.17,
+  "physical_scale_verified": true,
+  "expected_physical_neck_diameter_m": 0.034,
+  "expected_physical_cap_diameter_m": 0.039,
+  "expected_physical_cap_height_m": 0.01,
+  "estimated_cap_inner_diameter_m": 0.035,
+  "estimated_cap_effective_inner_depth_m": 0.008,
+  "device_overlay_verified": false,
   "notes": [
-    "The mouth center is the median of the 13 legacy per-view anchors.",
-    "The frame axes follow the shared SfM axes and are not a substitute for physical caliper measurements.",
-    "Physical scale and final cap registration must be revalidated using measured bottle dimensions."
+    "Bottle mouth outer thread diameter 34 mm, cap outer diameter 39 mm and cap height 10 mm were supplied by the user on 2026-07-16.",
+    "ORB records and the repair cap are migrated from the old SfM frame into this mouth-centred canonical frame.",
+    "The cap inner diameter and effective inner depth are visual estimates only.",
+    "Final phone-camera overlay still requires real-device screenshots and motion testing."
   ]
 }

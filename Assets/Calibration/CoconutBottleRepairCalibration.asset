@@ -13,15 +13,15 @@ MonoBehaviour:
   m_Name: CoconutBottleRepairCalibration
   m_EditorClassIdentifier: 
   objectOriginInModel: {x: 0, y: 0, z: 0}
-  mouthCenterInModel: {x: 0.419225, y: -4.514827, z: 0.314265}
-  mouthRightInModel: {x: 0.519225, y: -4.514827, z: 0.314265}
-  mouthFrontInModel: {x: 0.419225, y: -4.514827, z: 0.214265}
-  neckAxisPointInModel: {x: 0.419225, y: -4.314827, z: 0.314265}
-  metersPerModelUnit: 0.18
-  physicalScaleVerified: 0
-  expectedPhysicalNeckDiameter: 0
-  expectedPhysicalCapDiameter: 0.0408
-  expectedPhysicalCapHeight: 0.02
+  mouthCenterInModel: {x: 0, y: 0, z: 0}
+  mouthRightInModel: {x: 0.1, y: 0, z: 0}
+  mouthFrontInModel: {x: 0, y: 0, z: 0.1}
+  neckAxisPointInModel: {x: 0, y: -0.2, z: 0}
+  metersPerModelUnit: 0.17
+  physicalScaleVerified: 1
+  expectedPhysicalNeckDiameter: 0.034
+  expectedPhysicalCapDiameter: 0.039
+  expectedPhysicalCapHeight: 0.01
   capLocalPosition: {x: 0, y: 0, z: 0}
   capLocalEulerAngles: {x: 0, y: 0, z: 0}
   capLocalScale: {x: 1, y: 1, z: 1}

@@ -29,6 +29,10 @@ namespace Urp.ArDemo.Editor
             "Assets/Models/MeshroomBottleDamagedProcessed/damaged_bottle_processed_albedo.png";
         private const string BottleRepairPath =
             "Assets/Models/RegisteredRepair/coconut_bottle_cap_registered.obj";
+        private const string BottleOccluderPath =
+            "Assets/Objects/CoconutBottle/Prefabs/BottleNeckOccluder.prefab";
+        private const string OccluderShaderPath =
+            "Assets/Shaders/DepthOnlyOccluder.shader";
         private const string BottleOrbPath = "Assets/OrbModels/bottle_global.bytes";
         private const string BottleCalibrationPath =
             "Assets/Calibration/CoconutBottleRepairCalibration.asset";
@@ -65,6 +69,7 @@ namespace Urp.ArDemo.Editor
         public static void BuildAndroidFromCommandLine()
         {
             SetupPrototypeScene();
+            CleanStaleSimulationTempAssets();
             Directory.CreateDirectory("Builds");
             BuildReport report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
             {
@@ -80,14 +85,30 @@ namespace Urp.ArDemo.Editor
             }
         }
 
+        private static void CleanStaleSimulationTempAssets()
+        {
+            foreach (string path in new[]
+                     {
+                         "Assets/XR/Temp/XRSimulationPreferences.asset",
+                         "Assets/XR/Temp/XRSimulationRuntimeSettings.asset"
+                     })
+            {
+                if (AssetDatabase.LoadMainAssetAtPath(path) != null)
+                    AssetDatabase.DeleteAsset(path);
+            }
+            AssetDatabase.Refresh();
+        }
+
         private static void EnsureFolders()
         {
             string[] folders =
             {
                 "Assets/Calibration", "Assets/Docs", "Assets/Materials",
                 "Assets/Objects/CoconutBottle/Profiles",
+                "Assets/Objects/CoconutBottle/Prefabs",
                 "Assets/Objects/Tissue/Profiles",
-                "Assets/Objects/Tissue/Calibration"
+                "Assets/Objects/Tissue/Calibration",
+                "Assets/Shaders"
             };
             foreach (string folder in folders) Directory.CreateDirectory(folder);
         }
@@ -144,12 +165,18 @@ namespace Urp.ArDemo.Editor
             }
             UniversalRenderPipelineAsset pipeline =
                 AssetDatabase.LoadAssetAtPath<UniversalRenderPipelineAsset>(pipelinePath);
-            if (pipeline != null) AssetDatabase.DeleteAsset(pipelinePath);
-            pipeline = UniversalRenderPipelineAsset.Create(renderer);
-            AssetDatabase.CreateAsset(pipeline, pipelinePath);
+            if (pipeline == null)
+            {
+                pipeline = UniversalRenderPipelineAsset.Create(renderer);
+                AssetDatabase.CreateAsset(pipeline, pipelinePath);
+            }
             pipeline.renderScale = 1f;
             pipeline.supportsHDR = false;
             pipeline.msaaSampleCount = 2;
+            SerializedObject pipelineSerialized = new SerializedObject(pipeline);
+            pipelineSerialized.FindProperty("m_SupportsHDR").boolValue = false;
+            pipelineSerialized.FindProperty("m_MSAA").intValue = 2;
+            pipelineSerialized.ApplyModifiedPropertiesWithoutUndo();
             GraphicsSettings.renderPipelineAsset = pipeline;
             QualitySettings.renderPipeline = pipeline;
             EditorUtility.SetDirty(pipeline);
@@ -215,6 +242,7 @@ namespace Urp.ArDemo.Editor
                 "Assets/Objects/Tissue/Materials/TissueViewerLit.mat", TissueTexturePath, 0.16f);
             Material repairMaterial = CreateLitMaterial(
                 "Assets/Materials/RegisteredBottleCap.mat", null, 0.34f);
+            GameObject bottleOccluder = CreateBottleNeckOccluder();
 
             RestorationObjectProfile bottle = LoadOrCreate<RestorationObjectProfile>(
                 BottleProfilePath);
@@ -223,10 +251,10 @@ namespace Urp.ArDemo.Editor
             bottle.shortDescription = "瓶身保留瓶口与螺纹结构，缺失部分为瓶盖。";
             bottle.viewerDescription =
                 "残缺模型来自清理后的 Meshroom 瓶身；完整模型为离线组合预览。"
-                + "当前物理比例仍需真实测量交叉验证。";
+                + "瓶口外径 34 mm、瓶盖外径 39 mm、高 10 mm 已用于当前视觉标定。";
             bottle.trackingDescription =
                 "使用该对象自己的 ORB 2D—3D 数据和 PnP 位姿驱动已注册瓶盖。"
-                + "只有标定、投影与 Renderer 检查全部通过才显示最终成功状态。";
+                + "跟踪坐标原点位于瓶口中心，并使用瓶颈深度遮挡体改善虚实穿插。";
             bottle.missingPartName = "瓶盖";
             bottle.thumbnail = AssetDatabase.LoadAssetAtPath<Texture2D>(
                 "Assets/Textures/Targets/DamagedBottleOrbViews/orb_view_01.jpg");
@@ -236,10 +264,29 @@ namespace Urp.ArDemo.Editor
                 AssetDatabase.LoadAssetAtPath<GameObject>(BottleCompletePath);
             bottle.registeredRepairPrefab =
                 AssetDatabase.LoadAssetAtPath<GameObject>(BottleRepairPath);
-            bottle.registeredOccluderPrefab = null;
+            bottle.registeredOccluderPrefab = bottleOccluder;
             bottle.orbModelDatabase = AssetDatabase.LoadAssetAtPath<TextAsset>(BottleOrbPath);
-            bottle.calibration =
+            RepairCalibrationProfile bottleCalibration =
                 AssetDatabase.LoadAssetAtPath<RepairCalibrationProfile>(BottleCalibrationPath);
+            bottleCalibration.objectOriginInModel = Vector3.zero;
+            bottleCalibration.mouthCenterInModel = Vector3.zero;
+            bottleCalibration.mouthRightInModel = new Vector3(0.1f, 0f, 0f);
+            bottleCalibration.mouthFrontInModel = new Vector3(0f, 0f, 0.1f);
+            bottleCalibration.neckAxisPointInModel = new Vector3(0f, -0.2f, 0f);
+            bottleCalibration.metersPerModelUnit = 0.17f;
+            bottleCalibration.physicalScaleVerified = true;
+            bottleCalibration.expectedPhysicalNeckDiameter = 0.034f;
+            bottleCalibration.expectedPhysicalCapDiameter = 0.039f;
+            bottleCalibration.expectedPhysicalCapHeight = 0.010f;
+            bottleCalibration.capLocalPosition = Vector3.zero;
+            bottleCalibration.capLocalEulerAngles = Vector3.zero;
+            bottleCalibration.capLocalScale = Vector3.one;
+            bottleCalibration.occluderVerified = false;
+            bottleCalibration.occluderLocalPosition = Vector3.zero;
+            bottleCalibration.occluderLocalEulerAngles = Vector3.zero;
+            bottleCalibration.occluderLocalScale = Vector3.one;
+            EditorUtility.SetDirty(bottleCalibration);
+            bottle.calibration = bottleCalibration;
             bottle.viewerMaterial = bottleMaterial;
             bottle.repairMaterial = repairMaterial;
             bottle.initialGuideMaterial = repairMaterial;
@@ -247,6 +294,30 @@ namespace Urp.ArDemo.Editor
             bottle.viewerMargin = 0.18f;
             bottle.physicalScaleVerified =
                 bottle.calibration != null && bottle.calibration.physicalScaleVerified;
+            bottle.physicalMeasurements = new[]
+            {
+                new PhysicalMeasurement
+                {
+                    label = "瓶口螺纹最外侧直径",
+                    modelDistanceUnits = 0.2f,
+                    realDistanceMeters = 0.034f,
+                    verified = true
+                },
+                new PhysicalMeasurement
+                {
+                    label = "瓶盖外径",
+                    modelDistanceUnits = 0.039f / 0.17f,
+                    realDistanceMeters = 0.039f,
+                    verified = true
+                },
+                new PhysicalMeasurement
+                {
+                    label = "瓶盖高度",
+                    modelDistanceUnits = 0.010f / 0.17f,
+                    realDistanceMeters = 0.010f,
+                    verified = true
+                }
+            };
             EditorUtility.SetDirty(bottle);
 
             RepairCalibrationProfile tissueCalibration =
@@ -424,6 +495,39 @@ namespace Urp.ArDemo.Editor
                     AssetDatabase.LoadAssetAtPath<Texture2D>(texturePath));
             EditorUtility.SetDirty(material);
             return material;
+        }
+
+        private static GameObject CreateBottleNeckOccluder()
+        {
+            Shader shader = AssetDatabase.LoadAssetAtPath<Shader>(OccluderShaderPath);
+            if (shader == null)
+                throw new InvalidOperationException("Depth-only occluder shader is missing.");
+            const string materialPath = "Assets/Materials/BottleNeckOccluder.mat";
+            Material material = AssetDatabase.LoadAssetAtPath<Material>(materialPath);
+            if (material == null)
+            {
+                material = new Material(shader);
+                AssetDatabase.CreateAsset(material, materialPath);
+            }
+            material.shader = shader;
+            material.renderQueue = 1990;
+            EditorUtility.SetDirty(material);
+
+            GameObject root = new GameObject("BottleNeckOccluder");
+            GameObject cylinder = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            cylinder.name = "MeasuredNeckDepth";
+            cylinder.transform.SetParent(root.transform, false);
+            cylinder.transform.localPosition = new Vector3(0f, -0.09f, 0f);
+            cylinder.transform.localScale = new Vector3(0.2f, 0.11f, 0.2f);
+            Collider collider = cylinder.GetComponent<Collider>();
+            if (collider != null) UnityEngine.Object.DestroyImmediate(collider);
+            MeshRenderer renderer = cylinder.GetComponent<MeshRenderer>();
+            renderer.sharedMaterial = material;
+            renderer.shadowCastingMode = ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+            PrefabUtility.SaveAsPrefabAsset(root, BottleOccluderPath);
+            UnityEngine.Object.DestroyImmediate(root);
+            return AssetDatabase.LoadAssetAtPath<GameObject>(BottleOccluderPath);
         }
 
         private static T LoadOrCreate<T>(string path) where T : ScriptableObject

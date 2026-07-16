@@ -157,6 +157,14 @@ namespace Urp.ArDemo
                 {
                     registeredOccluder = Instantiate(profile.registeredOccluderPrefab, modelCoordinateAlignment);
                     registeredOccluder.name = "RegisteredOccluder";
+                    registeredOccluder.transform.localPosition =
+                        calibration != null ? calibration.occluderLocalPosition : Vector3.zero;
+                    registeredOccluder.transform.localRotation = Quaternion.Euler(
+                        calibration != null
+                            ? calibration.occluderLocalEulerAngles
+                            : Vector3.zero);
+                    registeredOccluder.transform.localScale =
+                        calibration != null ? calibration.occluderLocalScale : Vector3.one;
                 }
             }
 

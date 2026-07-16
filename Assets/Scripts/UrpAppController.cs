@@ -146,17 +146,20 @@ namespace Urp.ArDemo
             contentRect.anchorMin = new Vector2(0f, 1f);
             contentRect.anchorMax = new Vector2(1f, 1f);
             contentRect.pivot = new Vector2(0.5f, 1f);
+            contentRect.anchoredPosition = Vector2.zero;
             int count = catalog == null ? 0 : catalog.objects.Length;
-            contentRect.sizeDelta = new Vector2(0f, Mathf.Max(700f, count * 610f));
+            contentRect.sizeDelta = new Vector2(0f, Mathf.Max(700f, 36f + count * 570f
+                + Mathf.Max(0, count - 1) * 28f));
             VerticalLayoutGroup layout = content.AddComponent<VerticalLayoutGroup>();
             layout.padding = new RectOffset(18, 18, 18, 18);
             layout.spacing = 28f;
             layout.childAlignment = TextAnchor.UpperCenter;
-            layout.childControlHeight = false;
+            layout.childControlHeight = true;
             layout.childForceExpandHeight = false;
             layout.childControlWidth = true;
+            layout.childForceExpandWidth = true;
 
-            if (catalog != null)
+            if (catalog != null && count > 0)
             {
                 foreach (RestorationObjectProfile profile in catalog.objects)
                 {
@@ -166,6 +169,10 @@ namespace Urp.ArDemo
                     }
                 }
             }
+            else
+            {
+                BuildCatalogErrorCard(content.transform);
+            }
 
             ScrollRect scroll = viewport.AddComponent<ScrollRect>();
             scroll.viewport = viewport.GetComponent<RectTransform>();
@@ -173,6 +180,7 @@ namespace Urp.ArDemo
             scroll.horizontal = false;
             scroll.vertical = true;
             scroll.movementType = ScrollRect.MovementType.Clamped;
+            LayoutRebuilder.ForceRebuildLayoutImmediate(contentRect);
             return page;
         }
 
@@ -180,9 +188,15 @@ namespace Urp.ArDemo
         {
             GameObject card = CreatePanel(parent, profile.objectId + " Card", Card,
                 Vector2.zero, Vector2.one, true);
+            RectTransform cardRect = card.GetComponent<RectTransform>();
+            cardRect.anchorMin = new Vector2(0f, 1f);
+            cardRect.anchorMax = new Vector2(1f, 1f);
+            cardRect.pivot = new Vector2(0.5f, 1f);
+            cardRect.sizeDelta = new Vector2(0f, 570f);
             LayoutElement element = card.AddComponent<LayoutElement>();
             element.preferredHeight = 570f;
             element.minHeight = 570f;
+            element.flexibleHeight = 0f;
 
             if (profile.thumbnail != null)
             {
@@ -208,6 +222,18 @@ namespace Urp.ArDemo
             CreateButton(card.transform, "进入跟踪修复",
                 new Vector2(0.53f, 0.10f), new Vector2(0.95f, 0.32f),
                 () => SelectAndOpen(profile, Page.Tracking), Card, Ink, 24);
+        }
+
+        private void BuildCatalogErrorCard(Transform parent)
+        {
+            GameObject card = CreatePanel(parent, "Catalog Error Card", Card,
+                Vector2.zero, Vector2.one, true);
+            LayoutElement element = card.AddComponent<LayoutElement>();
+            element.preferredHeight = 260f;
+            element.minHeight = 260f;
+            CreateText(card.transform, "文物目录未加载，请重新安装当前构建。",
+                28, Ink, new Vector2(0.08f, 0.18f), new Vector2(0.92f, 0.82f),
+                TextAnchor.MiddleCenter);
         }
 
         private GameObject BuildResourcePage()
