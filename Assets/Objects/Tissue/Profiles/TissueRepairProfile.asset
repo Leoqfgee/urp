@@ -1,0 +1,45 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7155bfc119d520b4f8912cd4f4e7b4eb, type: 3}
+  m_Name: TissueRepairProfile
+  m_EditorClassIdentifier:
+  objectId: tissue
+  displayName: "Tissue \u91CD\u5EFA\u5BF9\u8C61"
+  shortDescription: "\u6E90\u7167\u7247\u4E2D\u7684\u7EF4\u8FBE\u7EB8\u5DFE\u76D2
+    Meshroom \u91CD\u5EFA\uFF1B\u5F53\u524D\u4EC5\u786E\u8BA4\u4E00\u5957\u5E26\u7EB9\u7406\u7F51\u683C\u3002"
+  viewerDescription: "\u5DF2\u4ECE\u7EFF\u8272\u884C\u674E\u7BB1\u548C\u5BA4\u5185\u80CC\u666F\u4E2D\u63D0\u53D6\u7EB8\u5DFE\u76D2\u4E3B\u4F53\u7528\u4E8E\u4E09\u7EF4\u67E5\u770B\u3002\u6E90\u6570\u636E\u672A\u63D0\u4F9B\u72EC\u7ACB\u5B8C\u6574/\u6B8B\u7F3A\u6A21\u578B\uFF0C\u56E0\u6B64\u5B8C\u6574\u6A21\u578B\u5165\u53E3\u4F1A\u660E\u786E\u63D0\u793A\u8D44\u6599\u7F3A\u5931\u3002"
+  trackingDescription: "\u5F53\u524D\u5BF9\u8C61\u7684 ORB \u6570\u636E\u3001\u4FEE\u590D\u90E8\u4EF6\u4E0E\u8FDE\u63A5\u533A\u57DF\u4ECD\u9700\u5B8C\u6210\u6807\u5B9A\uFF0C\u4E0D\u4F1A\u52A0\u8F7D\u996E\u6599\u74F6\u7684\u6A21\u578B\u3001\u6587\u5B57\u6216\u6807\u5B9A\u53C2\u6570\u3002"
+  missingPartName: "\u5C1A\u672A\u786E\u8BA4"
+  thumbnail: {fileID: 2800000, guid: dda67d44dd8171040a4261f1ce529e0e, type: 3}
+  damagedViewerPrefab: {fileID: 919132149155446097, guid: 511844f05a59ddf46b515d520debbf1b, type: 3}
+  completeViewerPrefab: {fileID: 0}
+  viewerMaterial: {fileID: 2100000, guid: 4974899771addaf4a975bfe84f8d8bab, type: 2}
+  defaultViewerEuler: {x: -90, y: 0, z: 0}
+  viewerMargin: 0.2
+  registeredRepairPrefab: {fileID: 0}
+  registeredOccluderPrefab: {fileID: 0}
+  orbModelDatabase: {fileID: 0}
+  calibration: {fileID: 11400000, guid: 0e0f947f5eb4f2d48b14c0da7afb59a2, type: 2}
+  trackingSettings:
+    minimumGoodMatches: 24
+    minimumPoseInliers: 20
+    minimumInlierRatio: 0.5
+    maximumReprojectionErrorPixels: 2.5
+    minimumCoverageX: 0.12
+    minimumCoverageY: 0.2
+    lostPoseGraceSeconds: 0.45
+    maximumPositionJumpMeters: 0.16
+    maximumRotationJumpDegrees: 32
+  repairMaterial: {fileID: 0}
+  initialGuideMaterial: {fileID: 0}
+  physicalScaleVerified: 0
+  physicalMeasurements: []

@@ -1,5 +1,4 @@
 using UnityEngine;
-using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 namespace Urp.ArDemo
@@ -7,29 +6,49 @@ namespace Urp.ArDemo
     public sealed class ModelViewerController : MonoBehaviour
     {
         [SerializeField] private Camera viewerCamera;
-        [SerializeField] private Transform damagedModel;
-        [SerializeField] private Transform completeModel;
-        [SerializeField] private RectTransform interactionArea;
+        [SerializeField] private Transform modelViewRoot;
+        [SerializeField] private RawImage viewportImage;
         [SerializeField] private Text statusText;
         [SerializeField] private float rotationSensitivity = 0.18f;
         [SerializeField] private float minimumZoom = 0.5f;
         [SerializeField] private float maximumZoom = 2.5f;
+        [SerializeField] private int maximumRenderTextureSize = 1536;
 
+        private ModelViewportInputHandler viewport;
+        private RestorationObjectProfile profile;
+        private Transform modelPivot;
+        private Transform actualModel;
+        private GameObject damagedInstance;
+        private GameObject completeInstance;
+        private RenderTexture renderTexture;
         private ModelViewState damagedState;
         private ModelViewState completeState;
         private ModelViewState activeState;
-        private bool mouseDragging;
-        private Vector2 previousMouse;
+        private bool gesturesBlocked;
         private float previousPinchDistance;
+        private Vector2Int lastTextureSize;
 
-        public void BindStatusText(Text value)
+        public Camera ViewerCamera => viewerCamera;
+        public RawImage ViewportImage => viewportImage;
+        public Transform ActiveModel => actualModel;
+
+        public void BindStatusText(Text value) => statusText = value;
+        public void BindViewportImage(RawImage value) => viewportImage = value;
+        public void BindViewport(ModelViewportInputHandler value) => viewport = value;
+        public void SetGesturesBlocked(bool value)
         {
-            statusText = value;
+            gesturesBlocked = value;
+            if (value)
+            {
+                EndPointerDrag();
+            }
         }
 
-        public void BindInteractionArea(RectTransform value)
+        public void SetProfile(RestorationObjectProfile value)
         {
-            interactionArea = value;
+            profile = value;
+            BuildProfileModels();
+            ShowDamagedModel();
         }
 
         public void SetViewerEnabled(bool enabled)
@@ -37,58 +56,112 @@ namespace Urp.ArDemo
             if (viewerCamera != null)
             {
                 viewerCamera.gameObject.SetActive(enabled);
+                viewerCamera.enabled = enabled;
+                viewerCamera.targetTexture = enabled ? renderTexture : null;
             }
 
-            mouseDragging = false;
+            if (enabled)
+            {
+                EnsureRenderTexture(true);
+                ReframeActiveModel();
+            }
+            else
+            {
+                ReleaseRenderTexture();
+            }
+
             previousPinchDistance = 0f;
         }
 
         public void ShowDamagedModel()
         {
-            SetActiveState(damagedState);
-            UpdateStatus("残缺模型：单指拖动旋转，双指捏合缩放。");
+            SetActiveState(damagedState, damagedInstance, completeInstance);
+            UpdateStatus(profile == null
+                ? "请选择对象。"
+                : $"{profile.displayName} · 残缺模型");
         }
 
         public void ShowCompleteModel()
         {
-            SetActiveState(completeState);
-            UpdateStatus("完整模型：单指拖动旋转，双指捏合缩放。");
+            ModelViewState requested = completeState ?? damagedState;
+            SetActiveState(requested, completeInstance ?? damagedInstance, damagedInstance);
+            UpdateStatus(completeInstance == null
+                ? "当前仅有一套重建模型，完整模型尚未提供。"
+                : $"{profile.displayName} · 完整模型");
         }
 
         public void ResetView()
         {
             activeState?.Reset();
+            ReframeActiveModel();
             UpdateStatus("已恢复当前模型的标准视角。");
         }
 
-        private void Awake()
+        public void BeginPointerDrag(Vector2 position)
         {
-            damagedState = new ModelViewState(damagedModel);
-            completeState = new ModelViewState(completeModel);
-            ShowDamagedModel();
+            if (!gesturesBlocked && viewport != null && viewport.Contains(position))
+            {
+                activeState?.BeginDrag();
+            }
         }
 
-        private void Update()
+        public void DragPointer(Vector2 delta)
         {
-            if (viewerCamera == null
-                || !viewerCamera.gameObject.activeInHierarchy
-                || activeState == null
-                || activeState.Transform == null)
+            if (!gesturesBlocked && activeState != null && activeState.IsDragging)
+            {
+                Rotate(delta);
+            }
+        }
+
+        public void EndPointerDrag()
+        {
+            activeState?.EndDrag();
+        }
+
+        public void Scroll(float amount)
+        {
+            if (gesturesBlocked || activeState == null || Mathf.Abs(amount) < 0.001f)
             {
                 return;
             }
 
+            activeState.Zoom = Mathf.Clamp(
+                activeState.Zoom * Mathf.Exp(amount * 0.12f),
+                minimumZoom,
+                maximumZoom);
+            activeState.Apply();
+        }
+
+        private void Update()
+        {
+            if (viewerCamera == null || !viewerCamera.isActiveAndEnabled || activeState == null)
+            {
+                return;
+            }
+
+            EnsureRenderTexture(false);
             HandleTouches();
-            HandleMouse();
+        }
+
+        private void OnDestroy()
+        {
+            ReleaseRenderTexture();
         }
 
         private void HandleTouches()
         {
+            if (gesturesBlocked || viewport == null)
+            {
+                previousPinchDistance = 0f;
+                return;
+            }
+
             if (Input.touchCount >= 2)
             {
                 Touch first = Input.GetTouch(0);
                 Touch second = Input.GetTouch(1);
-                if (!Contains(first.position) || !Contains(second.position))
+                activeState.EndDrag();
+                if (!viewport.Contains(first.position) || !viewport.Contains(second.position))
                 {
                     previousPinchDistance = 0f;
                     return;
@@ -97,8 +170,10 @@ namespace Urp.ArDemo
                 float distance = Vector2.Distance(first.position, second.position);
                 if (previousPinchDistance > 1f)
                 {
-                    activeState.Zoom *= distance / previousPinchDistance;
-                    activeState.Zoom = Mathf.Clamp(activeState.Zoom, minimumZoom, maximumZoom);
+                    activeState.Zoom = Mathf.Clamp(
+                        activeState.Zoom * distance / previousPinchDistance,
+                        minimumZoom,
+                        maximumZoom);
                     activeState.Apply();
                 }
 
@@ -109,49 +184,22 @@ namespace Urp.ArDemo
             previousPinchDistance = 0f;
             if (Input.touchCount != 1)
             {
+                activeState.EndDrag();
                 return;
             }
 
             Touch touch = Input.GetTouch(0);
-            if (touch.phase != TouchPhase.Moved
-                || !Contains(touch.position)
-                || IsOverBlockingUi(touch.fingerId))
+            if (touch.phase == TouchPhase.Began && viewport.Contains(touch.position))
             {
-                return;
+                activeState.BeginDrag();
             }
-
-            Rotate(touch.deltaPosition);
-        }
-
-        private void HandleMouse()
-        {
-            Vector2 pointer = Input.mousePosition;
-            if (Input.GetMouseButtonDown(0) && Contains(pointer) && !IsOverBlockingUi())
+            else if (touch.phase == TouchPhase.Moved && activeState.IsDragging)
             {
-                previousMouse = pointer;
-                mouseDragging = true;
+                Rotate(touch.deltaPosition);
             }
-            else if (Input.GetMouseButtonUp(0))
+            else if (touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled)
             {
-                mouseDragging = false;
-            }
-            else if (mouseDragging && Input.GetMouseButton(0))
-            {
-                Rotate(pointer - previousMouse);
-                previousMouse = pointer;
-            }
-
-            if (Contains(pointer))
-            {
-                float wheel = Input.mouseScrollDelta.y;
-                if (Mathf.Abs(wheel) > 0.001f)
-                {
-                    activeState.Zoom = Mathf.Clamp(
-                        activeState.Zoom * Mathf.Exp(wheel * 0.12f),
-                        minimumZoom,
-                        maximumZoom);
-                    activeState.Apply();
-                }
+                activeState.EndDrag();
             }
         }
 
@@ -165,34 +213,154 @@ namespace Urp.ArDemo
             activeState.Apply();
         }
 
-        private void SetActiveState(ModelViewState state)
+        private void BuildProfileModels()
         {
-            activeState = state;
-            if (damagedModel != null)
+            if (modelViewRoot == null)
             {
-                damagedModel.gameObject.SetActive(state == damagedState);
+                modelViewRoot = transform;
             }
 
-            if (completeModel != null)
+            if (damagedInstance != null)
             {
-                completeModel.gameObject.SetActive(state == completeState);
+                Destroy(damagedInstance);
+            }
+
+            if (completeInstance != null)
+            {
+                Destroy(completeInstance);
+            }
+
+            damagedInstance = InstantiateModel(profile?.damagedViewerPrefab, "Damaged Viewer Model");
+            completeInstance = InstantiateModel(profile?.completeViewerPrefab, "Complete Viewer Model");
+            damagedState = damagedInstance == null ? null : new ModelViewState(damagedInstance.transform);
+            completeState = completeInstance == null ? null : new ModelViewState(completeInstance.transform);
+        }
+
+        private GameObject InstantiateModel(GameObject prefab, string instanceName)
+        {
+            if (prefab == null)
+            {
+                return null;
+            }
+
+            GameObject pivotObject = new GameObject(instanceName + " Pivot");
+            pivotObject.transform.SetParent(modelViewRoot, false);
+            GameObject instance = Instantiate(prefab, pivotObject.transform);
+            instance.name = instanceName;
+            instance.transform.localPosition = Vector3.zero;
+            instance.transform.localRotation = Quaternion.Euler(profile.defaultViewerEuler);
+            SetLayerRecursively(instance, viewerCamera.gameObject.layer);
+            if (profile.viewerMaterial != null)
+            {
+                foreach (Renderer renderer in instance.GetComponentsInChildren<Renderer>(true))
+                {
+                    renderer.sharedMaterial = profile.viewerMaterial;
+                }
+            }
+
+            Bounds bounds = CalculateBounds(instance);
+            instance.transform.position += pivotObject.transform.position - bounds.center;
+            pivotObject.SetActive(false);
+            return pivotObject;
+        }
+
+        private void SetActiveState(ModelViewState state, GameObject active, GameObject inactive)
+        {
+            activeState = state;
+            if (inactive != null)
+            {
+                inactive.SetActive(false);
+            }
+
+            if (active != null)
+            {
+                active.SetActive(true);
+                actualModel = active.transform;
             }
 
             activeState?.Reset();
+            ReframeActiveModel();
         }
 
-        private bool Contains(Vector2 screenPosition)
+        private void ReframeActiveModel()
         {
-            return interactionArea == null
-                || RectTransformUtility.RectangleContainsScreenPoint(interactionArea, screenPosition);
+            if (viewerCamera == null || actualModel == null || !actualModel.gameObject.activeInHierarchy)
+            {
+                return;
+            }
+
+            Bounds bounds = CalculateBounds(actualModel.gameObject);
+            float radius = Mathf.Max(0.01f, bounds.extents.magnitude);
+            float aspect = renderTexture != null
+                ? renderTexture.width / (float)Mathf.Max(1, renderTexture.height)
+                : Mathf.Max(0.1f, viewerCamera.aspect);
+            float verticalHalf = viewerCamera.fieldOfView * Mathf.Deg2Rad * 0.5f;
+            float horizontalHalf = Mathf.Atan(Mathf.Tan(verticalHalf) * aspect);
+            float margin = Mathf.Clamp(profile != null ? profile.viewerMargin : 0.18f, 0.05f, 0.5f);
+            float verticalDistance = bounds.extents.y / Mathf.Max(0.01f, Mathf.Tan(verticalHalf));
+            float horizontalDistance = bounds.extents.x / Mathf.Max(0.01f, Mathf.Tan(horizontalHalf));
+            float distance = (Mathf.Max(verticalDistance, horizontalDistance) + bounds.extents.z)
+                * (1f + margin);
+
+            viewerCamera.transform.position = bounds.center - Vector3.forward * distance;
+            viewerCamera.transform.rotation = Quaternion.identity;
+            viewerCamera.nearClipPlane = Mathf.Max(0.005f, distance - radius * 1.5f);
+            viewerCamera.farClipPlane = Mathf.Max(viewerCamera.nearClipPlane + 1f, distance + radius * 3f);
         }
 
-        private static bool IsOverBlockingUi(int pointerId = -1)
+        private void EnsureRenderTexture(bool force)
         {
-            return EventSystem.current != null
-                && (pointerId >= 0
-                    ? EventSystem.current.IsPointerOverGameObject(pointerId)
-                    : EventSystem.current.IsPointerOverGameObject());
+            if (viewportImage == null || viewerCamera == null)
+            {
+                return;
+            }
+
+            Rect rect = viewportImage.rectTransform.rect;
+            float scale = canvasScale(viewportImage.canvas);
+            int width = Mathf.Clamp(Mathf.RoundToInt(rect.width * scale), 64, maximumRenderTextureSize);
+            int height = Mathf.Clamp(Mathf.RoundToInt(rect.height * scale), 64, maximumRenderTextureSize);
+            Vector2Int size = new Vector2Int(width, height);
+            if (!force && renderTexture != null && size == lastTextureSize)
+            {
+                return;
+            }
+
+            ReleaseRenderTexture();
+            renderTexture = new RenderTexture(width, height, 24, RenderTextureFormat.ARGB32)
+            {
+                name = "URP Model Viewport",
+                antiAliasing = 2,
+                useMipMap = false
+            };
+            renderTexture.Create();
+            lastTextureSize = size;
+            viewportImage.texture = renderTexture;
+            viewerCamera.targetTexture = renderTexture;
+        }
+
+        private static float canvasScale(Canvas value)
+        {
+            return value == null ? 1f : Mathf.Max(0.01f, value.scaleFactor);
+        }
+
+        private void ReleaseRenderTexture()
+        {
+            if (viewerCamera != null && viewerCamera.targetTexture == renderTexture)
+            {
+                viewerCamera.targetTexture = null;
+            }
+
+            if (viewportImage != null && viewportImage.texture == renderTexture)
+            {
+                viewportImage.texture = null;
+            }
+
+            if (renderTexture != null)
+            {
+                renderTexture.Release();
+                Destroy(renderTexture);
+                renderTexture = null;
+            }
         }
 
         private void UpdateStatus(string message)
@@ -200,6 +368,32 @@ namespace Urp.ArDemo
             if (statusText != null)
             {
                 statusText.text = message;
+            }
+        }
+
+        private static Bounds CalculateBounds(GameObject root)
+        {
+            Renderer[] renderers = root.GetComponentsInChildren<Renderer>(true);
+            if (renderers.Length == 0)
+            {
+                return new Bounds(root.transform.position, Vector3.one);
+            }
+
+            Bounds bounds = renderers[0].bounds;
+            for (int index = 1; index < renderers.Length; index++)
+            {
+                bounds.Encapsulate(renderers[index].bounds);
+            }
+
+            return bounds;
+        }
+
+        private static void SetLayerRecursively(GameObject root, int layer)
+        {
+            root.layer = layer;
+            foreach (Transform child in root.transform)
+            {
+                SetLayerRecursively(child.gameObject, layer);
             }
         }
 
@@ -212,11 +406,6 @@ namespace Urp.ArDemo
             public ModelViewState(Transform transform)
             {
                 Transform = transform;
-                if (transform == null)
-                {
-                    return;
-                }
-
                 initialPosition = transform.localPosition;
                 initialRotation = transform.localRotation;
                 initialScale = transform.localScale;
@@ -226,29 +415,26 @@ namespace Urp.ArDemo
             public float Yaw { get; set; }
             public float Pitch { get; set; }
             public float Zoom { get; set; } = 1f;
+            public bool IsDragging { get; private set; }
+
+            public void BeginDrag() => IsDragging = true;
+            public void EndDrag() => IsDragging = false;
 
             public void Reset()
             {
-                if (Transform == null)
-                {
-                    return;
-                }
-
                 Yaw = 0f;
                 Pitch = 0f;
                 Zoom = 1f;
                 Transform.localPosition = initialPosition;
-                Apply();
+                Transform.localRotation = initialRotation;
+                Transform.localScale = initialScale;
+                IsDragging = false;
             }
 
             public void Apply()
             {
-                if (Transform == null)
-                {
-                    return;
-                }
-
-                Transform.localRotation = initialRotation * Quaternion.Euler(Pitch, Yaw, 0f);
+                Transform.localRotation =
+                    initialRotation * Quaternion.Euler(Pitch, Yaw, 0f);
                 Transform.localScale = initialScale * Zoom;
             }
         }

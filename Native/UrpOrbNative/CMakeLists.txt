@@ -18,3 +18,10 @@ target_link_libraries(UrpOrbNative
     ${OpenCV_LIBS}
     log
 )
+
+if(ANDROID AND CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
+    target_link_options(UrpOrbNative PRIVATE
+        "-Wl,-z,max-page-size=16384"
+        "-Wl,-z,common-page-size=16384"
+    )
+endif()

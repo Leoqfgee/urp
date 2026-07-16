@@ -1,0 +1,23 @@
+{
+  "object_id": "tissue",
+  "temporary_display_name": "Tissue 重建对象",
+  "source_is_import_only": true,
+  "source_files": {
+    "mesh": {
+      "name": "texturedMesh.obj",
+      "sha256": "2EF2FEC0D98F1B1F5C081D530400E52C8B7E44C5932814770D5152BFB7952E31"
+    },
+    "material": {
+      "name": "texturedMesh.mtl",
+      "sha256": "BA51E2165498E806C3877D67E504B94C110BCC4E1BFB833DAF624EFA6899EC19"
+    },
+    "texture": {
+      "name": "texture_1001.png",
+      "sha256": "EEA31B68C688C3298F44205C5FD3C408346B5AD16A855E1389CCA2ABFEE7FEB5"
+    }
+  },
+  "capture_frame_count": 299,
+  "sfm_structure_available": false,
+  "physical_measurements_available": false,
+  "missing_region_confirmed": false
+}

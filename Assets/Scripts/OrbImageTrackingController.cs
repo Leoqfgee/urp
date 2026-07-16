@@ -17,12 +17,11 @@ namespace Urp.ArDemo
 
         [Header("Object-coordinate overlay")]
         [SerializeField] private Transform trackedObjectPoseRoot;
-        [SerializeField] private Transform registeredBottleCap;
-        [SerializeField] private RepairCalibrationProfile calibration;
+        [SerializeField] private Transform modelCoordinateAlignment;
         [SerializeField] private Text statusText;
 
-        [Header("ORB database")]
-        [SerializeField] private TextAsset[] orbModelFiles;
+        [Header("Runtime profile")]
+        [SerializeField] private RestorationObjectProfile activeProfile;
         [SerializeField] private int maxFrameWidth = 640;
         [SerializeField] private int minGoodMatches = 24;
         [SerializeField] private int minPoseInliers = 20;
@@ -59,24 +58,25 @@ namespace Urp.ArDemo
         private Vector3 lastTargetPosition;
         private Quaternion lastTargetRotation;
         private int rejectedJumpFrames;
+        private Transform registeredRepairPart;
+        private GameObject registeredOccluder;
+        private RepairCalibrationProfile calibration;
 
         public bool HasTrackedPose => hasTrackedPose;
 
         private void Awake()
         {
             materialProperties = new MaterialPropertyBlock();
-            if (registeredBottleCap != null)
-            {
-                capRenderers = registeredBottleCap.GetComponentsInChildren<Renderer>(true);
-            }
-
             if (trackedObjectPoseRoot != null)
             {
                 trackedObjectPoseRoot.gameObject.SetActive(false);
             }
 
-            BuildTrackers();
             Debug.Log($"URP native tracker version: {NativeOrbTracker.BuildVersion}");
+            if (activeProfile != null)
+            {
+                SetProfile(activeProfile);
+            }
         }
 
         private void OnDestroy()
@@ -102,14 +102,89 @@ namespace Urp.ArDemo
             statusText = value;
         }
 
+        public void SetProfile(RestorationObjectProfile profile)
+        {
+            activeProfile = profile;
+            calibration = profile != null ? profile.calibration : null;
+            if (profile != null && profile.trackingSettings != null)
+            {
+                minGoodMatches = profile.trackingSettings.minimumGoodMatches;
+                minPoseInliers = profile.trackingSettings.minimumPoseInliers;
+                minimumInlierRatio = profile.trackingSettings.minimumInlierRatio;
+                maximumReprojectionErrorPixels =
+                    profile.trackingSettings.maximumReprojectionErrorPixels;
+                minimumCoverageX = profile.trackingSettings.minimumCoverageX;
+                minimumCoverageY = profile.trackingSettings.minimumCoverageY;
+                lostPoseGraceSeconds = profile.trackingSettings.lostPoseGraceSeconds;
+                maximumPositionJumpMeters =
+                    profile.trackingSettings.maximumPositionJumpMeters;
+                maximumRotationJumpDegrees =
+                    profile.trackingSettings.maximumRotationJumpDegrees;
+            }
+            foreach (NativeOrbTracker tracker in trackers)
+            {
+                tracker.Dispose();
+            }
+            trackers.Clear();
+
+            if (registeredRepairPart != null)
+            {
+                Destroy(registeredRepairPart.gameObject);
+            }
+            if (registeredOccluder != null)
+            {
+                Destroy(registeredOccluder);
+            }
+
+            registeredRepairPart = null;
+            registeredOccluder = null;
+            capRenderers = null;
+            if (profile != null && modelCoordinateAlignment != null)
+            {
+                if (profile.registeredRepairPrefab != null)
+                {
+                    GameObject repair = Instantiate(profile.registeredRepairPrefab, modelCoordinateAlignment);
+                    repair.name = "RegisteredRepairPart";
+                    repair.transform.localPosition = calibration != null ? calibration.capLocalPosition : Vector3.zero;
+                    repair.transform.localRotation = Quaternion.Euler(
+                        calibration != null ? calibration.capLocalEulerAngles : Vector3.zero);
+                    repair.transform.localScale = calibration != null ? calibration.capLocalScale : Vector3.one;
+                    ApplyMaterial(repair, profile.repairMaterial);
+                    registeredRepairPart = repair.transform;
+                    capRenderers = repair.GetComponentsInChildren<Renderer>(true);
+                }
+                if (profile.registeredOccluderPrefab != null)
+                {
+                    registeredOccluder = Instantiate(profile.registeredOccluderPrefab, modelCoordinateAlignment);
+                    registeredOccluder.name = "RegisteredOccluder";
+                }
+            }
+
+            BuildTrackers();
+            ResetTracking();
+        }
+
         public void SetTrackingEnabled(bool enabled)
         {
             modeEnabled = enabled;
             recognitionRunning = false;
             if (enabled)
             {
+                if (activeProfile == null)
+                {
+                    UpdateStatus("尚未选择跟踪对象。");
+                    return;
+                }
+                if (!activeProfile.HasTrackingAssets)
+                {
+                    HideOverlay(true);
+                    UpdateStatus(
+                        $"{activeProfile.displayName} 的 ORB 数据、修复部件与连接区域仍需完成标定。");
+                    return;
+                }
                 ShowInitialPose();
-                UpdateStatus("移动手机，使参考瓶盖与真实瓶口大致重合，然后点击“开始”。");
+                UpdateStatus(
+                    $"移动手机，使参考修复部件与 {activeProfile.missingPartName} 大致重合，然后点击“开始”。");
             }
             else
             {
@@ -119,14 +194,15 @@ namespace Urp.ArDemo
 
         public void StartRecognition()
         {
-            if (!modeEnabled)
+            if (!modeEnabled || activeProfile == null || !activeProfile.HasTrackingAssets)
             {
+                UpdateStatus("当前对象尚不具备可用的独立跟踪与修复标定数据。");
                 return;
             }
 
             recognitionRunning = true;
             nextProcessTime = 0f;
-            UpdateStatus("正在识别瓶身，请保持瓶口和瓶身文字清晰可见。");
+            UpdateStatus($"正在识别 {activeProfile.displayName}，请保持主体特征清晰可见。");
         }
 
         public void ResetTracking()
@@ -151,12 +227,12 @@ namespace Urp.ArDemo
         private void BuildTrackers()
         {
             trackers.Clear();
-            if (orbModelFiles == null)
+            if (activeProfile == null || activeProfile.orbModelDatabase == null)
             {
                 return;
             }
 
-            foreach (TextAsset model in orbModelFiles)
+            foreach (TextAsset model in new[] { activeProfile.orbModelDatabase })
             {
                 if (model == null)
                 {
@@ -180,7 +256,7 @@ namespace Urp.ArDemo
 
             if (trackers.Count == 0)
             {
-                UpdateStatus("ORB 三维特征库加载失败。");
+                UpdateStatus($"{activeProfile.displayName} 的 ORB 三维特征库加载失败。");
             }
         }
 
@@ -230,7 +306,7 @@ namespace Urp.ArDemo
                 if (!hasResult)
                 {
                     HideOverlay(false);
-                    UpdateStatus("尚未找到稳定的瓶身三维位姿。");
+                    UpdateStatus($"已识别 {activeProfile.displayName}，正在求解稳定姿态。");
                     return;
                 }
 
@@ -250,7 +326,7 @@ namespace Urp.ArDemo
                         out Quaternion targetRotation))
                 {
                     HideOverlay(false);
-                    UpdateStatus("瓶身位姿有效，但坐标转换结果无效。");
+                    UpdateStatus("对象位姿有效，但坐标转换结果无效。");
                     return;
                 }
 
@@ -266,20 +342,21 @@ namespace Urp.ArDemo
                 trackedObjectPoseRoot.gameObject.SetActive(repairVisibleRequested);
                 lastValidPoseTime = Time.unscaledTime;
 
-                if (!ValidateCapVisibility(out string visibilityReason))
+                if (!ValidateRepairVisibility(out string visibilityReason))
                 {
-                    UpdateStatus($"瓶身位姿有效，但修复模型未进入有效视野：{visibilityReason}");
+                    UpdateStatus($"对象位姿有效，正在验证修复部件位置：{visibilityReason}");
                     return;
                 }
 
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
                 UpdateStatus(
-                    $"跟踪稳定：内点 {best.poseInliers}，比例 {best.inlierRatio:P0}，"
-                    + $"误差 {best.reprojectionError:F2}px，耗时 {best.processingMilliseconds:F0}ms。");
+                    $"位姿有效：{activeProfile.objectId}，内点 {best.poseInliers}，"
+                    + $"比例 {best.inlierRatio:P0}，误差 {best.reprojectionError:F2}px；"
+                    + $"标定 {(activeProfile.physicalScaleVerified ? "已验证" : "未验证")}。");
 #else
-                UpdateStatus(calibration.physicalScaleVerified
-                    ? "跟踪稳定，虚拟瓶盖已叠加至瓶口。"
-                    : "跟踪稳定，虚拟瓶盖已叠加；当前物理尺寸仍待实测标定。");
+                UpdateStatus(activeProfile.physicalScaleVerified
+                    ? "跟踪稳定，修复部件已进入有效视野并通过标定检查。"
+                    : "修复部件已进入视野，但物理尺寸与连接区域标定尚未验证。");
 #endif
             }
             finally
@@ -292,7 +369,7 @@ namespace Urp.ArDemo
         {
             if (result.goodMatches < minGoodMatches)
             {
-                reason = $"正在搜索瓶身：有效匹配 {result.goodMatches}/{minGoodMatches}。";
+                reason = $"正在搜索对象：有效匹配 {result.goodMatches}/{minGoodMatches}。";
                 return false;
             }
 
@@ -303,7 +380,7 @@ namespace Urp.ArDemo
                 || result.coverageX < minimumCoverageX
                 || result.coverageY < minimumCoverageY)
             {
-                reason = "已识别瓶身，但当前特征分布或位姿稳定性不足。";
+                reason = "已识别对象，但当前特征分布或位姿稳定性不足。";
                 return false;
             }
 
@@ -397,11 +474,11 @@ namespace Urp.ArDemo
             trackedObjectPoseRoot.gameObject.SetActive(repairVisibleRequested);
         }
 
-        private bool ValidateCapVisibility(out string reason)
+        private bool ValidateRepairVisibility(out string reason)
         {
-            if (registeredBottleCap == null || !registeredBottleCap.gameObject.activeInHierarchy)
+            if (registeredRepairPart == null || !registeredRepairPart.gameObject.activeInHierarchy)
             {
-                reason = "瓶盖对象未激活";
+                reason = "修复部件未激活";
                 return false;
             }
 
@@ -427,7 +504,7 @@ namespace Urp.ArDemo
 
             if (!initialized)
             {
-                reason = "瓶盖没有启用的 Renderer";
+                reason = "修复部件没有启用的 Renderer";
                 return false;
             }
 
@@ -439,19 +516,25 @@ namespace Urp.ArDemo
                 Vector2.Distance(center, side)) * 2f;
             if (center.z <= 0f)
             {
-                reason = "瓶盖位于相机后方";
+                reason = "修复部件位于相机后方";
                 return false;
             }
 
             if (center.x < -0.15f || center.x > 1.15f || center.y < -0.15f || center.y > 1.15f)
             {
-                reason = "瓶盖投影位于屏幕外";
+                reason = "修复部件投影位于屏幕外";
                 return false;
             }
 
             if (screenSize < 0.008f || screenSize > 0.45f)
             {
-                reason = "瓶盖屏幕尺寸不合理";
+                reason = "修复部件屏幕尺寸不合理";
+                return false;
+            }
+
+            if (activeProfile == null || !activeProfile.physicalScaleVerified)
+            {
+                reason = "修复部件已进入视野，但标定尚未验证";
                 return false;
             }
 
@@ -591,6 +674,18 @@ namespace Urp.ArDemo
             if (statusText != null)
             {
                 statusText.text = message;
+            }
+        }
+
+        private static void ApplyMaterial(GameObject root, Material material)
+        {
+            if (root == null || material == null)
+            {
+                return;
+            }
+            foreach (Renderer renderer in root.GetComponentsInChildren<Renderer>(true))
+            {
+                renderer.sharedMaterial = material;
             }
         }
     }

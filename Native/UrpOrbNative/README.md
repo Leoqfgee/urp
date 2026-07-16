@@ -27,3 +27,7 @@ cmake --build $build --config Release -j 8
 Copy the resulting `libUrpOrbNative.so` into:
 
 `Assets/Plugins/Android/arm64-v8a/libUrpOrbNative.so`
+
+The CMake target explicitly links ARM64 builds with a 16 KB maximum/common
+page size. Verify every ELF `LOAD` segment reports alignment `0x4000` before
+packaging for Android 15+.

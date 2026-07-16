@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
 using UnityEditor.Build;
@@ -10,6 +9,7 @@ using UnityEditor.XR.Management.Metadata;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 using UnityEngine.SceneManagement;
 using UnityEngine.XR.ARFoundation;
 using UnityEngine.XR.Management;
@@ -20,20 +20,30 @@ namespace Urp.ArDemo.Editor
     public static class UrpArProjectSetup
     {
         private const string ScenePath = "Assets/Scenes/UrpARPrototype.unity";
-        private const string CalibrationPath =
-            "Assets/Calibration/CoconutBottleRepairCalibration.asset";
-        private const string ChineseFontPath = "Assets/Fonts/NotoSansSC-Regular.otf";
-        private const string GlobalOrbModelPath = "Assets/OrbModels/bottle_global.bytes";
-        private const string DamagedProcessedPath =
+        private const string FontPath = "Assets/Fonts/NotoSansSC-Regular.otf";
+        private const string BottleDamagedPath =
             "Assets/Models/MeshroomBottleDamagedProcessed/damaged_bottle_processed.obj";
-        private const string DamagedAlbedoPath =
+        private const string BottleCompletePath =
+            "Assets/Models/MeshroomBottleFullProcessed/complete_bottle_processed.obj";
+        private const string BottleTexturePath =
             "Assets/Models/MeshroomBottleDamagedProcessed/damaged_bottle_processed_albedo.png";
-        private const string RegisteredCapPath =
+        private const string BottleRepairPath =
             "Assets/Models/RegisteredRepair/coconut_bottle_cap_registered.obj";
-        private const string ViewerCapPath =
-            "Assets/Models/MeshroomCapProcessed/meshroom_cap_processed.obj";
-        private const string ObjectThumbnailPath =
-            "Assets/Textures/Targets/DamagedBottleOrbViews/orb_view_01.jpg";
+        private const string BottleOrbPath = "Assets/OrbModels/bottle_global.bytes";
+        private const string BottleCalibrationPath =
+            "Assets/Calibration/CoconutBottleRepairCalibration.asset";
+        private const string TissueModelPath =
+            "Assets/Objects/Tissue/Viewer/Processed/tissue_processed.obj";
+        private const string TissueTexturePath =
+            "Assets/Objects/Tissue/Viewer/Processed/tissue_albedo.png";
+        private const string TissueThumbnailPath =
+            "Assets/Objects/Tissue/Thumbnails/tissue_front.png";
+        private const string BottleProfilePath =
+            "Assets/Objects/CoconutBottle/Profiles/CoconutBottleRepairProfile.asset";
+        private const string TissueProfilePath =
+            "Assets/Objects/Tissue/Profiles/TissueRepairProfile.asset";
+        private const string CatalogPath =
+            "Assets/Objects/RestorationObjectCatalog.asset";
 
         [MenuItem("URP AR/Setup Prototype Scene")]
         public static void SetupPrototypeScene()
@@ -41,30 +51,29 @@ namespace Urp.ArDemo.Editor
             EnsureFolders();
             ConfigureAndroidProject();
             ConfigureXRManagement();
+            ConfigureRenderPipeline();
+            AssetDatabase.Refresh();
             ConfigureImportedAssets();
-            CreatePrototypeScene();
+            RestorationObjectCatalog catalog = CreateProfiles();
+            CreatePrototypeScene(catalog);
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
         }
 
-        public static void SetupFromCommandLine()
-        {
-            SetupPrototypeScene();
-        }
+        public static void SetupFromCommandLine() => SetupPrototypeScene();
 
         public static void BuildAndroidFromCommandLine()
         {
             SetupPrototypeScene();
             Directory.CreateDirectory("Builds");
-            BuildPlayerOptions options = new BuildPlayerOptions
+            BuildReport report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
             {
                 scenes = new[] { ScenePath },
                 locationPathName = "Builds/urp-ar-rebuilt.apk",
                 target = BuildTarget.Android,
                 targetGroup = BuildTargetGroup.Android,
                 options = BuildOptions.None
-            };
-            BuildReport report = BuildPipeline.BuildPlayer(options);
+            });
             if (report.summary.result != BuildResult.Succeeded)
             {
                 throw new BuildFailedException($"Android build failed: {report.summary.result}");
@@ -75,83 +84,85 @@ namespace Urp.ArDemo.Editor
         {
             string[] folders =
             {
-                "Assets/Calibration",
-                "Assets/Docs",
-                "Assets/Materials",
-                "Assets/Models/RegisteredRepair",
-                "Assets/Scripts/Calibration"
+                "Assets/Calibration", "Assets/Docs", "Assets/Materials",
+                "Assets/Objects/CoconutBottle/Profiles",
+                "Assets/Objects/Tissue/Profiles",
+                "Assets/Objects/Tissue/Calibration"
             };
-            foreach (string folder in folders)
-            {
-                Directory.CreateDirectory(folder);
-            }
+            foreach (string folder in folders) Directory.CreateDirectory(folder);
         }
 
         private static void ConfigureAndroidProject()
         {
-            PlayerSettings.productName = "URP AR 数字修复";
+            PlayerSettings.productName = "文化遗址数字修复及 AR 呈现系统";
             PlayerSettings.companyName = "qfgeeee";
-            PlayerSettings.bundleVersion = "0.3";
+            PlayerSettings.bundleVersion = "0.4";
             PlayerSettings.SetApplicationIdentifier(
-                BuildTargetGroup.Android,
-                "com.qfgeeee.urpardemo");
+                BuildTargetGroup.Android, "com.qfgeeee.urpardemo");
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
-            PlayerSettings.Android.bundleVersionCode = 3;
+            PlayerSettings.Android.bundleVersionCode = 4;
             PlayerSettings.SetScriptingBackend(
-                BuildTargetGroup.Android,
-                ScriptingImplementation.IL2CPP);
+                BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
             PlayerSettings.allowUnsafeCode = true;
             PlayerSettings.defaultInterfaceOrientation = UIOrientation.Portrait;
             PlayerSettings.SetUseDefaultGraphicsAPIs(BuildTarget.Android, false);
             PlayerSettings.SetGraphicsAPIs(
-                BuildTarget.Android,
-                new[] { GraphicsDeviceType.OpenGLES3 });
+                BuildTarget.Android, new[] { GraphicsDeviceType.OpenGLES3 });
             EditorUserBuildSettings.SwitchActiveBuildTarget(
-                BuildTargetGroup.Android,
-                BuildTarget.Android);
+                BuildTargetGroup.Android, BuildTarget.Android);
         }
 
         private static void ConfigureXRManagement()
         {
             XRGeneralSettingsPerBuildTarget settings = GetOrCreateXRSettings();
             if (!settings.HasSettingsForBuildTarget(BuildTargetGroup.Android))
-            {
                 settings.CreateDefaultSettingsForBuildTarget(BuildTargetGroup.Android);
-            }
-
             if (!settings.HasManagerSettingsForBuildTarget(BuildTargetGroup.Android))
-            {
                 settings.CreateDefaultManagerSettingsForBuildTarget(BuildTargetGroup.Android);
-            }
-
-            XRManagerSettings manager = settings.ManagerSettingsForBuildTarget(
-                BuildTargetGroup.Android);
+            XRManagerSettings manager =
+                settings.ManagerSettingsForBuildTarget(BuildTargetGroup.Android);
             const string loaderType = "UnityEngine.XR.ARCore.ARCoreLoader";
             if (!XRPackageMetadataStore.IsLoaderAssigned(loaderType, BuildTargetGroup.Android))
-            {
-                XRPackageMetadataStore.AssignLoader(
-                    manager,
-                    loaderType,
-                    BuildTargetGroup.Android);
-            }
-
+                XRPackageMetadataStore.AssignLoader(manager, loaderType, BuildTargetGroup.Android);
             EditorUtility.SetDirty(settings);
             EditorUtility.SetDirty(manager);
+        }
+
+        private static void ConfigureRenderPipeline()
+        {
+            const string pipelinePath = "Assets/Settings/UrpMobilePipeline.asset";
+            const string rendererPath = "Assets/Settings/UrpMobileRenderer.asset";
+            Directory.CreateDirectory("Assets/Settings");
+            UniversalRendererData renderer =
+                AssetDatabase.LoadAssetAtPath<UniversalRendererData>(rendererPath);
+            if (renderer == null)
+            {
+                renderer = ScriptableObject.CreateInstance<UniversalRendererData>();
+                AssetDatabase.CreateAsset(renderer, rendererPath);
+            }
+            UniversalRenderPipelineAsset pipeline =
+                AssetDatabase.LoadAssetAtPath<UniversalRenderPipelineAsset>(pipelinePath);
+            if (pipeline != null) AssetDatabase.DeleteAsset(pipelinePath);
+            pipeline = UniversalRenderPipelineAsset.Create(renderer);
+            AssetDatabase.CreateAsset(pipeline, pipelinePath);
+            pipeline.renderScale = 1f;
+            pipeline.supportsHDR = false;
+            pipeline.msaaSampleCount = 2;
+            GraphicsSettings.renderPipelineAsset = pipeline;
+            QualitySettings.renderPipeline = pipeline;
+            EditorUtility.SetDirty(pipeline);
         }
 
         private static XRGeneralSettingsPerBuildTarget GetOrCreateXRSettings()
         {
             var method = typeof(XRGeneralSettingsPerBuildTarget).GetMethod(
                 "GetOrCreate",
-                System.Reflection.BindingFlags.Static
-                | System.Reflection.BindingFlags.NonPublic);
+                System.Reflection.BindingFlags.Static |
+                System.Reflection.BindingFlags.NonPublic);
             if (method == null)
-            {
                 throw new MissingMethodException("XRGeneralSettingsPerBuildTarget.GetOrCreate");
-            }
-
             return (XRGeneralSettingsPerBuildTarget)method.Invoke(null, null);
         }
 
@@ -159,19 +170,12 @@ namespace Urp.ArDemo.Editor
         {
             foreach (string path in new[]
                      {
-                         DamagedProcessedPath,
-                         RegisteredCapPath,
-                         ViewerCapPath
+                         BottleDamagedPath, BottleCompletePath, BottleRepairPath, TissueModelPath
                      })
             {
-                if (!File.Exists(path))
-                {
-                    throw new FileNotFoundException($"Required model is missing: {path}");
-                }
-
+                RequireFile(path);
                 AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
-                ModelImporter importer = AssetImporter.GetAtPath(path) as ModelImporter;
-                if (importer != null)
+                if (AssetImporter.GetAtPath(path) is ModelImporter importer)
                 {
                     importer.importAnimation = false;
                     importer.addCollider = false;
@@ -183,78 +187,175 @@ namespace Urp.ArDemo.Editor
                 }
             }
 
-            if (File.Exists(DamagedAlbedoPath))
+            ConfigureTexture(BottleTexturePath, 2048);
+            ConfigureTexture(TissueTexturePath, 2048);
+            ConfigureTexture(TissueThumbnailPath, 1024);
+        }
+
+        private static void ConfigureTexture(string path, int maximumSize)
+        {
+            RequireFile(path);
+            AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
+            if (AssetImporter.GetAtPath(path) is TextureImporter importer)
             {
-                AssetDatabase.ImportAsset(DamagedAlbedoPath, ImportAssetOptions.ForceUpdate);
-                TextureImporter importer = AssetImporter.GetAtPath(DamagedAlbedoPath) as TextureImporter;
-                if (importer != null)
-                {
-                    importer.sRGBTexture = true;
-                    importer.mipmapEnabled = true;
-                    importer.maxTextureSize = 2048;
-                    importer.textureCompression = TextureImporterCompression.Compressed;
-                    importer.SaveAndReimport();
-                }
+                importer.sRGBTexture = true;
+                importer.mipmapEnabled = true;
+                importer.alphaSource = TextureImporterAlphaSource.None;
+                importer.maxTextureSize = maximumSize;
+                importer.textureCompression = TextureImporterCompression.Compressed;
+                importer.SaveAndReimport();
             }
         }
 
-        private static void CreatePrototypeScene()
+        private static RestorationObjectCatalog CreateProfiles()
+        {
+            Material bottleMaterial = CreateLitMaterial(
+                "Assets/Materials/BottleViewerLit.mat", BottleTexturePath, 0.20f);
+            Material tissueMaterial = CreateLitMaterial(
+                "Assets/Objects/Tissue/Materials/TissueViewerLit.mat", TissueTexturePath, 0.16f);
+            Material repairMaterial = CreateLitMaterial(
+                "Assets/Materials/RegisteredBottleCap.mat", null, 0.34f);
+
+            RestorationObjectProfile bottle = LoadOrCreate<RestorationObjectProfile>(
+                BottleProfilePath);
+            bottle.objectId = "coconut_bottle";
+            bottle.displayName = "瓶盖缺失饮料瓶";
+            bottle.shortDescription = "瓶身保留瓶口与螺纹结构，缺失部分为瓶盖。";
+            bottle.viewerDescription =
+                "残缺模型来自清理后的 Meshroom 瓶身；完整模型为离线组合预览。"
+                + "当前物理比例仍需真实测量交叉验证。";
+            bottle.trackingDescription =
+                "使用该对象自己的 ORB 2D—3D 数据和 PnP 位姿驱动已注册瓶盖。"
+                + "只有标定、投影与 Renderer 检查全部通过才显示最终成功状态。";
+            bottle.missingPartName = "瓶盖";
+            bottle.thumbnail = AssetDatabase.LoadAssetAtPath<Texture2D>(
+                "Assets/Textures/Targets/DamagedBottleOrbViews/orb_view_01.jpg");
+            bottle.damagedViewerPrefab =
+                AssetDatabase.LoadAssetAtPath<GameObject>(BottleDamagedPath);
+            bottle.completeViewerPrefab =
+                AssetDatabase.LoadAssetAtPath<GameObject>(BottleCompletePath);
+            bottle.registeredRepairPrefab =
+                AssetDatabase.LoadAssetAtPath<GameObject>(BottleRepairPath);
+            bottle.registeredOccluderPrefab = null;
+            bottle.orbModelDatabase = AssetDatabase.LoadAssetAtPath<TextAsset>(BottleOrbPath);
+            bottle.calibration =
+                AssetDatabase.LoadAssetAtPath<RepairCalibrationProfile>(BottleCalibrationPath);
+            bottle.viewerMaterial = bottleMaterial;
+            bottle.repairMaterial = repairMaterial;
+            bottle.initialGuideMaterial = repairMaterial;
+            bottle.defaultViewerEuler = new Vector3(-90f, 0f, 0f);
+            bottle.viewerMargin = 0.18f;
+            bottle.physicalScaleVerified =
+                bottle.calibration != null && bottle.calibration.physicalScaleVerified;
+            EditorUtility.SetDirty(bottle);
+
+            RepairCalibrationProfile tissueCalibration =
+                LoadOrCreate<RepairCalibrationProfile>(
+                    "Assets/Objects/Tissue/Calibration/TissueCalibration.asset");
+            tissueCalibration.objectOriginInModel = new Vector3(0.027f, -0.151f, 1.789f);
+            tissueCalibration.mouthCenterInModel = tissueCalibration.objectOriginInModel;
+            tissueCalibration.mouthRightInModel =
+                tissueCalibration.objectOriginInModel + Vector3.right;
+            tissueCalibration.mouthFrontInModel =
+                tissueCalibration.objectOriginInModel + Vector3.forward;
+            tissueCalibration.neckAxisPointInModel =
+                tissueCalibration.objectOriginInModel - Vector3.up;
+            tissueCalibration.metersPerModelUnit = 1f;
+            tissueCalibration.physicalScaleVerified = false;
+            tissueCalibration.expectedPhysicalNeckDiameter = 0f;
+            tissueCalibration.expectedPhysicalCapDiameter = 0f;
+            tissueCalibration.expectedPhysicalCapHeight = 0f;
+            tissueCalibration.occluderVerified = false;
+            EditorUtility.SetDirty(tissueCalibration);
+
+            RestorationObjectProfile tissue = LoadOrCreate<RestorationObjectProfile>(
+                TissueProfilePath);
+            tissue.objectId = "tissue";
+            tissue.displayName = "Tissue 重建对象";
+            tissue.shortDescription =
+                "源照片中的维达纸巾盒 Meshroom 重建；当前仅确认一套带纹理网格。";
+            tissue.viewerDescription =
+                "已从绿色行李箱和室内背景中提取纸巾盒主体用于三维查看。"
+                + "源数据未提供独立完整/残缺模型，因此完整模型入口会明确提示资料缺失。";
+            tissue.trackingDescription =
+                "当前对象的 ORB 数据、修复部件与连接区域仍需完成标定，"
+                + "不会加载饮料瓶的模型、文字或标定参数。";
+            tissue.missingPartName = "尚未确认";
+            tissue.thumbnail = AssetDatabase.LoadAssetAtPath<Texture2D>(TissueThumbnailPath);
+            tissue.damagedViewerPrefab =
+                AssetDatabase.LoadAssetAtPath<GameObject>(TissueModelPath);
+            tissue.completeViewerPrefab = null;
+            tissue.registeredRepairPrefab = null;
+            tissue.registeredOccluderPrefab = null;
+            tissue.orbModelDatabase = null;
+            tissue.calibration = tissueCalibration;
+            tissue.viewerMaterial = tissueMaterial;
+            tissue.repairMaterial = null;
+            tissue.initialGuideMaterial = null;
+            tissue.defaultViewerEuler = new Vector3(-90f, 0f, 0f);
+            tissue.viewerMargin = 0.20f;
+            tissue.physicalScaleVerified = false;
+            EditorUtility.SetDirty(tissue);
+
+            RestorationObjectCatalog catalog =
+                LoadOrCreate<RestorationObjectCatalog>(CatalogPath);
+            catalog.objects = new[] { bottle, tissue };
+            EditorUtility.SetDirty(catalog);
+            return catalog;
+        }
+
+        private static void CreatePrototypeScene(RestorationObjectCatalog catalog)
         {
             Scene scene = EditorSceneManager.NewScene(
-                NewSceneSetup.EmptyScene,
-                NewSceneMode.Single);
-            RepairCalibrationProfile calibration = GetOrCreateCalibration();
+                NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            GameObject sessionObject = new GameObject("AR Session");
+            sessionObject.AddComponent<ARSession>();
+            sessionObject.AddComponent<ARInputManager>();
 
-            GameObject arSession = new GameObject("AR Session");
-            arSession.AddComponent<ARSession>();
-            arSession.AddComponent<ARInputManager>();
-
-            GameObject xrOrigin = new GameObject("XR Origin");
-            var origin = xrOrigin.AddComponent<Unity.XR.CoreUtils.XROrigin>();
-            GameObject cameraOffset = new GameObject("Camera Offset");
-            cameraOffset.transform.SetParent(xrOrigin.transform, false);
-            origin.CameraFloorOffsetObject = cameraOffset;
+            GameObject originObject = new GameObject("XR Origin");
+            var origin = originObject.AddComponent<Unity.XR.CoreUtils.XROrigin>();
+            GameObject offset = new GameObject("Camera Offset");
+            offset.transform.SetParent(originObject.transform, false);
+            origin.CameraFloorOffsetObject = offset;
 
             GameObject cameraObject = new GameObject("AR Camera");
-            cameraObject.transform.SetParent(cameraOffset.transform, false);
-            Camera camera = cameraObject.AddComponent<Camera>();
-            camera.clearFlags = CameraClearFlags.SolidColor;
-            camera.backgroundColor = Color.black;
+            cameraObject.transform.SetParent(offset.transform, false);
+            Camera arCamera = cameraObject.AddComponent<Camera>();
+            arCamera.clearFlags = CameraClearFlags.SolidColor;
+            arCamera.backgroundColor = Color.black;
             cameraObject.AddComponent<AudioListener>();
             ARCameraManager cameraManager = cameraObject.AddComponent<ARCameraManager>();
-            cameraObject.AddComponent<ARCameraBackground>();
-            origin.Camera = camera;
+            ARCameraBackground cameraBackground = cameraObject.AddComponent<ARCameraBackground>();
+            origin.Camera = arCamera;
 
-            Transform objectPoseRoot = CreateRepairObjectHierarchy(calibration, out Transform cap);
-
-            GameObject lightObject = new GameObject("AR Repair Light");
-            Light light = lightObject.AddComponent<Light>();
-            light.type = LightType.Directional;
-            light.intensity = 0.72f;
-            light.color = new Color(1f, 0.98f, 0.94f);
-            lightObject.transform.rotation = Quaternion.Euler(48f, -32f, 0f);
+            GameObject trackedRoot = new GameObject("TrackedObjectPoseRoot");
+            GameObject alignment = new GameObject("ModelCoordinateAlignment");
+            alignment.transform.SetParent(trackedRoot.transform, false);
+            GameObject debug = new GameObject("DebugAxes");
+            debug.transform.SetParent(alignment.transform, false);
+            debug.SetActive(false);
+            trackedRoot.SetActive(false);
 
             GameObject application = new GameObject("URP Application");
             RepairOverlayController overlay = application.AddComponent<RepairOverlayController>();
             OrbImageTrackingController tracker =
-                xrOrigin.AddComponent<OrbImageTrackingController>();
+                originObject.AddComponent<OrbImageTrackingController>();
             AssignReference(tracker, "cameraManager", cameraManager);
-            AssignReference(tracker, "arCamera", camera);
-            AssignReference(tracker, "trackedObjectPoseRoot", objectPoseRoot);
-            AssignReference(tracker, "registeredBottleCap", cap);
-            AssignReference(tracker, "calibration", calibration);
-            AssignObjectArray(tracker, "orbModelFiles", LoadOrbModelFiles());
+            AssignReference(tracker, "arCamera", arCamera);
+            AssignReference(tracker, "trackedObjectPoseRoot", trackedRoot.transform);
+            AssignReference(tracker, "modelCoordinateAlignment", alignment.transform);
             AssignReference(overlay, "orbTracker", tracker);
 
-            ModelViewerController viewer = CreateModelViewer(camera);
+            ModelViewerController viewer = CreateModelViewer(arCamera);
             UrpAppController app = application.AddComponent<UrpAppController>();
-            AssignReference(app, "chineseFont",
-                AssetDatabase.LoadAssetAtPath<Font>(ChineseFontPath));
-            AssignReference(app, "objectThumbnail",
-                AssetDatabase.LoadAssetAtPath<Texture2D>(ObjectThumbnailPath));
+            AssignReference(app, "chineseFont", AssetDatabase.LoadAssetAtPath<Font>(FontPath));
+            AssignReference(app, "catalog", catalog);
             AssignReference(app, "orbTracker", tracker);
             AssignReference(app, "repairController", overlay);
             AssignReference(app, "modelViewer", viewer);
+            AssignReference(app, "arCamera", arCamera);
+            AssignReference(app, "arCameraManager", cameraManager);
+            AssignReference(app, "arCameraBackground", cameraBackground);
 
             CreateEventSystem();
             EditorSceneManager.SaveScene(scene, ScenePath);
@@ -262,358 +363,84 @@ namespace Urp.ArDemo.Editor
                 new[] { new EditorBuildSettingsScene(ScenePath, true) };
         }
 
-        private static Transform CreateRepairObjectHierarchy(
-            RepairCalibrationProfile calibration,
-            out Transform capTransform)
-        {
-            GameObject objectRoot = new GameObject("Tracked Object Pose Root");
-            GameObject alignmentRoot = new GameObject("Repair Alignment Root");
-            alignmentRoot.transform.SetParent(objectRoot.transform, false);
-            Quaternion modelFrame = Quaternion.LookRotation(
-                calibration.ForwardInModel,
-                calibration.UpInModel);
-            alignmentRoot.transform.localRotation = Quaternion.Inverse(modelFrame);
-            alignmentRoot.transform.localPosition =
-                alignmentRoot.transform.localRotation
-                * -calibration.objectOriginInModel;
-
-            GameObject capAsset = AssetDatabase.LoadAssetAtPath<GameObject>(
-                RegisteredCapPath);
-            GameObject cap = (GameObject)PrefabUtility.InstantiatePrefab(capAsset);
-            cap.name = "Registered Bottle Cap";
-            cap.transform.SetParent(alignmentRoot.transform, false);
-            cap.transform.localPosition = calibration.capLocalPosition;
-            cap.transform.localRotation = Quaternion.Euler(
-                calibration.capLocalEulerAngles);
-            cap.transform.localScale = calibration.capLocalScale;
-            ApplyMaterial(cap, GetOrCreateCapMaterial());
-            capTransform = cap.transform;
-
-            GameObject occluder = new GameObject("Registered Neck Occluder");
-            occluder.transform.SetParent(alignmentRoot.transform, false);
-            occluder.SetActive(false);
-
-            GameObject debug = new GameObject("Debug Pose Visualization");
-            debug.transform.SetParent(objectRoot.transform, false);
-            debug.SetActive(false);
-            objectRoot.SetActive(false);
-            return objectRoot.transform;
-        }
-
         private static ModelViewerController CreateModelViewer(Camera arCamera)
         {
             const int viewerLayer = 8;
             GameObject root = new GameObject("Three Dimensional Resource Viewer");
+            GameObject modelRoot = new GameObject("ModelViewRoot");
+            modelRoot.transform.SetParent(root.transform, false);
+            modelRoot.layer = viewerLayer;
             ModelViewerController controller = root.AddComponent<ModelViewerController>();
-
             GameObject cameraObject = new GameObject("Resource Viewer Camera");
             cameraObject.transform.SetParent(root.transform, false);
+            cameraObject.layer = viewerLayer;
             Camera viewerCamera = cameraObject.AddComponent<Camera>();
             viewerCamera.clearFlags = CameraClearFlags.SolidColor;
-            viewerCamera.backgroundColor = new Color32(246, 249, 253, 255);
-            viewerCamera.fieldOfView = 30f;
+            viewerCamera.backgroundColor = new Color32(235, 241, 248, 255);
+            viewerCamera.fieldOfView = 32f;
             viewerCamera.allowHDR = false;
+            viewerCamera.allowMSAA = true;
             viewerCamera.depth = 5f;
             viewerCamera.cullingMask = 1 << viewerLayer;
+            viewerCamera.targetTexture = null;
             cameraObject.SetActive(false);
             arCamera.cullingMask &= ~(1 << viewerLayer);
 
-            Material bottleMaterial = GetOrCreateBottleViewerMaterial();
-            Transform damaged = InstantiateViewerBottle(
-                "残缺饮料瓶模型",
-                root.transform,
-                viewerLayer,
-                bottleMaterial,
-                false);
-            Transform complete = InstantiateViewerBottle(
-                "完整饮料瓶模型",
-                root.transform,
-                viewerLayer,
-                bottleMaterial,
-                true);
-
-            GameObject keyLightObject = new GameObject("Resource Viewer Key Light");
-            keyLightObject.transform.SetParent(root.transform, false);
-            Light key = keyLightObject.AddComponent<Light>();
-            key.type = LightType.Directional;
-            key.intensity = 0.62f;
-            key.color = new Color(1f, 0.98f, 0.94f);
-            key.cullingMask = 1 << viewerLayer;
-            keyLightObject.layer = viewerLayer;
-            keyLightObject.transform.rotation = Quaternion.Euler(42f, -38f, 0f);
-
+            GameObject lightObject = new GameObject("Resource Viewer Key Light");
+            lightObject.transform.SetParent(root.transform, false);
+            Light light = lightObject.AddComponent<Light>();
+            light.type = LightType.Directional;
+            light.intensity = 0.72f;
+            light.color = new Color(1f, 0.98f, 0.94f);
+            light.cullingMask = 1 << viewerLayer;
+            lightObject.transform.rotation = Quaternion.Euler(42f, -38f, 0f);
             AssignReference(controller, "viewerCamera", viewerCamera);
-            AssignReference(controller, "damagedModel", damaged);
-            AssignReference(controller, "completeModel", complete);
+            AssignReference(controller, "modelViewRoot", modelRoot.transform);
             return controller;
         }
 
-        private static Transform InstantiateViewerBottle(
-            string name,
-            Transform parent,
-            int layer,
-            Material bottleMaterial,
-            bool addCap)
+        private static Material CreateLitMaterial(
+            string path, string texturePath, float smoothness)
         {
-            GameObject holder = new GameObject(name);
-            holder.transform.SetParent(parent, false);
-            holder.transform.position = new Vector3(0f, 0.25f, 4f);
-
-            GameObject bottleAsset = AssetDatabase.LoadAssetAtPath<GameObject>(
-                DamagedProcessedPath);
-            GameObject bottle = (GameObject)PrefabUtility.InstantiatePrefab(bottleAsset);
-            bottle.transform.SetParent(holder.transform, false);
-            ApplyMaterial(bottle, bottleMaterial);
-            SetLayerRecursively(bottle, layer);
-
-            Bounds originalBounds = CalculateBounds(bottle);
-            float scale = 2.35f / Mathf.Max(0.001f, originalBounds.size.y);
-            bottle.transform.localScale = Vector3.one * scale;
-            Bounds scaledBounds = CalculateBounds(bottle);
-            bottle.transform.position += holder.transform.position - scaledBounds.center;
-
-            if (addCap)
-            {
-                AddViewerCap(holder.transform, bottle, layer);
-            }
-
-            return holder.transform;
-        }
-
-        private static void AddViewerCap(Transform holder, GameObject bottle, int layer)
-        {
-            GameObject capAsset = AssetDatabase.LoadAssetAtPath<GameObject>(ViewerCapPath);
-            GameObject cap = (GameObject)PrefabUtility.InstantiatePrefab(capAsset);
-            cap.name = "Viewer Completion Bottle Cap";
-            cap.transform.SetParent(holder, false);
-            SetLayerRecursively(cap, layer);
-            ApplyMaterial(cap, GetOrCreateCapMaterial());
-
-            Bounds capBounds = CalculateBounds(cap);
-            if (!TryCalculateTopOpening(bottle, out Vector3 openingCenter, out float targetDiameter))
-            {
-                throw new InvalidOperationException(
-                    "Could not estimate the bottle opening from the processed mesh.");
-            }
-
-            float capScale = targetDiameter / Mathf.Max(0.001f, capBounds.size.x);
-            cap.transform.localScale = Vector3.one * capScale;
-            capBounds = CalculateBounds(cap);
-            cap.transform.position += openingCenter
-                - new Vector3(capBounds.center.x, capBounds.min.y, capBounds.center.z);
-        }
-
-        private static bool TryCalculateTopOpening(
-            GameObject bottle,
-            out Vector3 center,
-            out float diameter)
-        {
-            center = Vector3.zero;
-            diameter = 0f;
-            Bounds bottleBounds = CalculateBounds(bottle);
-            float topBandMinimum = bottleBounds.min.y + bottleBounds.size.y * 0.90f;
-            List<float> xValues = new List<float>();
-            List<float> zValues = new List<float>();
-            List<float> yValues = new List<float>();
-            foreach (MeshFilter filter in bottle.GetComponentsInChildren<MeshFilter>(true))
-            {
-                Mesh mesh = filter.sharedMesh;
-                if (mesh == null)
-                {
-                    continue;
-                }
-
-                foreach (Vector3 localVertex in mesh.vertices)
-                {
-                    Vector3 worldVertex = filter.transform.TransformPoint(localVertex);
-                    if (worldVertex.y < topBandMinimum)
-                    {
-                        continue;
-                    }
-
-                    xValues.Add(worldVertex.x);
-                    yValues.Add(worldVertex.y);
-                    zValues.Add(worldVertex.z);
-                }
-            }
-
-            if (xValues.Count < 20)
-            {
-                return false;
-            }
-
-            xValues.Sort();
-            yValues.Sort();
-            zValues.Sort();
-            float xLow = Percentile(xValues, 0.05f);
-            float xHigh = Percentile(xValues, 0.95f);
-            float zLow = Percentile(zValues, 0.05f);
-            float zHigh = Percentile(zValues, 0.95f);
-            diameter = Mathf.Max(xHigh - xLow, zHigh - zLow);
-            center = new Vector3(
-                (xLow + xHigh) * 0.5f,
-                yValues[yValues.Count - 1],
-                (zLow + zHigh) * 0.5f);
-            return diameter > 0.001f;
-        }
-
-        private static float Percentile(List<float> sortedValues, float percentile)
-        {
-            float index = Mathf.Clamp01(percentile) * (sortedValues.Count - 1);
-            int lower = Mathf.FloorToInt(index);
-            int upper = Mathf.CeilToInt(index);
-            return Mathf.Lerp(sortedValues[lower], sortedValues[upper], index - lower);
-        }
-
-        private static RepairCalibrationProfile GetOrCreateCalibration()
-        {
-            RepairCalibrationProfile profile =
-                AssetDatabase.LoadAssetAtPath<RepairCalibrationProfile>(CalibrationPath);
-            if (profile == null)
-            {
-                profile = ScriptableObject.CreateInstance<RepairCalibrationProfile>();
-                AssetDatabase.CreateAsset(profile, CalibrationPath);
-            }
-
-            profile.objectOriginInModel = Vector3.zero;
-            profile.mouthCenterInModel = new Vector3(
-                0.419225f, -4.514827f, 0.314265f);
-            profile.mouthRightInModel = new Vector3(
-                0.519225f, -4.514827f, 0.314265f);
-            profile.mouthFrontInModel = new Vector3(
-                0.419225f, -4.514827f, 0.214265f);
-            profile.neckAxisPointInModel = new Vector3(
-                0.419225f, -4.314827f, 0.314265f);
-            profile.metersPerModelUnit = 0.18f;
-            profile.physicalScaleVerified = false;
-            profile.expectedPhysicalCapDiameter = 0.0408f;
-            profile.expectedPhysicalCapHeight = 0.02f;
-            profile.capLocalPosition = Vector3.zero;
-            profile.capLocalEulerAngles = Vector3.zero;
-            profile.capLocalScale = Vector3.one;
-            profile.occluderVerified = false;
-            EditorUtility.SetDirty(profile);
-            return profile;
-        }
-
-        private static TextAsset[] LoadOrbModelFiles()
-        {
-            TextAsset global = AssetDatabase.LoadAssetAtPath<TextAsset>(
-                GlobalOrbModelPath);
-            if (global == null)
-            {
-                throw new FileNotFoundException(
-                    $"Merged ORB model is missing: {GlobalOrbModelPath}");
-            }
-
-            return new[] { global };
-        }
-
-        private static Material GetOrCreateCapMaterial()
-        {
-            const string path = "Assets/Materials/RegisteredBottleCap.mat";
+            Directory.CreateDirectory(Path.GetDirectoryName(path) ?? "Assets");
+            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+            if (shader == null)
+                throw new InvalidOperationException("Universal Render Pipeline/Lit shader is missing.");
             Material material = AssetDatabase.LoadAssetAtPath<Material>(path);
             if (material == null)
             {
-                material = new Material(FindLitShader());
+                material = new Material(shader);
                 AssetDatabase.CreateAsset(material, path);
             }
-
-            Color whitePlastic = new Color(0.88f, 0.87f, 0.83f, 1f);
-            SetMaterialColor(material, whitePlastic);
+            material.shader = shader;
+            material.SetColor("_BaseColor", Color.white);
             material.SetFloat("_Metallic", 0f);
-            material.SetFloat("_Smoothness", 0.34f);
+            material.SetFloat("_Smoothness", smoothness);
             material.DisableKeyword("_EMISSION");
             if (material.HasProperty("_EmissionColor"))
-            {
                 material.SetColor("_EmissionColor", Color.black);
-            }
-
+            if (!string.IsNullOrEmpty(texturePath))
+                material.SetTexture("_BaseMap",
+                    AssetDatabase.LoadAssetAtPath<Texture2D>(texturePath));
             EditorUtility.SetDirty(material);
             return material;
         }
 
-        private static Material GetOrCreateBottleViewerMaterial()
+        private static T LoadOrCreate<T>(string path) where T : ScriptableObject
         {
-            const string path = "Assets/Materials/BottleViewerLit.mat";
-            Material material = AssetDatabase.LoadAssetAtPath<Material>(path);
-            if (material == null)
+            Directory.CreateDirectory(Path.GetDirectoryName(path) ?? "Assets");
+            T asset = AssetDatabase.LoadAssetAtPath<T>(path);
+            if (asset == null)
             {
-                material = new Material(FindLitShader());
-                AssetDatabase.CreateAsset(material, path);
+                asset = ScriptableObject.CreateInstance<T>();
+                AssetDatabase.CreateAsset(asset, path);
             }
-
-            SetMaterialColor(material, Color.white);
-            Texture2D albedo = AssetDatabase.LoadAssetAtPath<Texture2D>(
-                DamagedAlbedoPath);
-            if (material.HasProperty("_BaseMap"))
-            {
-                material.SetTexture("_BaseMap", albedo);
-            }
-
-            if (material.HasProperty("_MainTex"))
-            {
-                material.SetTexture("_MainTex", albedo);
-            }
-
-            material.SetFloat("_Metallic", 0f);
-            material.SetFloat("_Smoothness", 0.20f);
-            material.DisableKeyword("_EMISSION");
-            EditorUtility.SetDirty(material);
-            return material;
+            return asset;
         }
 
-        private static Shader FindLitShader()
+        private static void RequireFile(string path)
         {
-            return Shader.Find("Universal Render Pipeline/Lit")
-                ?? Shader.Find("Standard");
-        }
-
-        private static void SetMaterialColor(Material material, Color color)
-        {
-            if (material.HasProperty("_BaseColor"))
-            {
-                material.SetColor("_BaseColor", color);
-            }
-
-            if (material.HasProperty("_Color"))
-            {
-                material.SetColor("_Color", color);
-            }
-        }
-
-        private static void ApplyMaterial(GameObject root, Material material)
-        {
-            foreach (Renderer renderer in root.GetComponentsInChildren<Renderer>(true))
-            {
-                renderer.sharedMaterial = material;
-            }
-        }
-
-        private static Bounds CalculateBounds(GameObject root)
-        {
-            Renderer[] renderers = root.GetComponentsInChildren<Renderer>(true);
-            if (renderers.Length == 0)
-            {
-                return new Bounds(root.transform.position, Vector3.one);
-            }
-
-            Bounds bounds = renderers[0].bounds;
-            for (int index = 1; index < renderers.Length; index++)
-            {
-                bounds.Encapsulate(renderers[index].bounds);
-            }
-
-            return bounds;
-        }
-
-        private static void SetLayerRecursively(GameObject root, int layer)
-        {
-            root.layer = layer;
-            foreach (Transform child in root.transform)
-            {
-                SetLayerRecursively(child.gameObject, layer);
-            }
+            if (!File.Exists(path)) throw new FileNotFoundException(path);
         }
 
         private static void CreateEventSystem()
@@ -624,34 +451,13 @@ namespace Urp.ArDemo.Editor
         }
 
         private static void AssignReference(
-            UnityEngine.Object target,
-            string propertyName,
-            UnityEngine.Object value)
+            UnityEngine.Object target, string propertyName, UnityEngine.Object value)
         {
             SerializedObject serialized = new SerializedObject(target);
             SerializedProperty property = serialized.FindProperty(propertyName);
             if (property == null)
-            {
                 throw new MissingFieldException(target.GetType().Name, propertyName);
-            }
-
             property.objectReferenceValue = value;
-            serialized.ApplyModifiedPropertiesWithoutUndo();
-        }
-
-        private static void AssignObjectArray(
-            UnityEngine.Object target,
-            string propertyName,
-            UnityEngine.Object[] values)
-        {
-            SerializedObject serialized = new SerializedObject(target);
-            SerializedProperty property = serialized.FindProperty(propertyName);
-            property.arraySize = values.Length;
-            for (int index = 0; index < values.Length; index++)
-            {
-                property.GetArrayElementAtIndex(index).objectReferenceValue = values[index];
-            }
-
             serialized.ApplyModifiedPropertiesWithoutUndo();
         }
     }
