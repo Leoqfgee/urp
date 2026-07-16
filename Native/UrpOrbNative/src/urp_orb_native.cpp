@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -15,6 +16,7 @@
 namespace
 {
 constexpr char kModelMagic[8] = {'U', 'R', 'P', '3', 'D', 'M', '1', '\0'};
+constexpr char kBuildVersion[] = "urp-orb-native-2026.07.16-r2";
 constexpr int kDescriptorBytes = 32;
 constexpr int kModelRecordBytes = 3 * static_cast<int>(sizeof(float)) + kDescriptorBytes;
 
@@ -53,6 +55,11 @@ struct UrpOrbResult
     float anchorDepth;
     int anchorVisible;
     float localLuminance;
+    float inlierRatio;
+    float coverageX;
+    float coverageY;
+    float modelSpread;
+    float processingMilliseconds;
 };
 
 static float Clamp01(float value)
@@ -110,6 +117,7 @@ public:
 
     int Track(const uint8_t* rgba, int width, int height, float fx, float fy, float cx, float cy, int rotationClockwise, UrpOrbResult* result)
     {
+        const auto startedAt = std::chrono::steady_clock::now();
         if (result == nullptr)
         {
             return 0;
@@ -185,16 +193,60 @@ public:
             return 0;
         }
 
-        std::vector<std::vector<cv::DMatch>> knnMatches;
-        matcher_->knnMatch(targetDescriptors_, frameDescriptors, knnMatches, 2);
+        std::vector<std::vector<cv::DMatch>> targetToFrame;
+        std::vector<std::vector<cv::DMatch>> frameToTarget;
+        matcher_->knnMatch(targetDescriptors_, frameDescriptors, targetToFrame, 2);
+        matcher_->knnMatch(frameDescriptors, targetDescriptors_, frameToTarget, 2);
 
-        std::vector<cv::DMatch> goodMatches;
-        goodMatches.reserve(knnMatches.size());
-        for (const auto& pair : knnMatches)
+        std::vector<int> reverseBest(frameDescriptors.rows, -1);
+        for (const auto& pair : frameToTarget)
         {
             if (pair.size() >= 2 && pair[0].distance < ratio_ * pair[1].distance)
             {
-                goodMatches.push_back(pair[0]);
+                reverseBest[pair[0].queryIdx] = pair[0].trainIdx;
+            }
+        }
+
+        std::vector<cv::DMatch> mutualMatches;
+        mutualMatches.reserve(targetToFrame.size());
+        for (const auto& pair : targetToFrame)
+        {
+            if (pair.size() >= 2
+                && pair[0].distance < ratio_ * pair[1].distance
+                && pair[0].trainIdx >= 0
+                && pair[0].trainIdx < static_cast<int>(reverseBest.size())
+                && reverseBest[pair[0].trainIdx] == pair[0].queryIdx)
+            {
+                mutualMatches.push_back(pair[0]);
+            }
+        }
+
+        std::sort(mutualMatches.begin(), mutualMatches.end(), [](const cv::DMatch& a, const cv::DMatch& b)
+        {
+            return a.distance < b.distance;
+        });
+        const int gridColumns = 8;
+        const int gridRows = 12;
+        const int maxMatchesPerCell = 8;
+        std::vector<int> cellCounts(gridColumns * gridRows, 0);
+        std::vector<cv::DMatch> goodMatches;
+        goodMatches.reserve(mutualMatches.size());
+        for (const cv::DMatch& match : mutualMatches)
+        {
+            const cv::Point2f point = frameKeypoints[match.trainIdx].pt;
+            const int column = std::clamp(
+                static_cast<int>(point.x / std::max(1.0f, static_cast<float>(frame.cols)) * gridColumns),
+                0,
+                gridColumns - 1);
+            const int row = std::clamp(
+                static_cast<int>(point.y / std::max(1.0f, static_cast<float>(frame.rows)) * gridRows),
+                0,
+                gridRows - 1);
+            const int cell = row * gridColumns + column;
+            if (cellCounts[cell] < maxMatchesPerCell)
+            {
+                cellCounts[cell]++;
+                goodMatches.push_back(match);
             }
         }
 
@@ -215,6 +267,24 @@ public:
         }
 
         FillMatchedPointBox(framePoints, frame.cols, frame.rows, result);
+        cv::Rect2f matchedBounds = cv::boundingRect(framePoints);
+        result->coverageX = matchedBounds.width / std::max(1.0f, static_cast<float>(frame.cols));
+        result->coverageY = matchedBounds.height / std::max(1.0f, static_cast<float>(frame.rows));
+        cv::Point3f minimum = modelPoints.front();
+        cv::Point3f maximum = modelPoints.front();
+        for (const cv::Point3f& point : modelPoints)
+        {
+            minimum.x = std::min(minimum.x, point.x);
+            minimum.y = std::min(minimum.y, point.y);
+            minimum.z = std::min(minimum.z, point.z);
+            maximum.x = std::max(maximum.x, point.x);
+            maximum.y = std::max(maximum.y, point.y);
+            maximum.z = std::max(maximum.z, point.z);
+        }
+        result->modelSpread = std::min({
+            maximum.x - minimum.x,
+            maximum.y - minimum.y,
+            maximum.z - minimum.z});
         cv::Rect luminanceRegion = cv::boundingRect(framePoints);
         luminanceRegion &= cv::Rect(0, 0, gray.cols, gray.rows);
         if (luminanceRegion.width > 4 && luminanceRegion.height > 4)
@@ -244,13 +314,23 @@ public:
                 tvec,
                 false,
                 200,
-                5.0f,
+                3.0f,
                 0.99,
                 inliers,
                 cv::SOLVEPNP_EPNP);
         }
 
-        if (poseOk && tvec.at<double>(2) > 0.0 && inliers.rows >= std::max(8, minMatches_ / 2))
+        const float inlierRatio = goodMatches.empty()
+            ? 0.0f
+            : static_cast<float>(inliers.rows) / static_cast<float>(goodMatches.size());
+        result->inlierRatio = inlierRatio;
+        if (poseOk
+            && tvec.at<double>(2) > 0.0
+            && inliers.rows >= std::max(20, minMatches_ / 2)
+            && inlierRatio >= 0.5f
+            && result->coverageX >= 0.12f
+            && result->coverageY >= 0.20f
+            && result->modelSpread >= 0.015f)
         {
             std::vector<cv::Point3f> inlierModelPoints;
             std::vector<cv::Point2f> inlierFramePoints;
@@ -279,7 +359,7 @@ public:
             cv::Mat rotation;
             cv::Rodrigues(rvec, rotation);
             result->tracked = 1;
-            result->poseValid = 1;
+            result->poseValid = result->reprojectionError <= 2.5f ? 1 : 0;
             result->poseInliers = inliers.rows;
             result->tvecX = static_cast<float>(tvec.at<double>(0));
             result->tvecY = static_cast<float>(tvec.at<double>(1));
@@ -313,6 +393,9 @@ public:
             }
         }
 
+        result->processingMilliseconds = static_cast<float>(
+            std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - startedAt).count());
         return result->tracked;
     }
 
@@ -382,6 +465,11 @@ static std::unordered_map<int, std::unique_ptr<OrbTracker>> gTrackers;
 
 extern "C"
 {
+    const char* urp_orb_get_build_version()
+    {
+        return kBuildVersion;
+    }
+
     int urp_orb_create(int featureCount, float ratio, int minMatches, int maxWidth)
     {
         std::lock_guard<std::mutex> lock(gMutex);

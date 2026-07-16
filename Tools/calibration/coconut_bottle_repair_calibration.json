@@ -1,0 +1,19 @@
+{
+  "status": "provisional_unverified",
+  "coordinate_system": "shared Meshroom SfM frame used by all bottle_view_*.bytes",
+  "object_origin_in_model": [0.0, 0.0, 0.0],
+  "mouth_center_in_model": [0.419225, -4.514827, 0.314265],
+  "mouth_right_in_model": [0.519225, -4.514827, 0.314265],
+  "mouth_front_in_model": [0.419225, -4.514827, 0.214265],
+  "neck_axis_point_in_model": [0.419225, -4.314827, 0.314265],
+  "meters_per_model_unit": 0.18,
+  "physical_scale_verified": false,
+  "expected_physical_neck_diameter_m": 0.0,
+  "expected_physical_cap_diameter_m": 0.0408,
+  "expected_physical_cap_height_m": 0.02,
+  "notes": [
+    "The mouth center is the median of the 13 legacy per-view anchors.",
+    "The frame axes follow the shared SfM axes and are not a substitute for physical caliper measurements.",
+    "Physical scale and final cap registration must be revalidated using measured bottle dimensions."
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "input_vertices": 161057,
+  "input_faces": 225138,
+  "input_components": 5427,
+  "kept_components": 496,
+  "output_vertices": 58684,
+  "output_faces": 92049,
+  "output_bounds": [
+    [
+      -0.246336892,
+      0.477786899,
+      -1.0206207
+    ],
+    [
+      0.678248763,
+      2.0753746,
+      -0.179700911
+    ]
+  ],
+  "crop_bounds": [
+    [
+      -0.22,
+      0.5,
+      -0.95
+    ],
+    [
+      0.58,
+      2.12,
+      -0.25
+    ]
+  ]
+}

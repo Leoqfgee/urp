@@ -4,91 +4,86 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.XR.ARFoundation;
 using UnityEngine.XR.ARSubsystems;
+using Urp.ArDemo.Calibration;
 using Urp.ArDemo.Native;
 
 namespace Urp.ArDemo
 {
     public sealed class OrbImageTrackingController : MonoBehaviour
     {
+        [Header("AR input")]
         [SerializeField] private ARCameraManager cameraManager;
         [SerializeField] private Camera arCamera;
-        [SerializeField] private Transform trackedContentRoot;
-        [SerializeField] private Text statusText;
-        [SerializeField] private TextAsset[] orbModelFiles;
-        [SerializeField] private float processIntervalSeconds = 0.22f;
-        [SerializeField] private int maxFrameWidth = 640;
-        [SerializeField] private int searchTargetsPerFrame = 2;
-        [SerializeField] private int minGoodMatches = 18;
-        [SerializeField] private float ratioTest = 0.72f;
-        [SerializeField] private float smoothing = 0.35f;
-        [SerializeField] private Vector3 repairAnchorInModel = new Vector3(0.43f, -4.38f, 0.24f);
-        [SerializeField] private Vector3[] repairAnchorsByModel;
-        [SerializeField] private Vector3 bottleUpInModel = new Vector3(0f, -1f, 0f);
-        [SerializeField] private Vector3 bottleForwardInModel = new Vector3(0f, 0f, 1f);
-        [SerializeField] private float modelUnitsToMeters = 0.18f;
-        [SerializeField] private float pnpRepairScale = 1f;
-        [SerializeField] private float lostStatusIntervalSeconds = 1.5f;
-        [SerializeField] private float maxReprojectionErrorPixels = 4.5f;
-        [SerializeField] private float lostPoseGraceSeconds = 0.65f;
-        [SerializeField] private float maxViewportJump = 0.18f;
-        [SerializeField] private Vector3 initialPreviewLocalPosition = new Vector3(0f, 0.11f, 0.55f);
-        [SerializeField] private Vector3 initialPreviewLocalEulerAngles = Vector3.zero;
 
-        private readonly List<TrackedTarget> targets = new List<TrackedTarget>();
+        [Header("Object-coordinate overlay")]
+        [SerializeField] private Transform trackedObjectPoseRoot;
+        [SerializeField] private Transform registeredBottleCap;
+        [SerializeField] private RepairCalibrationProfile calibration;
+        [SerializeField] private Text statusText;
+
+        [Header("ORB database")]
+        [SerializeField] private TextAsset[] orbModelFiles;
+        [SerializeField] private int maxFrameWidth = 640;
+        [SerializeField] private int minGoodMatches = 24;
+        [SerializeField] private int minPoseInliers = 20;
+        [SerializeField] private float minimumInlierRatio = 0.5f;
+        [SerializeField] private float maximumReprojectionErrorPixels = 2.5f;
+        [SerializeField] private float minimumCoverageX = 0.12f;
+        [SerializeField] private float minimumCoverageY = 0.20f;
+        [SerializeField] private float ratioTest = 0.72f;
+
+        [Header("Timing and continuity")]
+        [SerializeField] private float relocationIntervalSeconds = 0.14f;
+        [SerializeField] private float trackingIntervalSeconds = 0.09f;
+        [SerializeField] private float lostPoseGraceSeconds = 0.45f;
+        [SerializeField] private float maximumPositionJumpMeters = 0.16f;
+        [SerializeField] private float maximumRotationJumpDegrees = 32f;
+        [SerializeField] private float positionResponse = 16f;
+        [SerializeField] private float rotationResponse = 18f;
+
+        [Header("Initial paper-style alignment")]
+        [SerializeField] private Vector3 initialMouthPositionInCamera = new Vector3(0f, 0.10f, 0.55f);
+        [SerializeField] private Vector3 initialObjectEulerInCamera = Vector3.zero;
+
+        private readonly List<NativeOrbTracker> trackers = new List<NativeOrbTracker>();
         private Texture2D frameTexture;
-        private float nextProcessTime;
-        private float nextLostStatusTime;
-        private float lastValidPoseTime = -10f;
-        private bool hasSmoothedPose;
+        private Renderer[] capRenderers;
+        private MaterialPropertyBlock materialProperties;
         private bool modeEnabled;
         private bool recognitionRunning;
-        private int activeTargetIndex = -1;
-        private int searchCursor;
-        private int consecutiveActiveTargetMisses;
-        private int consecutivePoseJumps;
-        private Vector2 lastAcceptedViewport;
-        private bool hasDisplayMatrix;
-        private Matrix4x4 displayMatrix = Matrix4x4.identity;
-        private Renderer[] repairRenderers;
-        private MaterialPropertyBlock materialProperties;
-        private float smoothedLuminance = 0.8f;
+        private bool hasTrackedPose;
         private bool repairVisibleRequested = true;
+        private float nextProcessTime;
+        private float lastValidPoseTime = -10f;
+        private float smoothedLuminance = 0.75f;
+        private Vector3 lastTargetPosition;
+        private Quaternion lastTargetRotation;
+        private int rejectedJumpFrames;
 
-        public bool HasTrackedPose => hasSmoothedPose;
+        public bool HasTrackedPose => hasTrackedPose;
 
         private void Awake()
         {
             materialProperties = new MaterialPropertyBlock();
-            if (trackedContentRoot != null)
+            if (registeredBottleCap != null)
             {
-                trackedContentRoot.gameObject.SetActive(false);
-                repairRenderers = trackedContentRoot.GetComponentsInChildren<Renderer>(true);
+                capRenderers = registeredBottleCap.GetComponentsInChildren<Renderer>(true);
             }
 
-            BuildTargetFeatures();
-        }
-
-        private void OnEnable()
-        {
-            if (cameraManager != null)
+            if (trackedObjectPoseRoot != null)
             {
-                cameraManager.frameReceived += OnCameraFrameReceived;
+                trackedObjectPoseRoot.gameObject.SetActive(false);
             }
-        }
 
-        private void OnDisable()
-        {
-            if (cameraManager != null)
-            {
-                cameraManager.frameReceived -= OnCameraFrameReceived;
-            }
+            BuildTrackers();
+            Debug.Log($"URP native tracker version: {NativeOrbTracker.BuildVersion}");
         }
 
         private void OnDestroy()
         {
-            for (int i = 0; i < targets.Count; i++)
+            foreach (NativeOrbTracker tracker in trackers)
             {
-                targets[i].Tracker?.Dispose();
+                tracker.Dispose();
             }
         }
 
@@ -99,31 +94,27 @@ namespace Urp.ArDemo
                 return;
             }
 
-            nextProcessTime = Time.unscaledTime + processIntervalSeconds;
             ProcessCameraFrame();
         }
 
-        private void OnCameraFrameReceived(ARCameraFrameEventArgs eventArgs)
+        public void BindStatusText(Text value)
         {
-            if (eventArgs.displayMatrix.HasValue)
-            {
-                displayMatrix = eventArgs.displayMatrix.Value;
-                hasDisplayMatrix = true;
-            }
+            statusText = value;
         }
 
-        public void ResetTracking()
+        public void SetTrackingEnabled(bool enabled)
         {
-            hasSmoothedPose = false;
+            modeEnabled = enabled;
             recognitionRunning = false;
-            activeTargetIndex = -1;
-            searchCursor = 0;
-            consecutiveActiveTargetMisses = 0;
-            consecutivePoseJumps = 0;
-            lastValidPoseTime = -10f;
-            nextProcessTime = 0f;
-            ShowInitialPose();
-            UpdateStatus("已恢复瓶盖初始位姿。移动手机使瓶盖与真实瓶口大致对齐，再点击开始。");
+            if (enabled)
+            {
+                ShowInitialPose();
+                UpdateStatus("移动手机，使参考瓶盖与真实瓶口大致重合，然后点击“开始”。");
+            }
+            else
+            {
+                HideOverlay(true);
+            }
         }
 
         public void StartRecognition()
@@ -135,201 +126,386 @@ namespace Urp.ArDemo
 
             recognitionRunning = true;
             nextProcessTime = 0f;
-            UpdateStatus("已开始 ORB 三维跟踪。请保持瓶口和瓶身文字清晰可见。");
+            UpdateStatus("正在识别瓶身，请保持瓶口和瓶身文字清晰可见。");
+        }
+
+        public void ResetTracking()
+        {
+            recognitionRunning = false;
+            hasTrackedPose = false;
+            rejectedJumpFrames = 0;
+            lastValidPoseTime = -10f;
+            ShowInitialPose();
+            UpdateStatus("已恢复初始参考位置，请重新粗对齐后点击“开始”。");
         }
 
         public void SetRepairVisible(bool visible)
         {
             repairVisibleRequested = visible;
-            if (trackedContentRoot != null)
+            if (trackedObjectPoseRoot != null)
             {
-                trackedContentRoot.gameObject.SetActive(visible && hasSmoothedPose);
+                trackedObjectPoseRoot.gameObject.SetActive(visible && (modeEnabled || hasTrackedPose));
             }
         }
 
-        public void SetTrackingEnabled(bool enabled)
+        private void BuildTrackers()
         {
-            modeEnabled = enabled;
-            recognitionRunning = false;
-            if (enabled)
+            trackers.Clear();
+            if (orbModelFiles == null)
             {
-                ShowInitialPose();
-                UpdateStatus("瓶盖已按初始位姿显示。移动手机使其与瓶口大致对齐，再点击开始。");
-            }
-            else
-            {
-                HideRepairModel(true);
-            }
-        }
-
-        public void BindStatusText(Text value)
-        {
-            statusText = value;
-        }
-
-        private void BuildTargetFeatures()
-        {
-            targets.Clear();
-            if (orbModelFiles == null || orbModelFiles.Length == 0)
-            {
-                UpdateStatus("没有加载残缺饮料瓶的 ORB 三维特征库。");
                 return;
             }
 
-            for (int i = 0; i < orbModelFiles.Length; i++)
+            foreach (TextAsset model in orbModelFiles)
             {
-                TextAsset model = orbModelFiles[i];
                 if (model == null)
                 {
                     continue;
                 }
 
-                NativeOrbTracker tracker = new NativeOrbTracker(1400, ratioTest, minGoodMatches, maxFrameWidth);
-                if (!tracker.IsValid || !tracker.SetModel(model))
+                NativeOrbTracker tracker = new NativeOrbTracker(
+                    1800,
+                    ratioTest,
+                    minGoodMatches,
+                    maxFrameWidth);
+                if (tracker.IsValid && tracker.SetModel(model))
+                {
+                    trackers.Add(tracker);
+                }
+                else
                 {
                     tracker.Dispose();
-                    continue;
                 }
-
-                Vector3 repairAnchor = repairAnchorInModel;
-                if (repairAnchorsByModel != null && i < repairAnchorsByModel.Length)
-                {
-                    repairAnchor = repairAnchorsByModel[i];
-                }
-
-                tracker.SetRepairAnchor(repairAnchor);
-                targets.Add(new TrackedTarget(tracker, repairAnchor, i + 1));
             }
 
-            UpdateStatus(targets.Count > 0
-                ? $"已加载 {targets.Count} 组 ORB 三维特征，等待识别残缺饮料瓶。"
-                : "ORB 三维特征库加载失败。");
+            if (trackers.Count == 0)
+            {
+                UpdateStatus("ORB 三维特征库加载失败。");
+            }
         }
 
         private void ProcessCameraFrame()
         {
-            if (cameraManager == null || arCamera == null || trackedContentRoot == null || targets.Count == 0)
-            {
-                return;
-            }
-
-            if (!cameraManager.TryAcquireLatestCpuImage(out XRCpuImage cpuImage))
+            nextProcessTime = Time.unscaledTime
+                + (hasTrackedPose ? trackingIntervalSeconds : relocationIntervalSeconds);
+            if (cameraManager == null
+                || arCamera == null
+                || trackedObjectPoseRoot == null
+                || calibration == null
+                || trackers.Count == 0
+                || !cameraManager.TryAcquireLatestCpuImage(out XRCpuImage image))
             {
                 return;
             }
 
             try
             {
-                Texture2D texture = ConvertCpuImage(cpuImage);
+                Texture2D texture = ConvertCpuImage(image);
                 CameraIntrinsics intrinsics = GetCameraIntrinsics(
-                    cpuImage.width,
-                    cpuImage.height,
+                    image.width,
+                    image.height,
                     texture.width,
                     texture.height);
                 int rotationClockwise = ResolveFrameRotation(texture.width, texture.height);
                 byte[] frameRgba = NativeOrbTracker.GetRgbaBytes(texture);
 
-                TrackedTarget bestTarget = null;
-                NativeOrbResult bestResult = default;
-                int bestTargetIndex = -1;
+                NativeOrbResult best = default;
                 bool hasResult = false;
-
-                if (activeTargetIndex >= 0 && activeTargetIndex < targets.Count)
+                foreach (NativeOrbTracker tracker in trackers)
                 {
-                    TrackedTarget activeTarget = targets[activeTargetIndex];
-                    bool tracked = activeTarget.Tracker.Track(
+                    tracker.Track(
                         frameRgba,
                         texture.width,
                         texture.height,
                         intrinsics,
                         rotationClockwise,
-                        out NativeOrbResult activeResult);
-                    bestResult = activeResult;
-                    hasResult = true;
-                    if (tracked)
+                        out NativeOrbResult candidate);
+                    if (!hasResult || IsBetter(candidate, best))
                     {
-                        bestTarget = activeTarget;
-                        bestTargetIndex = activeTargetIndex;
-                        consecutiveActiveTargetMisses = 0;
-                    }
-                    else if (++consecutiveActiveTargetMisses >= 3)
-                    {
-                        activeTargetIndex = -1;
-                        consecutiveActiveTargetMisses = 0;
+                        best = candidate;
+                        hasResult = true;
                     }
                 }
 
-                if (bestTarget == null && activeTargetIndex < 0)
+                if (!hasResult)
                 {
-                    int checks = Mathf.Clamp(searchTargetsPerFrame, 1, targets.Count);
-                    for (int offset = 0; offset < checks; offset++)
-                    {
-                        int index = (searchCursor + offset) % targets.Count;
-                        TrackedTarget candidate = targets[index];
-                        candidate.Tracker.Track(
-                            frameRgba,
-                            texture.width,
-                            texture.height,
-                            intrinsics,
-                            rotationClockwise,
-                            out NativeOrbResult result);
-                        if (!hasResult || IsBetterResult(result, bestResult))
-                        {
-                            bestResult = result;
-                            bestTarget = result.poseValid != 0 ? candidate : null;
-                            bestTargetIndex = result.poseValid != 0 ? index : -1;
-                            hasResult = true;
-                        }
-                    }
-
-                    searchCursor = (searchCursor + checks) % targets.Count;
-                }
-
-                if (bestTarget == null || bestResult.poseValid == 0)
-                {
-                    if (hasSmoothedPose)
-                    {
-                        HideRepairModel(false);
-                    }
-                    if (Time.unscaledTime >= nextLostStatusTime)
-                    {
-                        nextLostStatusTime = Time.unscaledTime + lostStatusIntervalSeconds;
-                        UpdateStatus($"未获得稳定三维位姿：最高匹配点 {bestResult.goodMatches}/{minGoodMatches}。");
-                    }
-
+                    HideOverlay(false);
+                    UpdateStatus("尚未找到稳定的瓶身三维位姿。");
                     return;
                 }
 
-                activeTargetIndex = bestTargetIndex;
-                consecutiveActiveTargetMisses = 0;
-                if (!TryApplyTrackedOverlayPose(bestResult, bestTarget.RepairAnchor, rotationClockwise, out string rejectionReason))
+                if (!PassesPoseQuality(best, out string qualityReason))
                 {
-                    HideRepairModel(false);
-                    UpdateStatus($"已识别瓶身，但位姿未通过叠加校验：{rejectionReason}");
+                    HideOverlay(false);
+                    UpdateStatus(qualityReason);
                     return;
                 }
 
-                trackedContentRoot.gameObject.SetActive(repairVisibleRequested);
+                if (!RepairPoseMath.TryGetObjectPose(
+                        best,
+                        rotationClockwise,
+                        arCamera,
+                        calibration,
+                        out Vector3 targetPosition,
+                        out Quaternion targetRotation))
+                {
+                    HideOverlay(false);
+                    UpdateStatus("瓶身位姿有效，但坐标转换结果无效。");
+                    return;
+                }
+
+                if (!PassesPoseContinuity(targetPosition, targetRotation))
+                {
+                    HideOverlay(false);
+                    UpdateStatus("检测到异常位姿跳变，正在等待稳定结果。");
+                    return;
+                }
+
+                ApplyPose(targetPosition, targetRotation);
+                ApplyLightingConsistency(best.localLuminance);
+                trackedObjectPoseRoot.gameObject.SetActive(repairVisibleRequested);
                 lastValidPoseTime = Time.unscaledTime;
-                ApplyLightingConsistency(bestResult.localLuminance);
+
+                if (!ValidateCapVisibility(out string visibilityReason))
+                {
+                    UpdateStatus($"瓶身位姿有效，但修复模型未进入有效视野：{visibilityReason}");
+                    return;
+                }
+
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
                 UpdateStatus(
-                    $"已识别残缺瓶视角 {bestTarget.Index}：匹配点 {bestResult.goodMatches}，" +
-                    $"PnP 内点 {bestResult.poseInliers}，重投影误差 {bestResult.reprojectionError:F1}px，叠加稳定。");
+                    $"跟踪稳定：内点 {best.poseInliers}，比例 {best.inlierRatio:P0}，"
+                    + $"误差 {best.reprojectionError:F2}px，耗时 {best.processingMilliseconds:F0}ms。");
+#else
+                UpdateStatus(calibration.physicalScaleVerified
+                    ? "跟踪稳定，虚拟瓶盖已叠加至瓶口。"
+                    : "跟踪稳定，虚拟瓶盖已叠加；当前物理尺寸仍待实测标定。");
+#endif
             }
             finally
             {
-                cpuImage.Dispose();
+                image.Dispose();
             }
         }
 
-        private static bool IsBetterResult(NativeOrbResult current, NativeOrbResult best)
+        private bool PassesPoseQuality(NativeOrbResult result, out string reason)
+        {
+            if (result.goodMatches < minGoodMatches)
+            {
+                reason = $"正在搜索瓶身：有效匹配 {result.goodMatches}/{minGoodMatches}。";
+                return false;
+            }
+
+            if (result.poseValid == 0
+                || result.poseInliers < minPoseInliers
+                || result.inlierRatio < minimumInlierRatio
+                || result.reprojectionError > maximumReprojectionErrorPixels
+                || result.coverageX < minimumCoverageX
+                || result.coverageY < minimumCoverageY)
+            {
+                reason = "已识别瓶身，但当前特征分布或位姿稳定性不足。";
+                return false;
+            }
+
+            if (!float.IsFinite(result.tvecZ) || result.tvecZ <= 0f)
+            {
+                reason = "已识别瓶身，但估计深度无效。";
+                return false;
+            }
+
+            reason = string.Empty;
+            return true;
+        }
+
+        private bool PassesPoseContinuity(Vector3 position, Quaternion rotation)
+        {
+            if (!hasTrackedPose)
+            {
+                rejectedJumpFrames = 0;
+                return true;
+            }
+
+            float positionJump = Vector3.Distance(lastTargetPosition, position);
+            float rotationJump = Quaternion.Angle(lastTargetRotation, rotation);
+            if (positionJump <= maximumPositionJumpMeters
+                && rotationJump <= maximumRotationJumpDegrees)
+            {
+                rejectedJumpFrames = 0;
+                return true;
+            }
+
+            rejectedJumpFrames++;
+            if (rejectedJumpFrames < 3)
+            {
+                return false;
+            }
+
+            hasTrackedPose = false;
+            rejectedJumpFrames = 0;
+            return true;
+        }
+
+        private void ApplyPose(Vector3 position, Quaternion rotation)
+        {
+            float deltaTime = Mathf.Max(0.001f, Time.unscaledDeltaTime);
+            if (!hasTrackedPose)
+            {
+                trackedObjectPoseRoot.SetParent(null, true);
+                trackedObjectPoseRoot.SetPositionAndRotation(position, rotation);
+                trackedObjectPoseRoot.localScale = Vector3.one * calibration.metersPerModelUnit;
+                hasTrackedPose = true;
+            }
+            else
+            {
+                float positionAlpha = 1f - Mathf.Exp(-positionResponse * deltaTime);
+                float rotationAlpha = 1f - Mathf.Exp(-rotationResponse * deltaTime);
+                trackedObjectPoseRoot.position = Vector3.Lerp(
+                    trackedObjectPoseRoot.position,
+                    position,
+                    positionAlpha);
+                trackedObjectPoseRoot.rotation = Quaternion.Slerp(
+                    trackedObjectPoseRoot.rotation,
+                    rotation,
+                    rotationAlpha);
+            }
+
+            lastTargetPosition = position;
+            lastTargetRotation = rotation;
+        }
+
+        private void ShowInitialPose()
+        {
+            if (trackedObjectPoseRoot == null || arCamera == null || calibration == null)
+            {
+                return;
+            }
+
+            hasTrackedPose = false;
+            Quaternion frame = Quaternion.LookRotation(
+                calibration.ForwardInModel,
+                calibration.UpInModel);
+            Vector3 canonicalMouth = Quaternion.Inverse(frame)
+                * (calibration.mouthCenterInModel - calibration.objectOriginInModel);
+            Quaternion previewRotation = Quaternion.Euler(initialObjectEulerInCamera);
+            Vector3 rootPosition = initialMouthPositionInCamera
+                - previewRotation * (canonicalMouth * calibration.metersPerModelUnit);
+
+            trackedObjectPoseRoot.SetParent(arCamera.transform, false);
+            trackedObjectPoseRoot.localPosition = rootPosition;
+            trackedObjectPoseRoot.localRotation = previewRotation;
+            trackedObjectPoseRoot.localScale = Vector3.one * calibration.metersPerModelUnit;
+            trackedObjectPoseRoot.gameObject.SetActive(repairVisibleRequested);
+        }
+
+        private bool ValidateCapVisibility(out string reason)
+        {
+            if (registeredBottleCap == null || !registeredBottleCap.gameObject.activeInHierarchy)
+            {
+                reason = "瓶盖对象未激活";
+                return false;
+            }
+
+            Bounds bounds = default;
+            bool initialized = false;
+            foreach (Renderer renderer in capRenderers)
+            {
+                if (renderer == null || !renderer.enabled)
+                {
+                    continue;
+                }
+
+                if (!initialized)
+                {
+                    bounds = renderer.bounds;
+                    initialized = true;
+                }
+                else
+                {
+                    bounds.Encapsulate(renderer.bounds);
+                }
+            }
+
+            if (!initialized)
+            {
+                reason = "瓶盖没有启用的 Renderer";
+                return false;
+            }
+
+            Vector3 center = arCamera.WorldToViewportPoint(bounds.center);
+            Vector3 top = arCamera.WorldToViewportPoint(bounds.center + Vector3.up * bounds.extents.y);
+            Vector3 side = arCamera.WorldToViewportPoint(bounds.center + Vector3.right * bounds.extents.x);
+            float screenSize = Mathf.Max(
+                Vector2.Distance(center, top),
+                Vector2.Distance(center, side)) * 2f;
+            if (center.z <= 0f)
+            {
+                reason = "瓶盖位于相机后方";
+                return false;
+            }
+
+            if (center.x < -0.15f || center.x > 1.15f || center.y < -0.15f || center.y > 1.15f)
+            {
+                reason = "瓶盖投影位于屏幕外";
+                return false;
+            }
+
+            if (screenSize < 0.008f || screenSize > 0.45f)
+            {
+                reason = "瓶盖屏幕尺寸不合理";
+                return false;
+            }
+
+            reason = string.Empty;
+            return true;
+        }
+
+        private void ApplyLightingConsistency(float luminance)
+        {
+            if (!float.IsFinite(luminance) || capRenderers == null)
+            {
+                return;
+            }
+
+            smoothedLuminance = Mathf.Lerp(smoothedLuminance, Mathf.Clamp(luminance, 0.2f, 0.95f), 0.12f);
+            float value = Mathf.Lerp(0.68f, 1f, smoothedLuminance);
+            Color color = new Color(value, value * 0.99f, value * 0.97f, 1f);
+            foreach (Renderer renderer in capRenderers)
+            {
+                if (renderer == null)
+                {
+                    continue;
+                }
+
+                renderer.GetPropertyBlock(materialProperties);
+                materialProperties.SetColor("_BaseColor", color);
+                materialProperties.SetColor("_Color", color);
+                renderer.SetPropertyBlock(materialProperties);
+            }
+        }
+
+        private void HideOverlay(bool force)
+        {
+            if (!force && hasTrackedPose && Time.unscaledTime - lastValidPoseTime <= lostPoseGraceSeconds)
+            {
+                return;
+            }
+
+            if (trackedObjectPoseRoot != null)
+            {
+                trackedObjectPoseRoot.gameObject.SetActive(false);
+            }
+
+            hasTrackedPose = false;
+        }
+
+        private static bool IsBetter(NativeOrbResult current, NativeOrbResult best)
         {
             if (current.poseValid != best.poseValid)
             {
                 return current.poseValid > best.poseValid;
             }
 
-            if (current.poseValid != 0 && !Mathf.Approximately(current.reprojectionError, best.reprojectionError))
+            if (current.poseValid != 0 && current.reprojectionError != best.reprojectionError)
             {
                 return current.reprojectionError < best.reprojectionError;
             }
@@ -342,7 +518,11 @@ namespace Urp.ArDemo
             return current.goodMatches > best.goodMatches;
         }
 
-        private CameraIntrinsics GetCameraIntrinsics(int sourceWidth, int sourceHeight, int outputWidth, int outputHeight)
+        private CameraIntrinsics GetCameraIntrinsics(
+            int sourceWidth,
+            int sourceHeight,
+            int outputWidth,
+            int outputHeight)
         {
             float scaleX = outputWidth / (float)Mathf.Max(1, sourceWidth);
             float scaleY = outputHeight / (float)Mathf.Max(1, sourceHeight);
@@ -359,6 +539,43 @@ namespace Urp.ArDemo
             return new CameraIntrinsics(focal, focal, outputWidth * 0.5f, outputHeight * 0.5f);
         }
 
+        private Texture2D ConvertCpuImage(XRCpuImage image)
+        {
+            int outputWidth = Mathf.Min(maxFrameWidth, image.width);
+            int outputHeight = Mathf.Max(
+                1,
+                Mathf.RoundToInt(image.height * (outputWidth / (float)image.width)));
+            XRCpuImage.ConversionParams conversion = new XRCpuImage.ConversionParams
+            {
+                inputRect = new RectInt(0, 0, image.width, image.height),
+                outputDimensions = new Vector2Int(outputWidth, outputHeight),
+                outputFormat = TextureFormat.RGBA32,
+                transformation = XRCpuImage.Transformation.None
+            };
+
+            using (NativeArray<byte> buffer = new NativeArray<byte>(
+                       image.GetConvertedDataSize(conversion),
+                       Allocator.Temp))
+            {
+                image.Convert(conversion, buffer);
+                if (frameTexture == null
+                    || frameTexture.width != outputWidth
+                    || frameTexture.height != outputHeight)
+                {
+                    frameTexture = new Texture2D(
+                        outputWidth,
+                        outputHeight,
+                        TextureFormat.RGBA32,
+                        false);
+                }
+
+                frameTexture.LoadRawTextureData(buffer);
+                frameTexture.Apply(false);
+            }
+
+            return frameTexture;
+        }
+
         private static int ResolveFrameRotation(int width, int height)
         {
             if (Screen.height >= Screen.width && width > height)
@@ -369,265 +586,12 @@ namespace Urp.ArDemo
             return 0;
         }
 
-        private Texture2D ConvertCpuImage(XRCpuImage cpuImage)
-        {
-            int outputWidth = Mathf.Min(maxFrameWidth, cpuImage.width);
-            int outputHeight = Mathf.Max(1, Mathf.RoundToInt(cpuImage.height * (outputWidth / (float)cpuImage.width)));
-            XRCpuImage.ConversionParams parameters = new XRCpuImage.ConversionParams
-            {
-                inputRect = new RectInt(0, 0, cpuImage.width, cpuImage.height),
-                outputDimensions = new Vector2Int(outputWidth, outputHeight),
-                outputFormat = TextureFormat.RGBA32,
-                transformation = XRCpuImage.Transformation.None
-            };
-
-            int size = cpuImage.GetConvertedDataSize(parameters);
-            using (NativeArray<byte> buffer = new NativeArray<byte>(size, Allocator.Temp))
-            {
-                cpuImage.Convert(parameters, buffer);
-                if (frameTexture == null || frameTexture.width != outputWidth || frameTexture.height != outputHeight)
-                {
-                    frameTexture = new Texture2D(outputWidth, outputHeight, TextureFormat.RGBA32, false);
-                }
-
-                frameTexture.LoadRawTextureData(buffer);
-                frameTexture.Apply(false);
-            }
-
-            return frameTexture;
-        }
-
-        private bool TryApplyTrackedOverlayPose(
-            NativeOrbResult result,
-            Vector3 repairAnchor,
-            int rotationClockwise,
-            out string rejectionReason)
-        {
-            rejectionReason = string.Empty;
-            if (result.anchorVisible == 0)
-            {
-                rejectionReason = "瓶口锚点不在画面内";
-                return false;
-            }
-
-            if (!float.IsFinite(result.reprojectionError) || result.reprojectionError > maxReprojectionErrorPixels)
-            {
-                rejectionReason = $"重投影误差 {result.reprojectionError:F1}px 过大";
-                return false;
-            }
-
-            Vector3 anchorInCamera = TransformModelPoint(result, repairAnchor);
-            Vector3 cameraLocalAnchor = CvToUnity(anchorInCamera) * modelUnitsToMeters;
-            float depthMeters = cameraLocalAnchor.z;
-            if (depthMeters < 0.08f || depthMeters > 5f)
-            {
-                rejectionReason = "估计距离超出有效范围";
-                return false;
-            }
-
-            Vector2 rawViewport = OrientedToSourceViewport(
-                new Vector2(result.anchorX01, result.anchorY01),
-                rotationClockwise);
-            Vector2 targetViewport = ResolveDisplayViewport(rawViewport);
-            if (targetViewport.x < 0.02f || targetViewport.x > 0.98f
-                || targetViewport.y < 0.02f || targetViewport.y > 0.98f)
-            {
-                rejectionReason = "校正后的瓶口位置超出屏幕";
-                return false;
-            }
-
-            if (hasSmoothedPose && Vector2.Distance(lastAcceptedViewport, targetViewport) > maxViewportJump)
-            {
-                consecutivePoseJumps++;
-                if (consecutivePoseJumps < 3)
-                {
-                    rejectionReason = "检测到位姿跳变，正在复核";
-                    return false;
-                }
-            }
-            else
-            {
-                consecutivePoseJumps = 0;
-            }
-
-            Ray anchorRay = arCamera.ViewportPointToRay(new Vector3(targetViewport.x, targetViewport.y, 0f));
-            Vector3 rayInCamera = arCamera.transform.InverseTransformDirection(anchorRay.direction);
-            float rayDistance = depthMeters / Mathf.Max(0.001f, rayInCamera.z);
-            Vector3 targetPosition = anchorRay.origin + anchorRay.direction * rayDistance;
-
-            Vector3 upInCamera = TransformModelDirection(result, bottleUpInModel);
-            Vector3 forwardInCamera = TransformModelDirection(result, bottleForwardInModel);
-            upInCamera = UndoFrameRotation(upInCamera, rotationClockwise);
-            forwardInCamera = UndoFrameRotation(forwardInCamera, rotationClockwise);
-            Vector3 targetUp = arCamera.transform.TransformDirection(CvToUnity(upInCamera)).normalized;
-            Vector3 targetForward = arCamera.transform.TransformDirection(CvToUnity(forwardInCamera)).normalized;
-            targetForward = Vector3.ProjectOnPlane(targetForward, targetUp).normalized;
-            if (targetForward.sqrMagnitude < 0.0001f)
-            {
-                targetForward = Vector3.ProjectOnPlane(arCamera.transform.forward, targetUp).normalized;
-            }
-
-            Quaternion targetRotation = Quaternion.LookRotation(targetForward, targetUp);
-            ApplySmoothedPose(targetPosition, targetRotation, Vector3.one * pnpRepairScale);
-            lastAcceptedViewport = targetViewport;
-            return true;
-        }
-
-        private Vector2 ResolveDisplayViewport(Vector2 sourceViewport)
-        {
-            if (!hasDisplayMatrix)
-            {
-                return new Vector2(sourceViewport.x, 1f - sourceViewport.y);
-            }
-
-            // ARCoreBackground.shader maps display UV to camera texture UV as:
-            // displayMatrix * (screenX, 1-screenY, 1, 0). Invert that exact
-            // operation to place the CPU-image repair anchor on the displayed frame.
-            Vector2 textureUv = new Vector2(sourceViewport.x, 1f - sourceViewport.y);
-            Vector4 displayInput = displayMatrix.inverse * new Vector4(textureUv.x, textureUv.y, 1f, 0f);
-            return new Vector2(displayInput.x, 1f - displayInput.y);
-        }
-
-        private static Vector2 OrientedToSourceViewport(Vector2 oriented, int rotationClockwise)
-        {
-            switch (rotationClockwise)
-            {
-                case 90:
-                    return new Vector2(1f - oriented.y, oriented.x);
-                case 180:
-                    return new Vector2(1f - oriented.x, 1f - oriented.y);
-                case 270:
-                    return new Vector2(oriented.y, 1f - oriented.x);
-                default:
-                    return oriented;
-            }
-        }
-
-        private static Vector3 TransformModelPoint(NativeOrbResult result, Vector3 point)
-        {
-            return TransformModelDirection(result, point)
-                + new Vector3(result.tvecX, result.tvecY, result.tvecZ);
-        }
-
-        private static Vector3 TransformModelDirection(NativeOrbResult result, Vector3 direction)
-        {
-            return new Vector3(
-                result.r00 * direction.x + result.r01 * direction.y + result.r02 * direction.z,
-                result.r10 * direction.x + result.r11 * direction.y + result.r12 * direction.z,
-                result.r20 * direction.x + result.r21 * direction.y + result.r22 * direction.z);
-        }
-
-        private static Vector3 CvToUnity(Vector3 point)
-        {
-            return new Vector3(point.x, -point.y, point.z);
-        }
-
-        private static Vector3 UndoFrameRotation(Vector3 point, int rotationClockwise)
-        {
-            switch (rotationClockwise)
-            {
-                case 90:
-                    return new Vector3(point.y, -point.x, point.z);
-                case 180:
-                    return new Vector3(-point.x, -point.y, point.z);
-                case 270:
-                    return new Vector3(-point.y, point.x, point.z);
-                default:
-                    return point;
-            }
-        }
-
-        private void ApplyLightingConsistency(float measuredLuminance)
-        {
-            if (!float.IsFinite(measuredLuminance) || measuredLuminance <= 0f || repairRenderers == null)
-            {
-                return;
-            }
-
-            smoothedLuminance = Mathf.Lerp(smoothedLuminance, Mathf.Clamp01(measuredLuminance), 0.2f);
-            float value = Mathf.Lerp(0.56f, 1f, smoothedLuminance);
-            Color color = new Color(value, value * 0.99f, value * 0.97f, 1f);
-            for (int i = 0; i < repairRenderers.Length; i++)
-            {
-                Renderer renderer = repairRenderers[i];
-                if (renderer == null || renderer.gameObject.name.Contains("Occlusion"))
-                {
-                    continue;
-                }
-
-                renderer.GetPropertyBlock(materialProperties);
-                materialProperties.SetColor("_Color", color);
-                renderer.SetPropertyBlock(materialProperties);
-            }
-        }
-
-        private void ApplySmoothedPose(Vector3 position, Quaternion rotation, Vector3 scale)
-        {
-            trackedContentRoot.SetParent(null, true);
-            if (!hasSmoothedPose)
-            {
-                trackedContentRoot.SetPositionAndRotation(position, rotation);
-                trackedContentRoot.localScale = scale;
-                hasSmoothedPose = true;
-                return;
-            }
-
-            float amount = Mathf.Clamp01(smoothing);
-            trackedContentRoot.position = Vector3.Lerp(trackedContentRoot.position, position, amount);
-            trackedContentRoot.rotation = Quaternion.Slerp(trackedContentRoot.rotation, rotation, amount);
-            trackedContentRoot.localScale = Vector3.Lerp(trackedContentRoot.localScale, scale, amount);
-        }
-
-        private void HideRepairModel(bool force)
-        {
-            if (!force && Time.unscaledTime - lastValidPoseTime <= lostPoseGraceSeconds)
-            {
-                return;
-            }
-
-            if (trackedContentRoot != null)
-            {
-                trackedContentRoot.gameObject.SetActive(false);
-            }
-
-            hasSmoothedPose = false;
-        }
-
-        private void ShowInitialPose()
-        {
-            if (trackedContentRoot == null || arCamera == null)
-            {
-                return;
-            }
-
-            hasSmoothedPose = false;
-            trackedContentRoot.SetParent(arCamera.transform, false);
-            trackedContentRoot.localPosition = initialPreviewLocalPosition;
-            trackedContentRoot.localRotation = Quaternion.Euler(initialPreviewLocalEulerAngles);
-            trackedContentRoot.localScale = Vector3.one * pnpRepairScale;
-            trackedContentRoot.gameObject.SetActive(repairVisibleRequested);
-        }
-
         private void UpdateStatus(string message)
         {
             if (statusText != null)
             {
                 statusText.text = message;
             }
-        }
-
-        private sealed class TrackedTarget
-        {
-            public TrackedTarget(NativeOrbTracker tracker, Vector3 repairAnchor, int index)
-            {
-                Tracker = tracker;
-                RepairAnchor = repairAnchor;
-                Index = index;
-            }
-
-            public NativeOrbTracker Tracker { get; }
-            public Vector3 RepairAnchor { get; }
-            public int Index { get; }
         }
     }
 }

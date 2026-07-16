@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 namespace Urp.ArDemo
@@ -8,12 +9,28 @@ namespace Urp.ArDemo
         [SerializeField] private Camera viewerCamera;
         [SerializeField] private Transform damagedModel;
         [SerializeField] private Transform completeModel;
+        [SerializeField] private RectTransform interactionArea;
         [SerializeField] private Text statusText;
+        [SerializeField] private float rotationSensitivity = 0.18f;
+        [SerializeField] private float minimumZoom = 0.5f;
+        [SerializeField] private float maximumZoom = 2.5f;
 
-        private Transform activeModel;
-        private float zoom = 1f;
-        private Vector2 previousPointer;
-        private bool dragging;
+        private ModelViewState damagedState;
+        private ModelViewState completeState;
+        private ModelViewState activeState;
+        private bool mouseDragging;
+        private Vector2 previousMouse;
+        private float previousPinchDistance;
+
+        public void BindStatusText(Text value)
+        {
+            statusText = value;
+        }
+
+        public void BindInteractionArea(RectTransform value)
+        {
+            interactionArea = value;
+        }
 
         public void SetViewerEnabled(bool enabled)
         {
@@ -22,121 +39,160 @@ namespace Urp.ArDemo
                 viewerCamera.gameObject.SetActive(enabled);
             }
 
-            enabled = enabled && gameObject.activeInHierarchy;
-            if (!enabled)
-            {
-                dragging = false;
-            }
-        }
-
-        public void BindStatusText(Text value)
-        {
-            statusText = value;
+            mouseDragging = false;
+            previousPinchDistance = 0f;
         }
 
         public void ShowDamagedModel()
         {
-            SetActiveModel(damagedModel);
-            UpdateStatus("正在查看残缺饮料瓶三维重建模型。");
+            SetActiveState(damagedState);
+            UpdateStatus("残缺模型：单指拖动旋转，双指捏合缩放。");
         }
 
         public void ShowCompleteModel()
         {
-            SetActiveModel(completeModel);
-            UpdateStatus("正在查看完整饮料瓶三维重建模型。");
-        }
-
-        public void RotateModel()
-        {
-            if (activeModel != null)
-            {
-                activeModel.Rotate(Vector3.up, 30f, Space.World);
-                UpdateStatus("模型已向右旋转 30°，也可以在模型区域单指拖动。");
-            }
-        }
-
-        public void ToggleZoom()
-        {
-            zoom = zoom < 1.1f ? 1.3f : zoom > 1.15f ? 0.82f : 1f;
-            ApplyZoom();
-            UpdateStatus(zoom > 1f ? "模型已放大。" : zoom < 1f ? "模型已缩小。" : "模型已恢复原始大小。");
+            SetActiveState(completeState);
+            UpdateStatus("完整模型：单指拖动旋转，双指捏合缩放。");
         }
 
         public void ResetView()
         {
-            zoom = 1f;
-            if (damagedModel != null)
-            {
-                damagedModel.localRotation = Quaternion.identity;
-            }
-
-            if (completeModel != null)
-            {
-                completeModel.localRotation = Quaternion.identity;
-            }
-
-            ApplyZoom();
+            activeState?.Reset();
+            UpdateStatus("已恢复当前模型的标准视角。");
         }
 
         private void Awake()
         {
+            damagedState = new ModelViewState(damagedModel);
+            completeState = new ModelViewState(completeModel);
             ShowDamagedModel();
         }
 
         private void Update()
         {
-            if (viewerCamera == null || !viewerCamera.gameObject.activeInHierarchy || activeModel == null)
+            if (viewerCamera == null
+                || !viewerCamera.gameObject.activeInHierarchy
+                || activeState == null
+                || activeState.Transform == null)
             {
                 return;
             }
 
-            if (Input.touchCount == 1)
+            HandleTouches();
+            HandleMouse();
+        }
+
+        private void HandleTouches()
+        {
+            if (Input.touchCount >= 2)
             {
-                Touch touch = Input.GetTouch(0);
-                if (touch.phase == TouchPhase.Moved)
+                Touch first = Input.GetTouch(0);
+                Touch second = Input.GetTouch(1);
+                if (!Contains(first.position) || !Contains(second.position))
                 {
-                    activeModel.Rotate(Vector3.up, -touch.deltaPosition.x * 0.2f, Space.World);
+                    previousPinchDistance = 0f;
+                    return;
                 }
+
+                float distance = Vector2.Distance(first.position, second.position);
+                if (previousPinchDistance > 1f)
+                {
+                    activeState.Zoom *= distance / previousPinchDistance;
+                    activeState.Zoom = Mathf.Clamp(activeState.Zoom, minimumZoom, maximumZoom);
+                    activeState.Apply();
+                }
+
+                previousPinchDistance = distance;
+                return;
             }
-            else if (Input.GetMouseButtonDown(0))
+
+            previousPinchDistance = 0f;
+            if (Input.touchCount != 1)
             {
-                previousPointer = Input.mousePosition;
-                dragging = true;
+                return;
+            }
+
+            Touch touch = Input.GetTouch(0);
+            if (touch.phase != TouchPhase.Moved
+                || !Contains(touch.position)
+                || IsOverBlockingUi(touch.fingerId))
+            {
+                return;
+            }
+
+            Rotate(touch.deltaPosition);
+        }
+
+        private void HandleMouse()
+        {
+            Vector2 pointer = Input.mousePosition;
+            if (Input.GetMouseButtonDown(0) && Contains(pointer) && !IsOverBlockingUi())
+            {
+                previousMouse = pointer;
+                mouseDragging = true;
             }
             else if (Input.GetMouseButtonUp(0))
             {
-                dragging = false;
+                mouseDragging = false;
             }
-            else if (dragging && Input.GetMouseButton(0))
+            else if (mouseDragging && Input.GetMouseButton(0))
             {
-                Vector2 pointer = Input.mousePosition;
-                activeModel.Rotate(Vector3.up, -(pointer.x - previousPointer.x) * 0.2f, Space.World);
-                previousPointer = pointer;
+                Rotate(pointer - previousMouse);
+                previousMouse = pointer;
+            }
+
+            if (Contains(pointer))
+            {
+                float wheel = Input.mouseScrollDelta.y;
+                if (Mathf.Abs(wheel) > 0.001f)
+                {
+                    activeState.Zoom = Mathf.Clamp(
+                        activeState.Zoom * Mathf.Exp(wheel * 0.12f),
+                        minimumZoom,
+                        maximumZoom);
+                    activeState.Apply();
+                }
             }
         }
 
-        private void SetActiveModel(Transform model)
+        private void Rotate(Vector2 delta)
         {
-            activeModel = model;
+            activeState.Yaw -= delta.x * rotationSensitivity;
+            activeState.Pitch = Mathf.Clamp(
+                activeState.Pitch + delta.y * rotationSensitivity,
+                -80f,
+                80f);
+            activeState.Apply();
+        }
+
+        private void SetActiveState(ModelViewState state)
+        {
+            activeState = state;
             if (damagedModel != null)
             {
-                damagedModel.gameObject.SetActive(model == damagedModel);
+                damagedModel.gameObject.SetActive(state == damagedState);
             }
 
             if (completeModel != null)
             {
-                completeModel.gameObject.SetActive(model == completeModel);
+                completeModel.gameObject.SetActive(state == completeState);
             }
 
-            ApplyZoom();
+            activeState?.Reset();
         }
 
-        private void ApplyZoom()
+        private bool Contains(Vector2 screenPosition)
         {
-            if (activeModel != null)
-            {
-                activeModel.localScale = Vector3.one * zoom;
-            }
+            return interactionArea == null
+                || RectTransformUtility.RectangleContainsScreenPoint(interactionArea, screenPosition);
+        }
+
+        private static bool IsOverBlockingUi(int pointerId = -1)
+        {
+            return EventSystem.current != null
+                && (pointerId >= 0
+                    ? EventSystem.current.IsPointerOverGameObject(pointerId)
+                    : EventSystem.current.IsPointerOverGameObject());
         }
 
         private void UpdateStatus(string message)
@@ -144,6 +200,56 @@ namespace Urp.ArDemo
             if (statusText != null)
             {
                 statusText.text = message;
+            }
+        }
+
+        private sealed class ModelViewState
+        {
+            private readonly Vector3 initialPosition;
+            private readonly Quaternion initialRotation;
+            private readonly Vector3 initialScale;
+
+            public ModelViewState(Transform transform)
+            {
+                Transform = transform;
+                if (transform == null)
+                {
+                    return;
+                }
+
+                initialPosition = transform.localPosition;
+                initialRotation = transform.localRotation;
+                initialScale = transform.localScale;
+            }
+
+            public Transform Transform { get; }
+            public float Yaw { get; set; }
+            public float Pitch { get; set; }
+            public float Zoom { get; set; } = 1f;
+
+            public void Reset()
+            {
+                if (Transform == null)
+                {
+                    return;
+                }
+
+                Yaw = 0f;
+                Pitch = 0f;
+                Zoom = 1f;
+                Transform.localPosition = initialPosition;
+                Apply();
+            }
+
+            public void Apply()
+            {
+                if (Transform == null)
+                {
+                    return;
+                }
+
+                Transform.localRotation = initialRotation * Quaternion.Euler(Pitch, Yaw, 0f);
+                Transform.localScale = initialScale * Zoom;
             }
         }
     }

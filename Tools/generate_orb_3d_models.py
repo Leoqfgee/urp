@@ -24,6 +24,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--step", type=int, default=10)
     parser.add_argument("--max-points", type=int, default=650)
     parser.add_argument("--min-points", type=int, default=45)
+    parser.add_argument(
+        "--global-output",
+        type=Path,
+        help="Optional merged descriptor-to-3D model in the same SfM coordinate frame.",
+    )
+    parser.add_argument("--global-max-points", type=int, default=5000)
     return parser.parse_args()
 
 
@@ -179,6 +185,32 @@ def write_model(path: Path, points: np.ndarray, descriptors: np.ndarray) -> None
             output.write(descriptor.tobytes())
 
 
+def merge_global_records(
+    records: list[tuple[np.ndarray, np.ndarray]],
+    maximum: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    points = np.concatenate([record[0] for record in records], axis=0)
+    descriptors = np.concatenate([record[1] for record in records], axis=0)
+    if len(points) <= maximum:
+        return points, descriptors
+
+    normalized = (points - MODEL_BOUNDS_MIN) / (MODEL_BOUNDS_MAX - MODEL_BOUNDS_MIN)
+    cells = np.clip((normalized * np.array([8, 16, 6])).astype(int), 0, [7, 15, 5])
+    selected: list[int] = []
+    per_cell: dict[tuple[int, int, int], list[int]] = {}
+    for index, cell in enumerate(cells):
+        per_cell.setdefault(tuple(cell), []).append(index)
+    while len(selected) < maximum:
+        added = False
+        for indices in per_cell.values():
+            if indices and len(selected) < maximum:
+                selected.append(indices.pop(0))
+                added = True
+        if not added:
+            break
+    return points[selected], descriptors[selected]
+
+
 def main() -> None:
     args = parse_args()
     data = json.loads(args.sfm.read_text(encoding="utf-8"))
@@ -200,6 +232,7 @@ def main() -> None:
         old_model.unlink()
 
     written = 0
+    generated_records: list[tuple[np.ndarray, np.ndarray]] = []
     for start_index in range(0, len(views) - 4, args.step):
         best = (np.empty((0, 3)), np.empty((0, 32), np.uint8), np.empty((0,)))
         best_end = -1
@@ -223,6 +256,7 @@ def main() -> None:
         frame_id = int(views[start_index]["frameId"]) + 1
         path = args.output / f"bottle_view_{frame_id:04d}.bytes"
         write_model(path, points, descriptors)
+        generated_records.append((points, descriptors))
         print(
             f"{path.name}: {len(points)} points, "
             f"tracked through {Path(views[best_end]['path']).name}"
@@ -231,6 +265,14 @@ def main() -> None:
 
     if written == 0:
         raise SystemExit("No usable ORB 3D model was generated")
+    if args.global_output is not None:
+        global_points, global_descriptors = merge_global_records(
+            generated_records, args.global_max_points
+        )
+        write_model(args.global_output, global_points, global_descriptors)
+        print(
+            f"{args.global_output}: {len(global_points)} merged points in the shared SfM frame"
+        )
     print(f"Generated {written} ORB 3D model views in {args.output}")
 
 

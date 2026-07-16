@@ -1,0 +1,7 @@
+# https://github.com/mikedh/trimesh
+
+newmtl meshroom_processed_cap
+Ka 0.34901961 0.34117647 0.32156863
+Kd 0.92156863 0.90196078 0.83921569
+Ks 0.18039216 0.18039216 0.16078431
+Ns 24.00000000

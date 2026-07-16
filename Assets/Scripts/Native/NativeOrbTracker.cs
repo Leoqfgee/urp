@@ -18,6 +18,22 @@ namespace Urp.ArDemo.Native
 
         public bool IsValid => handle != 0 && !disposed;
 
+        public static string BuildVersion
+        {
+            get
+            {
+                try
+                {
+                    IntPtr value = urp_orb_get_build_version();
+                    return value == IntPtr.Zero ? "unknown" : Marshal.PtrToStringAnsi(value);
+                }
+                catch
+                {
+                    return "unavailable";
+                }
+            }
+        }
+
         public unsafe bool SetModel(TextAsset model)
         {
             if (!IsValid || model == null || model.bytes == null || model.bytes.Length == 0)
@@ -97,6 +113,9 @@ namespace Urp.ArDemo.Native
         private static extern int urp_orb_create(int featureCount, float ratio, int minMatches, int maxWidth);
 
         [DllImport(DllName)]
+        private static extern IntPtr urp_orb_get_build_version();
+
+        [DllImport(DllName)]
         private static extern void urp_orb_destroy(int handle);
 
         [DllImport(DllName)]
@@ -162,7 +181,7 @@ namespace Urp.ArDemo.Native
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    internal struct NativeOrbResult
+    public struct NativeOrbResult
     {
         public int tracked;
         public int goodMatches;
@@ -197,5 +216,10 @@ namespace Urp.ArDemo.Native
         public float anchorDepth;
         public int anchorVisible;
         public float localLuminance;
+        public float inlierRatio;
+        public float coverageX;
+        public float coverageY;
+        public float modelSpread;
+        public float processingMilliseconds;
     }
 }
