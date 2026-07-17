@@ -22,15 +22,16 @@ namespace Urp.ArDemo.Calibration
             if (arCamera == null || calibration == null || !calibration.HasValidFrame)
                 return false;
 
+            // Native rotates both the CPU image and its camera intrinsics before
+            // solvePnP. R/t therefore already describe the oriented camera frame.
+            // Applying frameRotationClockwise again here used to swap X/Y a
+            // second time and sent a valid cap pose to the left of the bottle.
             Vector3 originCameraCv = TransformModelPoint(result, calibration.objectOriginInModel);
-            originCameraCv = UndoImageRotation(originCameraCv, frameRotationClockwise);
             Vector3 originCameraUnity = CvCameraToUnityCamera(originCameraCv)
                 * calibration.metersPerModelUnit;
 
-            Vector3 upCamera = ConvertDirection(result, calibration.UpInModel,
-                frameRotationClockwise);
-            Vector3 forwardCamera = ConvertDirection(result, calibration.ForwardInModel,
-                frameRotationClockwise);
+            Vector3 upCamera = ConvertDirection(result, calibration.UpInModel);
+            Vector3 forwardCamera = ConvertDirection(result, calibration.ForwardInModel);
             forwardCamera = Vector3.ProjectOnPlane(forwardCamera, upCamera);
             if (!IsFinite(originCameraUnity)
                 || upCamera.sqrMagnitude < 0.5f
@@ -79,10 +80,9 @@ namespace Urp.ArDemo.Calibration
         }
 
         private static Vector3 ConvertDirection(
-            NativeOrbResult result, Vector3 direction, int rotation)
+            NativeOrbResult result, Vector3 direction)
         {
-            return CvCameraToUnityCamera(
-                UndoImageRotation(TransformModelDirection(result, direction), rotation));
+            return CvCameraToUnityCamera(TransformModelDirection(result, direction));
         }
 
         private static bool IsFinite(Vector3 value)

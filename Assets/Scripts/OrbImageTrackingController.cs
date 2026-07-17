@@ -420,21 +420,19 @@ namespace Urp.ArDemo
         private void ApplyForceDebugMaterial()
         {
             if (capRenderers == null) return;
-            Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
-            if (shader == null)
-                throw new MissingReferenceException("Universal Render Pipeline/Unlit shader is missing.");
-            forceDebugMaterial = new Material(shader)
+            Material source = Resources.Load<Material>("ForceMagentaDebug");
+            if (source == null || source.shader == null
+                || source.shader.name != "Hidden/URP/ForceMagentaDebug")
             {
-                name = "ForceRepairMagentaRuntime"
+                throw new MissingReferenceException(
+                    "Hard-coded force-magenta debug material is missing from Resources.");
+            }
+            // The shader fragment returns (1,0,1,1) directly. It cannot be
+            // turned white by imported material properties or property blocks.
+            forceDebugMaterial = new Material(source)
+            {
+                name = "ForceRepairHardMagentaRuntime"
             };
-            forceDebugMaterial.SetColor("_BaseColor", Color.magenta);
-            forceDebugMaterial.SetColor("_Color", Color.magenta);
-            if (forceDebugMaterial.HasProperty("_Cull"))
-                forceDebugMaterial.SetFloat("_Cull", 0f);
-            if (forceDebugMaterial.HasProperty("_Surface"))
-                forceDebugMaterial.SetFloat("_Surface", 0f);
-            if (forceDebugMaterial.HasProperty("_ZWrite"))
-                forceDebugMaterial.SetFloat("_ZWrite", 1f);
             repairMaterialsBeforeDebug = new Material[capRenderers.Length][];
             for (int i = 0; i < capRenderers.Length; i++)
             {
@@ -886,7 +884,13 @@ namespace Urp.ArDemo
                 return;
             }
 
-            Vector2 nativeAnchor = new Vector2(result.anchorX01, result.anchorY01);
+            if (!TryConvertOrientedImageToViewport(
+                    new Vector2(result.anchorX01, result.anchorY01), out Vector2 nativeAnchor))
+            {
+                lastProjectionDiagnostic =
+                    $"A=({viewport.x:F3},{viewport.y:F3}); B displayMatrix unavailable";
+                return;
+            }
             Vector2 unityAnchor = new Vector2(viewport.x, viewport.y);
             float dx = (nativeAnchor.x - unityAnchor.x) * Screen.width;
             float dy = (nativeAnchor.y - unityAnchor.y) * Screen.height;
@@ -1294,11 +1298,9 @@ namespace Urp.ArDemo
             if (!showNativeDebugOverlay || !modeEnabled || lastDebugPoints.Count == 0) return;
             foreach (NativeDebugPoint point in lastDebugPoints)
             {
-                Vector2 source = OrientedToSourceViewport(
-                    new Vector2(point.x01, point.y01), lastFrameRotation);
-                Vector3 display = hasDisplayMatrix
-                    ? lastDisplayMatrix.MultiplyPoint3x4(new Vector3(source.x, source.y, 0f))
-                    : new Vector3(source.x, source.y, 0f);
+                if (!TryConvertOrientedImageToViewport(
+                        new Vector2(point.x01, point.y01), out Vector2 display))
+                    continue;
                 if (!float.IsFinite(display.x) || !float.IsFinite(display.y)) continue;
                 float size = point.kind == 3 ? 14f : point.kind == 2 ? 7f : 5f;
                 GUI.color = point.kind switch
@@ -1327,6 +1329,23 @@ namespace Urp.ArDemo
                 case 270: return new Vector2(oriented.y, 1f - oriented.x);
                 default: return oriented;
             }
+        }
+
+        private bool TryConvertOrientedImageToViewport(
+            Vector2 oriented, out Vector2 viewport)
+        {
+            viewport = default;
+            if (!hasDisplayMatrix) return false;
+            Vector2 source = OrientedToSourceViewport(oriented, lastFrameRotation);
+            // ARFoundation's display matrix maps display UV to camera-texture
+            // UV. Native points are camera-image UV, so image-to-display uses
+            // the inverse exactly once. This is diagnostic only; PnP R/t is
+            // the sole source of the repair Transform.
+            Vector3 display = lastDisplayMatrix.inverse.MultiplyPoint3x4(
+                new Vector3(source.x, source.y, 0f));
+            if (!float.IsFinite(display.x) || !float.IsFinite(display.y)) return false;
+            viewport = new Vector2(display.x, display.y);
+            return true;
         }
 
         private void UpdateStatus(string message)

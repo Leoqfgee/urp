@@ -35,6 +35,11 @@ namespace Urp.ArDemo.Editor
             "Assets/Objects/CoconutBottle/Prefabs/BottleNeckOccluder.prefab";
         private const string OccluderShaderPath =
             "Assets/Shaders/DepthOnlyOccluder.shader";
+        private const string ForceMagentaShaderPath =
+            "Assets/Shaders/ForceMagentaDebug.shader";
+        private const string ForceMagentaMaterialPath =
+            "Assets/Resources/ForceMagentaDebug.mat";
+        private const string AndroidApkPath = "Builds/BottleCapRepairAR-v1.apk";
         private const string BottleOrbPath = "Assets/OrbModels/bottle_global.bytes";
         private const string BottleCalibrationPath =
             "Assets/Calibration/CoconutBottleRepairCalibration.asset";
@@ -75,11 +80,11 @@ namespace Urp.ArDemo.Editor
             AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
             CleanStaleSimulationTempAssets();
             Directory.CreateDirectory("Builds");
-            const string apkPath = "Builds/urp-ar-rebuilt.apk";
+            DeleteLegacyApks();
             BuildReport report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
             {
                 scenes = new[] { ScenePath },
-                locationPathName = apkPath,
+                locationPathName = AndroidApkPath,
                 target = BuildTarget.Android,
                 targetGroup = BuildTargetGroup.Android,
                 options = BuildOptions.Development
@@ -88,9 +93,21 @@ namespace Urp.ArDemo.Editor
             {
                 throw new BuildFailedException($"Android build failed: {report.summary.result}");
             }
-            BuildIdentityGenerator.VerifyApk(apkPath, identity);
-            BuildIdentityGenerator.VerifyNativePluginInApk(apkPath);
-            Debug.Log($"[BuildIdentity] APK SHA256: {BuildIdentityGenerator.Sha256(apkPath)}");
+            BuildIdentityGenerator.VerifyApk(AndroidApkPath, identity);
+            BuildIdentityGenerator.VerifyNativePluginInApk(AndroidApkPath);
+            Debug.Log($"[BuildIdentity] APK SHA256: {BuildIdentityGenerator.Sha256(AndroidApkPath)}");
+        }
+
+        private static void DeleteLegacyApks()
+        {
+            string buildsPath = Path.GetFullPath("Builds");
+            if (!Directory.Exists(buildsPath)) return;
+            foreach (string apk in Directory.GetFiles(
+                         buildsPath, "*.apk", SearchOption.TopDirectoryOnly))
+            {
+                Debug.Log($"Deleting legacy APK: {apk}");
+                File.Delete(apk);
+            }
         }
 
         private static void CleanStaleSimulationTempAssets()
@@ -116,21 +133,21 @@ namespace Urp.ArDemo.Editor
                 "Assets/Objects/CoconutBottle/Prefabs",
                 "Assets/Objects/Tissue/Profiles",
                 "Assets/Objects/Tissue/Calibration",
-                "Assets/Shaders"
+                "Assets/Shaders", "Assets/Resources"
             };
             foreach (string folder in folders) Directory.CreateDirectory(folder);
         }
 
         private static void ConfigureAndroidProject()
         {
-            PlayerSettings.productName = "文化遗址数字修复及 AR 呈现系统";
+            PlayerSettings.productName = "瓶盖智复 AR";
             PlayerSettings.companyName = "qfgeeee";
-            PlayerSettings.bundleVersion = "0.4";
+            PlayerSettings.bundleVersion = "1.0.0";
             PlayerSettings.SetApplicationIdentifier(
-                BuildTargetGroup.Android, "com.qfgeeee.urpardemo");
+                BuildTargetGroup.Android, "com.qfgeeee.bottlecaprepairar");
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
-            PlayerSettings.Android.bundleVersionCode = 4;
+            PlayerSettings.Android.bundleVersionCode = 100;
             PlayerSettings.SetScriptingBackend(
                 BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
@@ -276,6 +293,7 @@ namespace Urp.ArDemo.Editor
 
         private static RestorationObjectCatalog CreateProfiles()
         {
+            CreateForceMagentaDebugMaterial();
             Material bottleMaterial = CreateLitMaterial(
                 "Assets/Materials/BottleViewerLit.mat", BottleTexturePath, 0.20f);
             Material tissueMaterial = CreateLitMaterial(
@@ -453,6 +471,8 @@ namespace Urp.ArDemo.Editor
             cameraObject.tag = "MainCamera";
             arCamera.clearFlags = CameraClearFlags.SolidColor;
             arCamera.backgroundColor = Color.black;
+            arCamera.nearClipPlane = 0.02f;
+            arCamera.farClipPlane = 20f;
             arCamera.cullingMask |= 1 << 0;
             cameraObject.AddComponent<UniversalAdditionalCameraData>();
             cameraObject.AddComponent<AudioListener>();
@@ -594,6 +614,23 @@ namespace Urp.ArDemo.Editor
                     AssetDatabase.LoadAssetAtPath<Texture2D>(texturePath));
             EditorUtility.SetDirty(material);
             return material;
+        }
+
+        private static void CreateForceMagentaDebugMaterial()
+        {
+            AssetDatabase.ImportAsset(ForceMagentaShaderPath, ImportAssetOptions.ForceUpdate);
+            Shader shader = AssetDatabase.LoadAssetAtPath<Shader>(ForceMagentaShaderPath);
+            if (shader == null || shader.name != "Hidden/URP/ForceMagentaDebug")
+                throw new InvalidOperationException("Hard-coded force-magenta shader is missing.");
+            Material material = AssetDatabase.LoadAssetAtPath<Material>(ForceMagentaMaterialPath);
+            if (material == null)
+            {
+                material = new Material(shader);
+                AssetDatabase.CreateAsset(material, ForceMagentaMaterialPath);
+            }
+            material.shader = shader;
+            material.renderQueue = (int)RenderQueue.Geometry;
+            EditorUtility.SetDirty(material);
         }
 
         private static GameObject CreateBottleNeckOccluder()

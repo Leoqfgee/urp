@@ -46,7 +46,7 @@ namespace Urp.ArDemo.Editor
                 r00 = 1f, r11 = 1f, r22 = 1f
             };
             Require(Calibration.OpenCvUnityPoseConverter.TryGetObjectPose(
-                identity, 0, camera, profile, out Vector3 position, out _),
+                identity, 0, camera, profile, out Vector3 position, out Quaternion baseRotation),
                 "PnP pose conversion failed.");
             Require(Vector3.Distance(position, new Vector3(0.2f, 0.3f, 2f)) < 0.0001f,
                 $"Full PnP translation was not preserved: {position}");
@@ -55,16 +55,16 @@ namespace Urp.ArDemo.Editor
                 identity, 90, camera, profile,
                 out Vector3 portraitPosition, out Quaternion portraitRotation),
                 "Portrait PnP pose conversion failed.");
-            Require(Vector3.Distance(portraitPosition, new Vector3(-0.3f, 0.2f, 2f))
+            Require(Vector3.Distance(portraitPosition, new Vector3(0.2f, 0.3f, 2f))
                     < 0.0001f,
                 $"Portrait translation was converted incorrectly: {portraitPosition}");
-            Require(Vector3.Angle(portraitRotation * Vector3.up, Vector3.right) < 0.01f,
-                "Portrait pose did not keep the repair part on the rotated bottle axis.");
+            Require(Quaternion.Angle(portraitRotation, baseRotation) < 0.01f,
+                "An already-oriented PnP pose was rotated a second time.");
 
             ValidateOrientation(identity, 0, new Vector3(0.2f, 0.3f, 2f), camera, profile);
-            ValidateOrientation(identity, 90, new Vector3(-0.3f, 0.2f, 2f), camera, profile);
-            ValidateOrientation(identity, 180, new Vector3(-0.2f, -0.3f, 2f), camera, profile);
-            ValidateOrientation(identity, 270, new Vector3(0.3f, -0.2f, 2f), camera, profile);
+            ValidateOrientation(identity, 90, new Vector3(0.2f, 0.3f, 2f), camera, profile);
+            ValidateOrientation(identity, 180, new Vector3(0.2f, 0.3f, 2f), camera, profile);
+            ValidateOrientation(identity, 270, new Vector3(0.2f, 0.3f, 2f), camera, profile);
             NativeOrbResult right = identity;
             right.tvecX = 0.5f;
             ValidateOrientation(right, 0, new Vector3(0.5f, 0.3f, 2f), camera, profile);
@@ -315,6 +315,12 @@ namespace Urp.ArDemo.Editor
         private static void ValidateGeneratedScene()
         {
             EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+            Require(PlayerSettings.productName == "瓶盖智复 AR"
+                    && PlayerSettings.GetApplicationIdentifier(BuildTargetGroup.Android)
+                        == "com.qfgeeee.bottlecaprepairar"
+                    && PlayerSettings.bundleVersion == "1.0.0"
+                    && PlayerSettings.Android.bundleVersionCode == 100,
+                "Android app identity reverted to the legacy application.");
             RestorationObjectCatalog catalog =
                 AssetDatabase.LoadAssetAtPath<RestorationObjectCatalog>(CatalogPath);
             Require(catalog != null, "Restoration object catalog is missing.");
@@ -343,6 +349,9 @@ namespace Urp.ArDemo.Editor
             Require(background != null, "AR camera background is missing.");
             Require((arCamera.cullingMask & 1) != 0,
                 "AR camera cullingMask does not include the bottle-cap layer.");
+            Require(arCamera.nearClipPlane <= 0.021f && arCamera.farClipPlane >= 10f,
+                $"AR camera clipping range rejects a near bottle cap: "
+                + $"near={arCamera.nearClipPlane:F3}, far={arCamera.farClipPlane:F1}.");
             Require(arSession != null && !arSession.enabled,
                 "AR Session must stay disabled outside tracking mode at scene load.");
             Require(cameraManager != null && !cameraManager.enabled
@@ -360,6 +369,12 @@ namespace Urp.ArDemo.Editor
             Require(renderer != null && renderer.rendererFeatures
                     .OfType<ARBackgroundRendererFeature>().Any(),
                 "URP renderer is missing the AR camera background feature.");
+            Material forceMagenta = AssetDatabase.LoadAssetAtPath<Material>(
+                "Assets/Resources/ForceMagentaDebug.mat");
+            Require(forceMagenta != null
+                    && forceMagenta.shader != null
+                    && forceMagenta.shader.name == "Hidden/URP/ForceMagentaDebug",
+                "Force-render test does not use the hard-coded magenta shader.");
 
             UrpAppController app =
                 UnityEngine.Object.FindObjectOfType<UrpAppController>(true);

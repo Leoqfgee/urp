@@ -13,7 +13,7 @@ PlayerSettings:
   useOnDemandResources: 0
   accelerometerFrequency: 60
   companyName: qfgeeee
-  productName: "\u6587\u5316\u9057\u5740\u6570\u5B57\u4FEE\u590D\u53CA AR \u5448\u73B0\u7CFB\u7EDF"
+  productName: "\u74F6\u76D6\u667A\u590D AR"
   defaultCursor: {fileID: 0}
   cursorHotspot: {x: 0, y: 0}
   m_SplashScreenBackgroundColor: {r: 0.13725491, g: 0.12156863, b: 0.1254902, a: 1}
@@ -141,7 +141,7 @@ PlayerSettings:
   loadStoreDebugModeEnabled: 0
   visionOSBundleVersion: 1.0
   tvOSBundleVersion: 1.0
-  bundleVersion: 0.4
+  bundleVersion: 1.0.0
   preloadedAssets:
   - {fileID: -8054782128556557518, guid: 1f04b66a2285507439ef07d255c13e5f, type: 2}
   - {fileID: 11400000, guid: ad17f57e040962f43bdc1cbb182707b2, type: 2}
@@ -167,14 +167,14 @@ PlayerSettings:
   androidSupportedAspectRatio: 1
   androidMaxAspectRatio: 2.1
   applicationIdentifier:
-    Android: com.qfgeeee.urpardemo
+    Android: com.qfgeeee.bottlecaprepairar
   buildNumber:
     Standalone: 0
     VisionOS: 0
     iPhone: 0
     tvOS: 0
   overrideDefaultApplicationIdentifier: 1
-  AndroidBundleVersionCode: 4
+  AndroidBundleVersionCode: 100
   AndroidMinSdkVersion: 24
   AndroidTargetSdkVersion: 0
   AndroidPreferredInstallLocation: 1
