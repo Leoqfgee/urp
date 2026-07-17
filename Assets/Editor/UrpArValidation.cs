@@ -23,6 +23,7 @@ namespace Urp.ArDemo.Editor
             UrpArProjectSetup.SetupPrototypeScene();
             UrpArProjectSetup.SetupPrototypeScene();
             ValidatePoseConversion();
+            ValidateCameraSpacePoseApplication();
             ValidateAssets();
             ValidateGeneratedScene();
             Debug.Log("URP_AR_VALIDATION_OK");
@@ -116,6 +117,63 @@ namespace Urp.ArDemo.Editor
                 $"Synthetic {label} produced an invalid or rear-camera pose.");
         }
 
+        private static void ValidateCameraSpacePoseApplication()
+        {
+            GameObject cameraObject = new GameObject("Camera-space Pose Validation Camera");
+            cameraObject.transform.SetPositionAndRotation(
+                new Vector3(1.2f, -0.4f, 2.1f), Quaternion.Euler(8f, 37f, -3f));
+            Camera camera = cameraObject.AddComponent<Camera>();
+            camera.nearClipPlane = 0.03f;
+            GameObject rootObject = new GameObject("TrackedObjectPoseRoot Validation");
+            GameObject cap = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            cap.name = "RegisteredBottleCap Validation";
+            cap.transform.SetParent(rootObject.transform, false);
+            cap.transform.localScale = new Vector3(0.23f, 0.06f, 0.23f);
+            GameObject controllerObject = new GameObject("ORB Controller Validation");
+            OrbImageTrackingController controller =
+                controllerObject.AddComponent<OrbImageTrackingController>();
+            var calibration = ScriptableObject.CreateInstance<Calibration.RepairCalibrationProfile>();
+            calibration.metersPerModelUnit = 0.17f;
+            SetPrivateField(controller, "arCamera", camera);
+            SetPrivateField(controller, "trackedObjectPoseRoot", rootObject.transform);
+            SetPrivateField(controller, "calibration", calibration);
+
+            Vector3 expectedCameraPosition = new Vector3(0.04f, 0.08f, 0.42f);
+            Quaternion expectedCameraRotation = Quaternion.Euler(12f, 24f, 2f);
+            Vector3 worldPosition = camera.transform.TransformPoint(expectedCameraPosition);
+            Quaternion worldRotation = camera.transform.rotation * expectedCameraRotation;
+            MethodInfo applyPose = typeof(OrbImageTrackingController).GetMethod(
+                "ApplyPose", BindingFlags.Instance | BindingFlags.NonPublic);
+            Require(applyPose != null, "Camera-space ApplyPose method is missing.");
+            applyPose.Invoke(controller, new object[] { worldPosition, worldRotation });
+
+            Require(rootObject.transform.parent == camera.transform,
+                "Tracked root was not kept in the AR Camera coordinate space.");
+            Require(Vector3.Distance(rootObject.transform.localPosition, expectedCameraPosition)
+                    < 0.0001f,
+                $"Camera-space pose position changed sign: {rootObject.transform.localPosition}.");
+            Require(Quaternion.Angle(rootObject.transform.localRotation, expectedCameraRotation)
+                    < 0.01f,
+                "Camera-space pose rotation changed unexpectedly.");
+            float boundsZ = camera.transform.InverseTransformPoint(
+                cap.GetComponent<Renderer>().bounds.center).z;
+            Require(boundsZ > camera.nearClipPlane,
+                $"Registered cap bounds moved behind the camera: z={boundsZ:F3}.");
+
+            UnityEngine.Object.DestroyImmediate(calibration);
+            UnityEngine.Object.DestroyImmediate(controllerObject);
+            UnityEngine.Object.DestroyImmediate(rootObject);
+            UnityEngine.Object.DestroyImmediate(cameraObject);
+        }
+
+        private static void SetPrivateField(object target, string name, object value)
+        {
+            FieldInfo field = target.GetType().GetField(
+                name, BindingFlags.Instance | BindingFlags.NonPublic);
+            Require(field != null, $"Missing private field {name} on {target.GetType().Name}.");
+            field.SetValue(target, value);
+        }
+
         private static void ValidateAssets()
         {
             RestorationObjectCatalog catalog =
@@ -178,8 +236,10 @@ namespace Urp.ArDemo.Editor
             }
             Require(bottle.repairMaterial != null
                     && bottle.repairMaterial.IsKeywordEnabled("_EMISSION")
-                    && bottle.repairMaterial.GetColor("_EmissionColor").maxColorComponent >= 0.15f,
-                "Bottle cap material lacks the minimum camera-independent fill light.");
+                    && bottle.repairMaterial.GetColor("_EmissionColor").maxColorComponent >= 0.15f
+                    && bottle.repairMaterial.HasProperty("_Cull")
+                    && Mathf.Approximately(bottle.repairMaterial.GetFloat("_Cull"), 0f),
+                "Bottle cap material lacks fill light or two-sided rendering.");
             Require(bottle.trackingSettings.lostPoseGraceSeconds >= 2f
                     && bottle.trackingSettings.minimumGoodMatches == 14
                     && bottle.trackingSettings.minimumPoseInliers == 10

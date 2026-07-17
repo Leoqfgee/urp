@@ -308,7 +308,7 @@ namespace Urp.ArDemo
                 new Vector2(0.98f, 0.325f), true);
             string[] debugLabels =
             {
-                "强制洋红瓶盖", "仅瓶盖", "仅遮挡", "瓶盖+遮挡", "保存失败帧", "退出调试"
+                "强制前方洋红瓶盖", "当前位姿·仅瓶盖", "当前位姿·仅遮挡", "当前位姿·瓶盖+遮挡", "保存失败数据", "恢复正常跟踪"
             };
             Action[] debugActions =
             {

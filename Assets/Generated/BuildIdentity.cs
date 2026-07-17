@@ -40,7 +40,7 @@ namespace Urp.ArDemo.Generated
     /// </summary>
     public static class BuildIdentity
     {
-        public const string TrackingBuildVersion = "orb-tracking-v5";
+        public const string TrackingBuildVersion = "orb-tracking-v6-camera-space";
         public const string CalibrationVersion = "coconut-mouth-canonical-v3";
         public const string OrbDatabaseVersion = "coconut-damaged-canonical-v3";
 

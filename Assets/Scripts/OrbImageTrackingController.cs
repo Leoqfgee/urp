@@ -85,7 +85,7 @@ namespace Urp.ArDemo
         private RepairCalibrationProfile calibration;
         private bool forceRepairDebug;
         private Material forceDebugMaterial;
-        private Material[] repairMaterialsBeforeDebug;
+        private Material[][] repairMaterialsBeforeDebug;
         private LineRenderer debugBoundsLine;
         private Material boundsDebugMaterial;
         private string lastProjectionDiagnostic = "projection not evaluated";
@@ -354,8 +354,8 @@ namespace Urp.ArDemo
             hasTrackedPose = false;
             if (occlusionRoot != null) occlusionRoot.gameObject.SetActive(false);
             trackedObjectPoseRoot.SetParent(arCamera.transform, false);
-            trackedObjectPoseRoot.localPosition = new Vector3(0f, 0f, 0.5f);
-            trackedObjectPoseRoot.localRotation = Quaternion.identity;
+            trackedObjectPoseRoot.localPosition = new Vector3(0f, 0f, 0.45f);
+            trackedObjectPoseRoot.localRotation = Quaternion.Euler(8f, 20f, 0f);
             trackedObjectPoseRoot.localScale = Vector3.one
                 * (calibration != null ? calibration.metersPerModelUnit : 0.17f);
             SetRepairHierarchyVisible(true);
@@ -366,7 +366,7 @@ namespace Urp.ArDemo
             string diagnostics = BuildRepairDiagnostics();
             Debug.Log($"[ForceRepair] {diagnostics}");
             UpdateStatus(IsRepairActuallyRenderable
-                ? "强制渲染：洋红瓶盖位于相机前方 0.50 m；请确认真机画面可见。"
+                ? "强制渲染：洋红瓶盖位于相机前方 0.45 m；该模式与 ORB/PnP 无关。"
                 : $"强制渲染失败：{diagnostics}");
 #else
             UpdateStatus("强制渲染仅在 Development Build 中可用。");
@@ -383,7 +383,7 @@ namespace Urp.ArDemo
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
             SetRepairHierarchyVisible(true);
             if (occlusionRoot != null) occlusionRoot.gameObject.SetActive(false);
-            UpdateStatus("调试显示：仅修复瓶盖，遮挡体关闭。");
+            UpdateStatus("当前 PnP 位姿：仅显示瓶盖；该按钮只切换可见性，不会移动错误位姿。");
 #endif
         }
 
@@ -393,7 +393,7 @@ namespace Urp.ArDemo
             SetRepairHierarchyVisible(false);
             if (trackedObjectPoseRoot != null) trackedObjectPoseRoot.gameObject.SetActive(true);
             if (occlusionRoot != null) occlusionRoot.gameObject.SetActive(true);
-            UpdateStatus("调试显示：仅遮挡体。若遮挡体尚未验证，仅用于排查。");
+            UpdateStatus("当前 PnP 位姿：仅显示遮挡体；该按钮不会移动错误位姿。");
 #endif
         }
 
@@ -402,7 +402,7 @@ namespace Urp.ArDemo
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
             SetRepairHierarchyVisible(true);
             if (occlusionRoot != null) occlusionRoot.gameObject.SetActive(true);
-            UpdateStatus("调试显示：瓶盖与遮挡体同时启用。");
+            UpdateStatus("当前 PnP 位姿：瓶盖与遮挡体同时启用；该按钮不会移动错误位姿。");
 #endif
         }
 
@@ -429,13 +429,23 @@ namespace Urp.ArDemo
             };
             forceDebugMaterial.SetColor("_BaseColor", Color.magenta);
             forceDebugMaterial.SetColor("_Color", Color.magenta);
-            repairMaterialsBeforeDebug = new Material[capRenderers.Length];
+            if (forceDebugMaterial.HasProperty("_Cull"))
+                forceDebugMaterial.SetFloat("_Cull", 0f);
+            if (forceDebugMaterial.HasProperty("_Surface"))
+                forceDebugMaterial.SetFloat("_Surface", 0f);
+            if (forceDebugMaterial.HasProperty("_ZWrite"))
+                forceDebugMaterial.SetFloat("_ZWrite", 1f);
+            repairMaterialsBeforeDebug = new Material[capRenderers.Length][];
             for (int i = 0; i < capRenderers.Length; i++)
             {
                 Renderer renderer = capRenderers[i];
                 if (renderer == null) continue;
-                repairMaterialsBeforeDebug[i] = renderer.sharedMaterial;
-                renderer.sharedMaterial = forceDebugMaterial;
+                renderer.SetPropertyBlock(null);
+                repairMaterialsBeforeDebug[i] = renderer.sharedMaterials;
+                Material[] replacements = new Material[Mathf.Max(1, renderer.sharedMaterials.Length)];
+                for (int slot = 0; slot < replacements.Length; slot++)
+                    replacements[slot] = forceDebugMaterial;
+                renderer.sharedMaterials = replacements;
                 renderer.enabled = true;
             }
         }
@@ -447,7 +457,10 @@ namespace Urp.ArDemo
                 for (int i = 0; i < capRenderers.Length && i < repairMaterialsBeforeDebug.Length; i++)
                 {
                     if (capRenderers[i] != null && repairMaterialsBeforeDebug[i] != null)
-                        capRenderers[i].sharedMaterial = repairMaterialsBeforeDebug[i];
+                    {
+                        capRenderers[i].sharedMaterials = repairMaterialsBeforeDebug[i];
+                        capRenderers[i].SetPropertyBlock(null);
+                    }
                 }
             }
             repairMaterialsBeforeDebug = null;
@@ -808,39 +821,47 @@ namespace Urp.ArDemo
 
         private void ApplyPose(Vector3 position, Quaternion rotation)
         {
+            if (arCamera == null || trackedObjectPoseRoot == null)
+                return;
+
             float now = Time.unscaledTime;
             float deltaTime = lastPoseApplyTime < 0f
                 ? trackingIntervalSeconds
                 : Mathf.Max(0.001f, now - lastPoseApplyTime);
             lastPoseApplyTime = now;
+            Vector3 cameraPosition = arCamera.transform.InverseTransformPoint(position);
+            Quaternion cameraRotation = Quaternion.Inverse(arCamera.transform.rotation) * rotation;
             if (!hasTrackedPose)
             {
-                trackedObjectPoseRoot.SetParent(null, true);
-                trackedObjectPoseRoot.SetPositionAndRotation(position, rotation);
+                trackedObjectPoseRoot.SetParent(arCamera.transform, false);
+                trackedObjectPoseRoot.localPosition = cameraPosition;
+                trackedObjectPoseRoot.localRotation = cameraRotation;
                 trackedObjectPoseRoot.localScale = Vector3.one * calibration.metersPerModelUnit;
                 hasTrackedPose = true;
             }
             else
             {
-                if (Vector3.Distance(trackedObjectPoseRoot.position, position)
+                if (trackedObjectPoseRoot.parent != arCamera.transform)
+                    trackedObjectPoseRoot.SetParent(arCamera.transform, true);
+                if (Vector3.Distance(trackedObjectPoseRoot.localPosition, cameraPosition)
                     <= positionDeadZoneMeters)
                 {
-                    position = trackedObjectPoseRoot.position;
+                    cameraPosition = trackedObjectPoseRoot.localPosition;
                 }
-                if (Quaternion.Angle(trackedObjectPoseRoot.rotation, rotation)
+                if (Quaternion.Angle(trackedObjectPoseRoot.localRotation, cameraRotation)
                     <= rotationDeadZoneDegrees)
                 {
-                    rotation = trackedObjectPoseRoot.rotation;
+                    cameraRotation = trackedObjectPoseRoot.localRotation;
                 }
                 float positionAlpha = 1f - Mathf.Exp(-positionResponse * deltaTime);
                 float rotationAlpha = 1f - Mathf.Exp(-rotationResponse * deltaTime);
-                trackedObjectPoseRoot.position = Vector3.Lerp(
-                    trackedObjectPoseRoot.position,
-                    position,
+                trackedObjectPoseRoot.localPosition = Vector3.Lerp(
+                    trackedObjectPoseRoot.localPosition,
+                    cameraPosition,
                     positionAlpha);
-                trackedObjectPoseRoot.rotation = Quaternion.Slerp(
-                    trackedObjectPoseRoot.rotation,
-                    rotation,
+                trackedObjectPoseRoot.localRotation = Quaternion.Slerp(
+                    trackedObjectPoseRoot.localRotation,
+                    cameraRotation,
                     rotationAlpha);
             }
 
@@ -975,7 +996,15 @@ namespace Urp.ArDemo
                 Vector3 cameraPoint = arCamera.transform.InverseTransformPoint(renderer.bounds.center);
                 if (cameraPoint.z <= arCamera.nearClipPlane)
                 {
-                    reason = $"Renderer {renderer.name} 位于相机后方或近裁剪面内，cameraZ={cameraPoint.z:F3}";
+                    float rootZ = trackedObjectPoseRoot != null
+                        ? arCamera.transform.InverseTransformPoint(trackedObjectPoseRoot.position).z
+                        : float.NaN;
+                    float capZ = registeredRepairPart != null
+                        ? arCamera.transform.InverseTransformPoint(registeredRepairPart.position).z
+                        : float.NaN;
+                    reason = $"Renderer {renderer.name} 未进入前方视锥："
+                        + $"rawTvecZ={lastNativeResult.tvecZ:F3} model，"
+                        + $"rootZ={rootZ:F3}m，capZ={capZ:F3}m，boundsZ={cameraPoint.z:F3}m";
                     return false;
                 }
                 found = true;
@@ -1034,6 +1063,7 @@ namespace Urp.ArDemo
         {
             if (!force && hasTrackedPose && Time.unscaledTime - lastValidPoseTime <= lostPoseGraceSeconds)
             {
+                FreezeTrackedPoseInWorld();
                 trackingState = TrackingState.TemporarilyLost;
                 return;
             }
@@ -1047,6 +1077,12 @@ namespace Urp.ArDemo
             }
 
             SetRepairHierarchyVisible(false);
+        }
+
+        private void FreezeTrackedPoseInWorld()
+        {
+            if (trackedObjectPoseRoot != null && trackedObjectPoseRoot.parent == arCamera?.transform)
+                trackedObjectPoseRoot.SetParent(null, true);
         }
 
         private static bool IsBetter(NativeOrbResult current, NativeOrbResult best)

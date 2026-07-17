@@ -282,6 +282,9 @@ namespace Urp.ArDemo.Editor
                 "Assets/Objects/Tissue/Materials/TissueViewerLit.mat", TissueTexturePath, 0.16f);
             Material repairMaterial = CreateLitMaterial(
                 "Assets/Materials/RegisteredBottleCap.mat", null, 0.34f);
+            if (repairMaterial.HasProperty("_Cull"))
+                repairMaterial.SetFloat("_Cull", 0f);
+            repairMaterial.doubleSidedGI = true;
             repairMaterial.EnableKeyword("_EMISSION");
             repairMaterial.SetColor("_EmissionColor", new Color(0.16f, 0.16f, 0.15f, 1f));
             EditorUtility.SetDirty(repairMaterial);
