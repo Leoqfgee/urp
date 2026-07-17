@@ -37,9 +37,9 @@ MonoBehaviour:
     maximumReprojectionErrorPixels: 2.5
     minimumCoverageX: 0.12
     minimumCoverageY: 0.2
-    lostPoseGraceSeconds: 0.45
-    maximumPositionJumpMeters: 0.16
-    maximumRotationJumpDegrees: 32
+    lostPoseGraceSeconds: 2.5
+    maximumPositionJumpMeters: 0.06
+    maximumRotationJumpDegrees: 18
   repairMaterial: {fileID: 2100000, guid: 8d303b9a66ee40a43af998249f1e1795, type: 2}
   initialGuideMaterial: {fileID: 2100000, guid: 8d303b9a66ee40a43af998249f1e1795, type: 2}
   physicalScaleVerified: 1

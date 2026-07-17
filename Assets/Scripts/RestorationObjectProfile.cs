@@ -22,9 +22,9 @@ namespace Urp.ArDemo
         public float maximumReprojectionErrorPixels = 2.5f;
         public float minimumCoverageX = 0.12f;
         public float minimumCoverageY = 0.20f;
-        public float lostPoseGraceSeconds = 0.45f;
-        public float maximumPositionJumpMeters = 0.16f;
-        public float maximumRotationJumpDegrees = 32f;
+        public float lostPoseGraceSeconds = 2.5f;
+        public float maximumPositionJumpMeters = 0.06f;
+        public float maximumRotationJumpDegrees = 18f;
     }
 
     [CreateAssetMenu(menuName = "URP AR/Restoration Object Profile")]

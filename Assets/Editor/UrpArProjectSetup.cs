@@ -275,6 +275,9 @@ namespace Urp.ArDemo.Editor
                 "Assets/Objects/Tissue/Materials/TissueViewerLit.mat", TissueTexturePath, 0.16f);
             Material repairMaterial = CreateLitMaterial(
                 "Assets/Materials/RegisteredBottleCap.mat", null, 0.34f);
+            repairMaterial.EnableKeyword("_EMISSION");
+            repairMaterial.SetColor("_EmissionColor", new Color(0.16f, 0.16f, 0.15f, 1f));
+            EditorUtility.SetDirty(repairMaterial);
             GameObject bottleOccluder = CreateBottleNeckOccluder();
 
             RestorationObjectProfile bottle = LoadOrCreate<RestorationObjectProfile>(
@@ -311,7 +314,10 @@ namespace Urp.ArDemo.Editor
             bottleCalibration.expectedPhysicalNeckDiameter = 0.034f;
             bottleCalibration.expectedPhysicalCapDiameter = 0.039f;
             bottleCalibration.expectedPhysicalCapHeight = 0.010f;
-            bottleCalibration.capLocalPosition = Vector3.zero;
+            // Match the cap placement embedded in bottle_complete_clean.obj:
+            // the measured 10 mm cap surrounds the threads and ends 1.5 mm
+            // above the canonical mouth plane instead of floating on top of it.
+            bottleCalibration.capLocalPosition = new Vector3(0f, -0.05f, 0f);
             bottleCalibration.capLocalEulerAngles = Vector3.zero;
             bottleCalibration.capLocalScale = Vector3.one;
             bottleCalibration.occluderVerified = false;
@@ -325,6 +331,9 @@ namespace Urp.ArDemo.Editor
             bottle.initialGuideMaterial = repairMaterial;
             bottle.defaultViewerEuler = Vector3.zero;
             bottle.viewerMargin = 0.18f;
+            bottle.trackingSettings.lostPoseGraceSeconds = 2.5f;
+            bottle.trackingSettings.maximumPositionJumpMeters = 0.06f;
+            bottle.trackingSettings.maximumRotationJumpDegrees = 18f;
             bottle.physicalScaleVerified =
                 bottle.calibration != null && bottle.calibration.physicalScaleVerified;
             bottle.physicalMeasurements = new[]
@@ -437,6 +446,7 @@ namespace Urp.ArDemo.Editor
             cameraManager.enabled = false;
             arCamera.enabled = false;
             origin.Camera = arCamera;
+            CreateRepairLighting(cameraObject.transform);
 
             GameObject trackedRoot = new GameObject("TrackedObjectPoseRoot");
             GameObject alignment = new GameObject("ModelCoordinateAlignment");
@@ -509,6 +519,29 @@ namespace Urp.ArDemo.Editor
             AssignReference(controller, "viewerCamera", viewerCamera);
             AssignReference(controller, "modelViewRoot", modelRoot.transform);
             return controller;
+        }
+
+        private static void CreateRepairLighting(Transform cameraTransform)
+        {
+            GameObject keyObject = new GameObject("AR Repair Key Light");
+            keyObject.transform.SetParent(cameraTransform, false);
+            keyObject.transform.localRotation = Quaternion.Euler(38f, -32f, 0f);
+            Light key = keyObject.AddComponent<Light>();
+            key.type = LightType.Directional;
+            key.intensity = 0.92f;
+            key.color = new Color(1f, 0.98f, 0.95f);
+            key.cullingMask = 1;
+            key.shadows = LightShadows.None;
+
+            GameObject fillObject = new GameObject("AR Repair Fill Light");
+            fillObject.transform.SetParent(cameraTransform, false);
+            fillObject.transform.localRotation = Quaternion.Euler(18f, 148f, 0f);
+            Light fill = fillObject.AddComponent<Light>();
+            fill.type = LightType.Directional;
+            fill.intensity = 0.34f;
+            fill.color = new Color(0.88f, 0.93f, 1f);
+            fill.cullingMask = 1;
+            fill.shadows = LightShadows.None;
         }
 
         private static Material CreateLitMaterial(

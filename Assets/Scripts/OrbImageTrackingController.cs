@@ -37,8 +37,11 @@ namespace Urp.ArDemo
         [SerializeField] private float lostPoseGraceSeconds = 0.45f;
         [SerializeField] private float maximumPositionJumpMeters = 0.16f;
         [SerializeField] private float maximumRotationJumpDegrees = 32f;
-        [SerializeField] private float positionResponse = 16f;
-        [SerializeField] private float rotationResponse = 18f;
+        [SerializeField] private int relocationConfirmationFrames = 4;
+        [SerializeField] private float positionResponse = 6f;
+        [SerializeField] private float rotationResponse = 7f;
+        [SerializeField] private float positionDeadZoneMeters = 0.0025f;
+        [SerializeField] private float rotationDeadZoneDegrees = 1.5f;
 
         [Header("Initial paper-style alignment")]
         [SerializeField] private Vector3 initialMouthPositionInCamera = new Vector3(0f, 0.10f, 0.55f);
@@ -58,6 +61,9 @@ namespace Urp.ArDemo
         private Vector3 lastTargetPosition;
         private Quaternion lastTargetRotation;
         private int rejectedJumpFrames;
+        private Vector3 pendingRelocationPosition;
+        private Quaternion pendingRelocationRotation;
+        private float lastPoseApplyTime = -1f;
         private Transform registeredRepairPart;
         private GameObject registeredOccluder;
         private RepairCalibrationProfile calibration;
@@ -152,8 +158,17 @@ namespace Urp.ArDemo
                     ApplyMaterial(repair, profile.repairMaterial);
                     registeredRepairPart = repair.transform;
                     capRenderers = repair.GetComponentsInChildren<Renderer>(true);
+                    foreach (Renderer renderer in capRenderers)
+                    {
+                        renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                        renderer.receiveShadows = false;
+                    }
                 }
-                if (profile.registeredOccluderPrefab != null)
+                // A depth-only proxy can erase the entire cap when its physical fit is
+                // not calibrated. Never enable a provisional occluder on the device.
+                if (profile.registeredOccluderPrefab != null
+                    && calibration != null
+                    && calibration.occluderVerified)
                 {
                     registeredOccluder = Instantiate(profile.registeredOccluderPrefab, modelCoordinateAlignment);
                     registeredOccluder.name = "RegisteredOccluder";
@@ -218,6 +233,9 @@ namespace Urp.ArDemo
             recognitionRunning = false;
             hasTrackedPose = false;
             rejectedJumpFrames = 0;
+            pendingRelocationPosition = Vector3.zero;
+            pendingRelocationRotation = Quaternion.identity;
+            lastPoseApplyTime = -1f;
             lastValidPoseTime = -10f;
             ShowInitialPose();
             UpdateStatus("已恢复初始参考位置，请重新粗对齐后点击“开始”。");
@@ -252,7 +270,10 @@ namespace Urp.ArDemo
                     ratioTest,
                     minGoodMatches,
                     maxFrameWidth);
-                if (tracker.IsValid && tracker.SetModel(model))
+                if (tracker.IsValid
+                    && tracker.SetModel(model)
+                    && (calibration == null
+                        || tracker.SetRepairAnchor(calibration.mouthCenterInModel)))
                 {
                     trackers.Add(tracker);
                 }
@@ -338,9 +359,19 @@ namespace Urp.ArDemo
                     return;
                 }
 
-                if (!PassesPoseContinuity(targetPosition, targetRotation))
+                if (!PassesAnchorProjection(best, targetPosition))
                 {
                     HideOverlay(false);
+                    UpdateStatus("瓶口锚点与相机投影不一致，正在拒绝错误位姿。");
+                    return;
+                }
+
+                if (!PassesPoseContinuity(targetPosition, targetRotation))
+                {
+                    if (trackedObjectPoseRoot != null && hasTrackedPose)
+                    {
+                        trackedObjectPoseRoot.gameObject.SetActive(repairVisibleRequested);
+                    }
                     UpdateStatus("检测到异常位姿跳变，正在等待稳定结果。");
                     return;
                 }
@@ -398,6 +429,16 @@ namespace Urp.ArDemo
                 return false;
             }
 
+            if (result.anchorVisible == 0
+                || !float.IsFinite(result.anchorX01)
+                || !float.IsFinite(result.anchorY01)
+                || !float.IsFinite(result.anchorDepth)
+                || result.anchorDepth <= 0f)
+            {
+                reason = "已识别瓶身，但瓶口锚点不在有效视野内。";
+                return false;
+            }
+
             reason = string.Empty;
             return true;
         }
@@ -419,8 +460,26 @@ namespace Urp.ArDemo
                 return true;
             }
 
+            bool agreesWithPending = rejectedJumpFrames > 0
+                && Vector3.Distance(pendingRelocationPosition, position)
+                    <= maximumPositionJumpMeters * 0.35f
+                && Quaternion.Angle(pendingRelocationRotation, rotation)
+                    <= maximumRotationJumpDegrees * 0.35f;
+            if (!agreesWithPending)
+            {
+                pendingRelocationPosition = position;
+                pendingRelocationRotation = rotation;
+                rejectedJumpFrames = 1;
+                return false;
+            }
+
+            float weight = 1f / (rejectedJumpFrames + 1f);
+            pendingRelocationPosition = Vector3.Lerp(
+                pendingRelocationPosition, position, weight);
+            pendingRelocationRotation = Quaternion.Slerp(
+                pendingRelocationRotation, rotation, weight);
             rejectedJumpFrames++;
-            if (rejectedJumpFrames < 3)
+            if (rejectedJumpFrames < Mathf.Max(2, relocationConfirmationFrames))
             {
                 return false;
             }
@@ -432,7 +491,11 @@ namespace Urp.ArDemo
 
         private void ApplyPose(Vector3 position, Quaternion rotation)
         {
-            float deltaTime = Mathf.Max(0.001f, Time.unscaledDeltaTime);
+            float now = Time.unscaledTime;
+            float deltaTime = lastPoseApplyTime < 0f
+                ? trackingIntervalSeconds
+                : Mathf.Max(0.001f, now - lastPoseApplyTime);
+            lastPoseApplyTime = now;
             if (!hasTrackedPose)
             {
                 trackedObjectPoseRoot.SetParent(null, true);
@@ -442,6 +505,16 @@ namespace Urp.ArDemo
             }
             else
             {
+                if (Vector3.Distance(trackedObjectPoseRoot.position, position)
+                    <= positionDeadZoneMeters)
+                {
+                    position = trackedObjectPoseRoot.position;
+                }
+                if (Quaternion.Angle(trackedObjectPoseRoot.rotation, rotation)
+                    <= rotationDeadZoneDegrees)
+                {
+                    rotation = trackedObjectPoseRoot.rotation;
+                }
                 float positionAlpha = 1f - Mathf.Exp(-positionResponse * deltaTime);
                 float rotationAlpha = 1f - Mathf.Exp(-rotationResponse * deltaTime);
                 trackedObjectPoseRoot.position = Vector3.Lerp(
@@ -456,6 +529,26 @@ namespace Urp.ArDemo
 
             lastTargetPosition = position;
             lastTargetRotation = rotation;
+        }
+
+        private bool PassesAnchorProjection(NativeOrbResult result, Vector3 worldPosition)
+        {
+            if (arCamera == null || result.anchorVisible == 0)
+            {
+                return false;
+            }
+
+            Vector3 viewport = arCamera.WorldToViewportPoint(worldPosition);
+            if (!float.IsFinite(viewport.x)
+                || !float.IsFinite(viewport.y)
+                || viewport.z <= 0f)
+            {
+                return false;
+            }
+
+            Vector2 nativeAnchor = new Vector2(result.anchorX01, result.anchorY01);
+            Vector2 unityAnchor = new Vector2(viewport.x, viewport.y);
+            return Vector2.Distance(nativeAnchor, unityAnchor) <= 0.12f;
         }
 
         private void ShowInitialPose()

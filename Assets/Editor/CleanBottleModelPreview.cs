@@ -30,8 +30,10 @@ namespace Urp.ArDemo.Editor
 
             GameObject model = Object.Instantiate(prefab);
             model.name = Path.GetFileNameWithoutExtension(modelPath);
-            Material material = AssetDatabase.LoadAssetAtPath<Material>(
-                "Assets/Materials/BottleViewerLit.mat");
+            string materialPath = modelPath.EndsWith("bottle_cap_clean.obj")
+                ? "Assets/Materials/RegisteredBottleCap.mat"
+                : "Assets/Materials/BottleViewerLit.mat";
+            Material material = AssetDatabase.LoadAssetAtPath<Material>(materialPath);
             foreach (Renderer renderer in model.GetComponentsInChildren<Renderer>(true))
             {
                 renderer.sharedMaterial = material;

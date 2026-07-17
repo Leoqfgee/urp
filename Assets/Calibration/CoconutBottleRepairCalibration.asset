@@ -11,7 +11,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: fcce13aa6d109aa44a6ea0d548e8bd43, type: 3}
   m_Name: CoconutBottleRepairCalibration
-  m_EditorClassIdentifier: 
+  m_EditorClassIdentifier:
   objectOriginInModel: {x: 0, y: 0, z: 0}
   mouthCenterInModel: {x: 0, y: 0, z: 0}
   mouthRightInModel: {x: 0.1, y: 0, z: 0}
@@ -22,7 +22,7 @@ MonoBehaviour:
   expectedPhysicalNeckDiameter: 0.034
   expectedPhysicalCapDiameter: 0.039
   expectedPhysicalCapHeight: 0.01
-  capLocalPosition: {x: 0, y: 0, z: 0}
+  capLocalPosition: {x: 0, y: -0.05, z: 0}
   capLocalEulerAngles: {x: 0, y: 0, z: 0}
   capLocalScale: {x: 1, y: 1, z: 1}
   occluderVerified: 0

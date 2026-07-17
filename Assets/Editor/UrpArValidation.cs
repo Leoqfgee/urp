@@ -49,6 +49,16 @@ namespace Urp.ArDemo.Editor
                 "PnP pose conversion failed.");
             Require(Vector3.Distance(position, new Vector3(0.2f, 0.3f, 2f)) < 0.0001f,
                 $"Full PnP translation was not preserved: {position}");
+
+            Require(Calibration.RepairPoseMath.TryGetObjectPose(
+                identity, 90, camera, profile,
+                out Vector3 portraitPosition, out Quaternion portraitRotation),
+                "Portrait PnP pose conversion failed.");
+            Require(Vector3.Distance(portraitPosition, new Vector3(-0.3f, 0.2f, 2f))
+                    < 0.0001f,
+                $"Portrait translation was converted incorrectly: {portraitPosition}");
+            Require(Vector3.Angle(portraitRotation * Vector3.up, Vector3.right) < 0.01f,
+                "Portrait pose did not keep the repair part on the rotated bottle axis.");
             UnityEngine.Object.DestroyImmediate(profile);
             UnityEngine.Object.DestroyImmediate(cameraObject);
         }
@@ -77,11 +87,19 @@ namespace Urp.ArDemo.Editor
                     && Mathf.Abs(bottle.calibration.expectedPhysicalCapDiameter - 0.039f)
                         < 0.000001f
                     && Mathf.Abs(bottle.calibration.expectedPhysicalCapHeight - 0.010f)
-                        < 0.000001f,
+                        < 0.000001f
+                    && Vector3.Distance(bottle.calibration.capLocalPosition,
+                        new Vector3(0f, -0.05f, 0f)) < 0.000001f
+                    && !bottle.calibration.occluderVerified,
                 "Bottle canonical physical calibration is incomplete.");
             Require(bottle.physicalMeasurements.Length == 3
                     && bottle.physicalMeasurements.All(item => item.verified),
                 "Bottle measurements are not recorded in the profile.");
+            float registeredCapTop = bottle.calibration.capLocalPosition.y
+                + bottle.calibration.expectedPhysicalCapHeight
+                / bottle.calibration.metersPerModelUnit;
+            Require(registeredCapTop > 0f && registeredCapTop < 0.01f,
+                "Registered cap must surround the threads and finish just above the mouth plane.");
             Require(bottle.defaultViewerEuler == Vector3.zero,
                 "Bottle viewer must open in an upright front view.");
             Require(AssetDatabase.GetAssetPath(bottle.damagedViewerPrefab)
@@ -109,6 +127,14 @@ namespace Urp.ArDemo.Editor
                         && profile.viewerMaterial.shader.name == "Universal Render Pipeline/Lit",
                     $"{profile.objectId} viewer material is not URP/Lit.");
             }
+            Require(bottle.repairMaterial != null
+                    && bottle.repairMaterial.IsKeywordEnabled("_EMISSION")
+                    && bottle.repairMaterial.GetColor("_EmissionColor").maxColorComponent >= 0.15f,
+                "Bottle cap material lacks the minimum camera-independent fill light.");
+            Require(bottle.trackingSettings.lostPoseGraceSeconds >= 2f
+                    && bottle.trackingSettings.maximumPositionJumpMeters <= 0.06f
+                    && bottle.trackingSettings.maximumRotationJumpDegrees <= 18f,
+                "Bottle tracking continuity settings do not protect the world anchor.");
 
             string[] runtimeFiles = Directory.GetFiles("Assets", "*", SearchOption.AllDirectories)
                 .Where(path => path.EndsWith(".cs") || path.EndsWith(".asset")
@@ -199,6 +225,13 @@ namespace Urp.ArDemo.Editor
             Require(cameraManager != null && !cameraManager.enabled
                     && !background.enabled && !arCamera.enabled,
                 "AR camera components must stay disabled outside tracking mode.");
+            Light repairKey = FindRequired("AR Repair Key Light").GetComponent<Light>();
+            Light repairFill = FindRequired("AR Repair Fill Light").GetComponent<Light>();
+            Require(repairKey != null && repairFill != null
+                    && repairKey.transform.IsChildOf(arCamera.transform)
+                    && repairFill.transform.IsChildOf(arCamera.transform)
+                    && repairKey.cullingMask == 1 && repairFill.cullingMask == 1,
+                "AR repair lighting is missing or affects the wrong render layer.");
             UniversalRendererData renderer = AssetDatabase.LoadAssetAtPath<UniversalRendererData>(
                 "Assets/Settings/UrpMobileRenderer.asset");
             Require(renderer != null && renderer.rendererFeatures
