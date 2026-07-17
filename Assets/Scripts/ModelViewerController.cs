@@ -1,5 +1,7 @@
 using UnityEngine;
+using UnityEngine.InputSystem.EnhancedTouch;
 using UnityEngine.UI;
+using EnhancedTouch = UnityEngine.InputSystem.EnhancedTouch.Touch;
 
 namespace Urp.ArDemo
 {
@@ -27,6 +29,7 @@ namespace Urp.ArDemo
         private bool gesturesBlocked;
         private float previousPinchDistance;
         private Vector2Int lastTextureSize;
+        private bool enhancedTouchEnabled;
 
         public Camera ViewerCamera => viewerCamera;
         public RawImage ViewportImage => viewportImage;
@@ -53,6 +56,7 @@ namespace Urp.ArDemo
 
         public void SetViewerEnabled(bool enabled)
         {
+            SetEnhancedTouchEnabled(enabled);
             if (viewerCamera != null)
             {
                 viewerCamera.gameObject.SetActive(enabled);
@@ -145,6 +149,7 @@ namespace Urp.ArDemo
 
         private void OnDestroy()
         {
+            SetEnhancedTouchEnabled(false);
             ReleaseRenderTexture();
         }
 
@@ -156,18 +161,20 @@ namespace Urp.ArDemo
                 return;
             }
 
-            if (Input.touchCount >= 2)
+            var touches = EnhancedTouch.activeTouches;
+            if (touches.Count >= 2)
             {
-                Touch first = Input.GetTouch(0);
-                Touch second = Input.GetTouch(1);
+                EnhancedTouch first = touches[0];
+                EnhancedTouch second = touches[1];
                 activeState.EndDrag();
-                if (!viewport.Contains(first.position) || !viewport.Contains(second.position))
+                if (!viewport.Contains(first.screenPosition)
+                    || !viewport.Contains(second.screenPosition))
                 {
                     previousPinchDistance = 0f;
                     return;
                 }
 
-                float distance = Vector2.Distance(first.position, second.position);
+                float distance = Vector2.Distance(first.screenPosition, second.screenPosition);
                 if (previousPinchDistance > 1f)
                 {
                     activeState.Zoom = Mathf.Clamp(
@@ -182,25 +189,46 @@ namespace Urp.ArDemo
             }
 
             previousPinchDistance = 0f;
-            if (Input.touchCount != 1)
+            if (touches.Count != 1)
             {
                 activeState.EndDrag();
                 return;
             }
 
-            Touch touch = Input.GetTouch(0);
-            if (touch.phase == TouchPhase.Began && viewport.Contains(touch.position))
+            EnhancedTouch touch = touches[0];
+            if (touch.phase == UnityEngine.InputSystem.TouchPhase.Began
+                && viewport.Contains(touch.screenPosition))
             {
                 activeState.BeginDrag();
             }
-            else if (touch.phase == TouchPhase.Moved && activeState.IsDragging)
+            else if (touch.phase == UnityEngine.InputSystem.TouchPhase.Moved
+                     && activeState.IsDragging)
             {
-                Rotate(touch.deltaPosition);
+                Rotate(touch.delta);
             }
-            else if (touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled)
+            else if (touch.phase == UnityEngine.InputSystem.TouchPhase.Ended
+                     || touch.phase == UnityEngine.InputSystem.TouchPhase.Canceled)
             {
                 activeState.EndDrag();
             }
+        }
+
+        private void SetEnhancedTouchEnabled(bool enabled)
+        {
+            if (enabled == enhancedTouchEnabled)
+            {
+                return;
+            }
+
+            if (enabled)
+            {
+                EnhancedTouchSupport.Enable();
+            }
+            else
+            {
+                EnhancedTouchSupport.Disable();
+            }
+            enhancedTouchEnabled = enabled;
         }
 
         private void Rotate(Vector2 delta)
@@ -230,10 +258,42 @@ namespace Urp.ArDemo
                 Destroy(completeInstance);
             }
 
-            damagedInstance = InstantiateModel(profile?.damagedViewerPrefab, "Damaged Viewer Model");
-            completeInstance = InstantiateModel(profile?.completeViewerPrefab, "Complete Viewer Model");
+            if (profile != null && profile.objectId == "coconut_bottle")
+            {
+                damagedInstance = InstantiateGeneratedModel(
+                    BottleViewerProxy.Create(false), "Damaged Viewer Model");
+                completeInstance = InstantiateGeneratedModel(
+                    BottleViewerProxy.Create(true), "Complete Viewer Model");
+            }
+            else
+            {
+                damagedInstance = InstantiateModel(
+                    profile?.damagedViewerPrefab, "Damaged Viewer Model");
+                completeInstance = InstantiateModel(
+                    profile?.completeViewerPrefab, "Complete Viewer Model");
+            }
             damagedState = damagedInstance == null ? null : new ModelViewState(damagedInstance.transform);
             completeState = completeInstance == null ? null : new ModelViewState(completeInstance.transform);
+        }
+
+        private GameObject InstantiateGeneratedModel(GameObject instance, string instanceName)
+        {
+            if (instance == null)
+            {
+                return null;
+            }
+
+            GameObject pivotObject = new GameObject(instanceName + " Pivot");
+            pivotObject.transform.SetParent(modelViewRoot, false);
+            instance.name = instanceName;
+            instance.transform.SetParent(pivotObject.transform, false);
+            instance.transform.localPosition = Vector3.zero;
+            instance.transform.localRotation = Quaternion.identity;
+            SetLayerRecursively(instance, viewerCamera.gameObject.layer);
+            Bounds bounds = CalculateBounds(instance);
+            instance.transform.position += pivotObject.transform.position - bounds.center;
+            pivotObject.SetActive(false);
+            return pivotObject;
         }
 
         private GameObject InstantiateModel(GameObject prefab, string instanceName)

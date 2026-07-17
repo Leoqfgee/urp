@@ -31,7 +31,7 @@ namespace Urp.ArDemo
 
         public void OnPointerDown(PointerEventData eventData)
         {
-            if (eventData.button == PointerEventData.InputButton.Left)
+            if (eventData.pointerId < 0 && eventData.button == PointerEventData.InputButton.Left)
             {
                 viewer?.BeginPointerDrag(eventData.position);
             }
@@ -39,12 +39,15 @@ namespace Urp.ArDemo
 
         public void OnPointerUp(PointerEventData eventData)
         {
-            viewer?.EndPointerDrag();
+            if (eventData.pointerId < 0)
+            {
+                viewer?.EndPointerDrag();
+            }
         }
 
         public void OnDrag(PointerEventData eventData)
         {
-            if (eventData.button == PointerEventData.InputButton.Left)
+            if (eventData.pointerId < 0 && eventData.button == PointerEventData.InputButton.Left)
             {
                 viewer?.DragPointer(eventData.delta);
             }

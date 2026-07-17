@@ -5,6 +5,7 @@ using System.Reflection;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.Rendering.Universal;
 using UnityEngine.UI;
 using UnityEngine.XR.ARFoundation;
 using Urp.ArDemo.Native;
@@ -80,6 +81,8 @@ namespace Urp.ArDemo.Editor
             Require(bottle.physicalMeasurements.Length == 3
                     && bottle.physicalMeasurements.All(item => item.verified),
                 "Bottle measurements are not recorded in the profile.");
+            Require(bottle.defaultViewerEuler == Vector3.zero,
+                "Bottle viewer must open in an upright front view.");
             Require(tissue != null && tissue.damagedViewerPrefab != null,
                 "Tissue viewer profile is incomplete.");
             Require(tissue.orbModelDatabase == null && tissue.registeredRepairPrefab == null,
@@ -122,6 +125,8 @@ namespace Urp.ArDemo.Editor
             Require(alignment.IsChildOf(objectRoot), "Model alignment is outside pose root.");
 
             Camera arCamera = FindRequired("AR Camera").GetComponent<Camera>();
+            ARSession arSession = FindRequired("AR Session").GetComponent<ARSession>();
+            ARCameraManager cameraManager = arCamera.GetComponent<ARCameraManager>();
             ARCameraBackground background = arCamera.GetComponent<ARCameraBackground>();
             Camera viewerCamera = FindRequired("Resource Viewer Camera").GetComponent<Camera>();
             Require(viewerCamera.targetTexture == null,
@@ -129,6 +134,16 @@ namespace Urp.ArDemo.Editor
             Require((arCamera.cullingMask & viewerCamera.cullingMask) == 0,
                 "AR and viewer cameras render the same model layer.");
             Require(background != null, "AR camera background is missing.");
+            Require(arSession != null && !arSession.enabled,
+                "AR Session must stay disabled outside tracking mode at scene load.");
+            Require(cameraManager != null && !cameraManager.enabled
+                    && !background.enabled && !arCamera.enabled,
+                "AR camera components must stay disabled outside tracking mode.");
+            UniversalRendererData renderer = AssetDatabase.LoadAssetAtPath<UniversalRendererData>(
+                "Assets/Settings/UrpMobileRenderer.asset");
+            Require(renderer != null && renderer.rendererFeatures
+                    .OfType<ARBackgroundRendererFeature>().Any(),
+                "URP renderer is missing the AR camera background feature.");
 
             UrpAppController app =
                 UnityEngine.Object.FindObjectOfType<UrpAppController>(true);
@@ -170,8 +185,10 @@ namespace Urp.ArDemo.Editor
                 .ToArray();
             Require(cards.Length == catalog.objects.Count(item => item != null),
                 "Object selection cards do not match the catalog.");
-            Require(cards.All(item => ((RectTransform)item).rect.height >= 500f),
+            Require(cards.All(item => ((RectTransform)item).rect.height >= 350f),
                 "Object selection cards collapsed to zero height.");
+            Require(cards.All(item => item.GetComponentsInChildren<Button>(true).Length == 1),
+                "Each object selection card must be one direct selection target without duplicate mode buttons.");
             Bounds firstCardBounds = RectTransformUtility.CalculateRelativeRectTransformBounds(
                 cardViewport, (RectTransform)cards[0]);
             Rect viewportRect = cardViewport.rect;

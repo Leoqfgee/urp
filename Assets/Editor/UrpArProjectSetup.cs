@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using UnityEditor;
 using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
@@ -163,6 +164,7 @@ namespace Urp.ArDemo.Editor
                 renderer = ScriptableObject.CreateInstance<UniversalRendererData>();
                 AssetDatabase.CreateAsset(renderer, rendererPath);
             }
+            EnsureArBackgroundRendererFeature(renderer);
             UniversalRenderPipelineAsset pipeline =
                 AssetDatabase.LoadAssetAtPath<UniversalRenderPipelineAsset>(pipelinePath);
             if (pipeline == null)
@@ -180,6 +182,37 @@ namespace Urp.ArDemo.Editor
             GraphicsSettings.renderPipelineAsset = pipeline;
             QualitySettings.renderPipeline = pipeline;
             EditorUtility.SetDirty(pipeline);
+        }
+
+        private static void EnsureArBackgroundRendererFeature(UniversalRendererData renderer)
+        {
+            renderer.rendererFeatures.RemoveAll(feature => feature == null);
+            ARBackgroundRendererFeature feature = renderer.rendererFeatures
+                .OfType<ARBackgroundRendererFeature>()
+                .FirstOrDefault();
+            if (feature != null)
+            {
+                return;
+            }
+
+            feature = ScriptableObject.CreateInstance<ARBackgroundRendererFeature>();
+            feature.name = "AR Background Renderer Feature";
+            feature.Create();
+            AssetDatabase.AddObjectToAsset(feature, renderer);
+            renderer.rendererFeatures.Add(feature);
+
+            AssetDatabase.TryGetGUIDAndLocalFileIdentifier(feature, out _, out long localId);
+            SerializedObject serializedRenderer = new SerializedObject(renderer);
+            SerializedProperty featureMap = serializedRenderer.FindProperty("m_RendererFeatureMap");
+            if (featureMap != null)
+            {
+                int index = featureMap.arraySize;
+                featureMap.InsertArrayElementAtIndex(index);
+                featureMap.GetArrayElementAtIndex(index).longValue = localId;
+                serializedRenderer.ApplyModifiedPropertiesWithoutUndo();
+            }
+            EditorUtility.SetDirty(feature);
+            EditorUtility.SetDirty(renderer);
         }
 
         private static XRGeneralSettingsPerBuildTarget GetOrCreateXRSettings()
@@ -290,7 +323,7 @@ namespace Urp.ArDemo.Editor
             bottle.viewerMaterial = bottleMaterial;
             bottle.repairMaterial = repairMaterial;
             bottle.initialGuideMaterial = repairMaterial;
-            bottle.defaultViewerEuler = new Vector3(-90f, 0f, 0f);
+            bottle.defaultViewerEuler = Vector3.zero;
             bottle.viewerMargin = 0.18f;
             bottle.physicalScaleVerified =
                 bottle.calibration != null && bottle.calibration.physicalScaleVerified;
@@ -380,8 +413,9 @@ namespace Urp.ArDemo.Editor
             Scene scene = EditorSceneManager.NewScene(
                 NewSceneSetup.EmptyScene, NewSceneMode.Single);
             GameObject sessionObject = new GameObject("AR Session");
-            sessionObject.AddComponent<ARSession>();
+            ARSession arSession = sessionObject.AddComponent<ARSession>();
             sessionObject.AddComponent<ARInputManager>();
+            arSession.enabled = false;
 
             GameObject originObject = new GameObject("XR Origin");
             var origin = originObject.AddComponent<Unity.XR.CoreUtils.XROrigin>();
@@ -392,11 +426,16 @@ namespace Urp.ArDemo.Editor
             GameObject cameraObject = new GameObject("AR Camera");
             cameraObject.transform.SetParent(offset.transform, false);
             Camera arCamera = cameraObject.AddComponent<Camera>();
+            cameraObject.tag = "MainCamera";
             arCamera.clearFlags = CameraClearFlags.SolidColor;
             arCamera.backgroundColor = Color.black;
+            cameraObject.AddComponent<UniversalAdditionalCameraData>();
             cameraObject.AddComponent<AudioListener>();
             ARCameraManager cameraManager = cameraObject.AddComponent<ARCameraManager>();
             ARCameraBackground cameraBackground = cameraObject.AddComponent<ARCameraBackground>();
+            cameraBackground.enabled = false;
+            cameraManager.enabled = false;
+            arCamera.enabled = false;
             origin.Camera = arCamera;
 
             GameObject trackedRoot = new GameObject("TrackedObjectPoseRoot");
@@ -424,6 +463,7 @@ namespace Urp.ArDemo.Editor
             AssignReference(app, "orbTracker", tracker);
             AssignReference(app, "repairController", overlay);
             AssignReference(app, "modelViewer", viewer);
+            AssignReference(app, "arSession", arSession);
             AssignReference(app, "arCamera", arCamera);
             AssignReference(app, "arCameraManager", cameraManager);
             AssignReference(app, "arCameraBackground", cameraBackground);
@@ -446,6 +486,7 @@ namespace Urp.ArDemo.Editor
             cameraObject.transform.SetParent(root.transform, false);
             cameraObject.layer = viewerLayer;
             Camera viewerCamera = cameraObject.AddComponent<Camera>();
+            cameraObject.AddComponent<UniversalAdditionalCameraData>();
             viewerCamera.clearFlags = CameraClearFlags.SolidColor;
             viewerCamera.backgroundColor = new Color32(235, 241, 248, 255);
             viewerCamera.fieldOfView = 32f;

@@ -1,8 +1,12 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.XR.ARFoundation;
+#if UNITY_ANDROID && !UNITY_EDITOR
+using UnityEngine.Android;
+#endif
 
 namespace Urp.ArDemo
 {
@@ -15,6 +19,7 @@ namespace Urp.ArDemo
         [SerializeField] private OrbImageTrackingController orbTracker;
         [SerializeField] private RepairOverlayController repairController;
         [SerializeField] private ModelViewerController modelViewer;
+        [SerializeField] private ARSession arSession;
         [SerializeField] private Camera arCamera;
         [SerializeField] private ARCameraManager arCameraManager;
         [SerializeField] private ARCameraBackground arCameraBackground;
@@ -25,15 +30,18 @@ namespace Urp.ArDemo
         private Transform modalLayer;
         private GameObject fullScreenBackground;
         private Text resourceStatus;
+        private Text selectionInstruction;
         private Text trackingStatus;
         private Text trackingSubtitle;
         private GameObject infoModal;
         private Text infoTitle;
         private Text infoBody;
         private Page currentPage;
+        private Page selectionDestination = Page.Resource;
         private RestorationObjectProfile selectedProfile;
         private Button damagedButton;
         private Button completeButton;
+        private Coroutine arActivationRoutine;
 
         private static readonly Color Ink = new Color32(20, 48, 89, 255);
         private static readonly Color Muted = new Color32(82, 96, 118, 255);
@@ -124,9 +132,9 @@ namespace Urp.ArDemo
             CreateText(page.transform, "文化遗址数字修复及 AR 呈现系统", 48, Ink,
                 new Vector2(0.10f, 0.65f), new Vector2(0.90f, 0.83f), TextAnchor.MiddleCenter);
             CreateFixedButton(page.transform, "三维资源查看", 810f, 124f, 0f, 80f,
-                () => ShowPage(Page.Selection), Card, Ink, 36);
+                () => OpenSelection(Page.Resource), Card, Ink, 36);
             CreateFixedButton(page.transform, "三维跟踪修复", 810f, 124f, 0f, -100f,
-                () => ShowPage(Page.Selection), Card, Ink, 36);
+                () => OpenSelection(Page.Tracking), Card, Ink, 36);
             return page;
         }
 
@@ -134,7 +142,7 @@ namespace Urp.ArDemo
         {
             GameObject page = CreatePage("ObjectSelectionPageContent");
             CreateHeader(page.transform, "文物选择", () => ShowPage(Page.Home));
-            CreateText(page.transform, "选择对象后查看三维资源或进入跟踪修复", 24, Muted,
+            selectionInstruction = CreateText(page.transform, "请选择要查看的文物", 24, Muted,
                 new Vector2(0.08f, 0.82f), new Vector2(0.92f, 0.88f), TextAnchor.MiddleCenter);
 
             GameObject viewport = CreatePanel(page.transform, "ObjectCardViewport", Color.clear,
@@ -148,7 +156,7 @@ namespace Urp.ArDemo
             contentRect.pivot = new Vector2(0.5f, 1f);
             contentRect.anchoredPosition = Vector2.zero;
             int count = catalog == null ? 0 : catalog.objects.Length;
-            contentRect.sizeDelta = new Vector2(0f, Mathf.Max(700f, 36f + count * 570f
+            contentRect.sizeDelta = new Vector2(0f, Mathf.Max(700f, 36f + count * 390f
                 + Mathf.Max(0, count - 1) * 28f));
             VerticalLayoutGroup layout = content.AddComponent<VerticalLayoutGroup>();
             layout.padding = new RectOffset(18, 18, 18, 18);
@@ -192,18 +200,23 @@ namespace Urp.ArDemo
             cardRect.anchorMin = new Vector2(0f, 1f);
             cardRect.anchorMax = new Vector2(1f, 1f);
             cardRect.pivot = new Vector2(0.5f, 1f);
-            cardRect.sizeDelta = new Vector2(0f, 570f);
+            cardRect.sizeDelta = new Vector2(0f, 390f);
             LayoutElement element = card.AddComponent<LayoutElement>();
-            element.preferredHeight = 570f;
-            element.minHeight = 570f;
+            element.preferredHeight = 390f;
+            element.minHeight = 390f;
             element.flexibleHeight = 0f;
+
+            Button cardButton = card.AddComponent<Button>();
+            cardButton.targetGraphic = card.GetComponent<Image>();
+            cardButton.navigation = new Navigation { mode = Navigation.Mode.None };
+            cardButton.onClick.AddListener(() => SelectAndOpen(profile, selectionDestination));
 
             if (profile.thumbnail != null)
             {
                 GameObject preview = new GameObject("Thumbnail");
                 preview.transform.SetParent(card.transform, false);
                 RectTransform rect = preview.AddComponent<RectTransform>();
-                SetAnchors(rect, new Vector2(0.05f, 0.43f), new Vector2(0.40f, 0.93f));
+                SetAnchors(rect, new Vector2(0.05f, 0.12f), new Vector2(0.40f, 0.88f));
                 RawImage image = preview.AddComponent<RawImage>();
                 image.texture = profile.thumbnail;
                 image.uvRect = new Rect(0f, 0f, 1f, 1f);
@@ -211,17 +224,11 @@ namespace Urp.ArDemo
             }
 
             CreateText(card.transform, profile.displayName, 32, Ink,
-                new Vector2(0.44f, 0.77f), new Vector2(0.94f, 0.93f), TextAnchor.MiddleLeft);
+                new Vector2(0.44f, 0.67f), new Vector2(0.94f, 0.88f), TextAnchor.MiddleLeft);
             CreateText(card.transform, $"缺失部位：{profile.missingPartName}", 22, Accent,
-                new Vector2(0.44f, 0.66f), new Vector2(0.94f, 0.78f), TextAnchor.MiddleLeft);
+                new Vector2(0.44f, 0.52f), new Vector2(0.94f, 0.69f), TextAnchor.MiddleLeft);
             CreateText(card.transform, profile.shortDescription, 21, Muted,
-                new Vector2(0.44f, 0.42f), new Vector2(0.94f, 0.67f), TextAnchor.UpperLeft);
-            CreateButton(card.transform, "查看三维资源",
-                new Vector2(0.05f, 0.10f), new Vector2(0.47f, 0.32f),
-                () => SelectAndOpen(profile, Page.Resource), Accent, Color.white, 24);
-            CreateButton(card.transform, "进入跟踪修复",
-                new Vector2(0.53f, 0.10f), new Vector2(0.95f, 0.32f),
-                () => SelectAndOpen(profile, Page.Tracking), Card, Ink, 24);
+                new Vector2(0.44f, 0.14f), new Vector2(0.94f, 0.53f), TextAnchor.UpperLeft);
         }
 
         private void BuildCatalogErrorCard(Transform parent)
@@ -339,6 +346,18 @@ namespace Urp.ArDemo
             ShowPage(page);
         }
 
+        private void OpenSelection(Page destination)
+        {
+            selectionDestination = destination == Page.Tracking ? Page.Tracking : Page.Resource;
+            if (selectionInstruction != null)
+            {
+                selectionInstruction.text = selectionDestination == Page.Tracking
+                    ? "请选择要跟踪修复的文物"
+                    : "请选择要查看的文物";
+            }
+            ShowPage(Page.Selection);
+        }
+
         private void ShowPage(Page page)
         {
             currentPage = page;
@@ -349,11 +368,8 @@ namespace Urp.ArDemo
 
             bool resource = page == Page.Resource;
             bool tracking = page == Page.Tracking;
-            bool nonAr = !tracking;
-            fullScreenBackground.SetActive(nonAr);
-            if (arCameraBackground != null) arCameraBackground.enabled = tracking;
-            if (arCameraManager != null) arCameraManager.enabled = tracking;
-            if (arCamera != null) arCamera.enabled = tracking;
+            fullScreenBackground.SetActive(!tracking);
+            ConfigureArMode(tracking);
             modelViewer?.SetViewerEnabled(resource);
             orbTracker?.SetTrackingEnabled(tracking);
             if (tracking && trackingSubtitle != null)
@@ -366,6 +382,63 @@ namespace Urp.ArDemo
             }
             infoModal?.SetActive(false);
             modelViewer?.SetGesturesBlocked(false);
+        }
+
+        private void ConfigureArMode(bool enabled)
+        {
+            if (arActivationRoutine != null)
+            {
+                StopCoroutine(arActivationRoutine);
+                arActivationRoutine = null;
+            }
+
+            if (!enabled)
+            {
+                if (arCameraBackground != null) arCameraBackground.enabled = false;
+                if (arCameraManager != null) arCameraManager.enabled = false;
+                if (arCamera != null) arCamera.enabled = false;
+                if (arSession != null) arSession.enabled = false;
+                return;
+            }
+
+            arActivationRoutine = StartCoroutine(ActivateArCamera());
+        }
+
+        private IEnumerator ActivateArCamera()
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            if (!Permission.HasUserAuthorizedPermission(Permission.Camera))
+            {
+                if (trackingStatus != null)
+                    trackingStatus.text = "请允许相机权限以进入三维跟踪模式。";
+                Permission.RequestUserPermission(Permission.Camera);
+                float deadline = Time.realtimeSinceStartup + 20f;
+                while (!Permission.HasUserAuthorizedPermission(Permission.Camera)
+                       && Time.realtimeSinceStartup < deadline)
+                {
+                    yield return null;
+                }
+                if (!Permission.HasUserAuthorizedPermission(Permission.Camera))
+                {
+                    if (trackingStatus != null)
+                        trackingStatus.text = "未获得相机权限，请在系统设置中允许后重试。";
+                    arActivationRoutine = null;
+                    yield break;
+                }
+            }
+#endif
+            if (currentPage != Page.Tracking)
+            {
+                arActivationRoutine = null;
+                yield break;
+            }
+
+            if (arSession != null) arSession.enabled = true;
+            yield return null;
+            if (arCameraManager != null) arCameraManager.enabled = true;
+            if (arCamera != null) arCamera.enabled = true;
+            if (arCameraBackground != null) arCameraBackground.enabled = true;
+            arActivationRoutine = null;
         }
 
         private void ShowDamagedResource()
