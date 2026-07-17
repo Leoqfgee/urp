@@ -1,16 +1,29 @@
+using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Text;
 using Unity.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.XR.ARFoundation;
 using UnityEngine.XR.ARSubsystems;
 using Urp.ArDemo.Calibration;
+using Urp.ArDemo.Generated;
 using Urp.ArDemo.Native;
 
 namespace Urp.ArDemo
 {
     public sealed class OrbImageTrackingController : MonoBehaviour
     {
+        public enum TrackingState
+        {
+            Searching,
+            Candidate,
+            PoseValidating,
+            Tracking,
+            TemporarilyLost,
+            Lost
+        }
         [Header("AR input")]
         [SerializeField] private ARCameraManager cameraManager;
         [SerializeField] private Camera arCamera;
@@ -18,16 +31,19 @@ namespace Urp.ArDemo
         [Header("Object-coordinate overlay")]
         [SerializeField] private Transform trackedObjectPoseRoot;
         [SerializeField] private Transform modelCoordinateAlignment;
+        [SerializeField] private Transform repairPartRoot;
+        [SerializeField] private Transform occlusionRoot;
+        [SerializeField] private Transform debugRoot;
         [SerializeField] private Text statusText;
 
         [Header("Runtime profile")]
         [SerializeField] private RestorationObjectProfile activeProfile;
         [SerializeField] private int maxFrameWidth = 640;
-        [SerializeField] private int minGoodMatches = 24;
-        [SerializeField] private int minPoseInliers = 20;
+        [SerializeField] private int minGoodMatches = 14;
+        [SerializeField] private int minPoseInliers = 10;
         [SerializeField] private float minimumInlierRatio = 0.5f;
         [SerializeField] private float maximumReprojectionErrorPixels = 2.5f;
-        [SerializeField] private float minimumCoverageX = 0.12f;
+        [SerializeField] private float minimumCoverageX = 0.06f;
         [SerializeField] private float minimumCoverageY = 0.20f;
         [SerializeField] private float ratioTest = 0.72f;
 
@@ -67,16 +83,33 @@ namespace Urp.ArDemo
         private Transform registeredRepairPart;
         private GameObject registeredOccluder;
         private RepairCalibrationProfile calibration;
+        private bool forceRepairDebug;
+        private Material forceDebugMaterial;
+        private Material[] repairMaterialsBeforeDebug;
+        private LineRenderer debugBoundsLine;
+        private Material boundsDebugMaterial;
+        private string lastProjectionDiagnostic = "projection not evaluated";
+        private TrackingState trackingState = TrackingState.Searching;
+        private NativeOrbResult lastNativeResult;
+        private bool hasLastNativeResult;
+        private CameraIntrinsics lastIntrinsics;
+        private int lastFrameRotation;
+        private int lastSourceWidth;
+        private int lastSourceHeight;
+        private Matrix4x4 lastDisplayMatrix = Matrix4x4.identity;
+        private bool hasDisplayMatrix;
+        private readonly List<NativeDebugPoint> lastDebugPoints = new List<NativeDebugPoint>();
+        private bool showNativeDebugOverlay = true;
 
         public bool HasTrackedPose => hasTrackedPose;
+        public TrackingState State => trackingState;
+        public bool IsRepairActuallyRenderable =>
+            ValidateRepairRenderable(out _);
 
         private void Awake()
         {
             materialProperties = new MaterialPropertyBlock();
-            if (trackedObjectPoseRoot != null)
-            {
-                trackedObjectPoseRoot.gameObject.SetActive(false);
-            }
+            SetRepairHierarchyVisible(false);
 
             Debug.Log($"URP native tracker version: {NativeOrbTracker.BuildVersion}");
             if (activeProfile != null)
@@ -91,10 +124,35 @@ namespace Urp.ArDemo
             {
                 tracker.Dispose();
             }
+            if (forceDebugMaterial != null) Destroy(forceDebugMaterial);
+            if (boundsDebugMaterial != null) Destroy(boundsDebugMaterial);
+        }
+
+        private void OnEnable()
+        {
+            if (cameraManager != null) cameraManager.frameReceived += OnCameraFrameReceived;
+        }
+
+        private void OnDisable()
+        {
+            if (cameraManager != null) cameraManager.frameReceived -= OnCameraFrameReceived;
+        }
+
+        private void OnCameraFrameReceived(ARCameraFrameEventArgs args)
+        {
+            if (!args.displayMatrix.HasValue) return;
+            lastDisplayMatrix = args.displayMatrix.Value;
+            hasDisplayMatrix = true;
         }
 
         private void Update()
         {
+            if (forceRepairDebug)
+            {
+                UpdateDebugBounds();
+                return;
+            }
+
             if (!modeEnabled || !recognitionRunning || Time.unscaledTime < nextProcessTime)
             {
                 return;
@@ -133,6 +191,7 @@ namespace Urp.ArDemo
             }
             trackers.Clear();
 
+            ExitForceRepairDebug(false);
             if (registeredRepairPart != null)
             {
                 Destroy(registeredRepairPart.gameObject);
@@ -145,12 +204,18 @@ namespace Urp.ArDemo
             registeredRepairPart = null;
             registeredOccluder = null;
             capRenderers = null;
-            if (profile != null && modelCoordinateAlignment != null)
+            Transform repairParent = repairPartRoot != null
+                ? repairPartRoot
+                : modelCoordinateAlignment;
+            Transform occluderParent = occlusionRoot != null
+                ? occlusionRoot
+                : modelCoordinateAlignment;
+            if (profile != null && repairParent != null)
             {
                 if (profile.registeredRepairPrefab != null)
                 {
-                    GameObject repair = Instantiate(profile.registeredRepairPrefab, modelCoordinateAlignment);
-                    repair.name = "RegisteredRepairPart";
+                    GameObject repair = Instantiate(profile.registeredRepairPrefab, repairParent);
+                    repair.name = "RegisteredBottleCap";
                     repair.transform.localPosition = calibration != null ? calibration.capLocalPosition : Vector3.zero;
                     repair.transform.localRotation = Quaternion.Euler(
                         calibration != null ? calibration.capLocalEulerAngles : Vector3.zero);
@@ -160,18 +225,18 @@ namespace Urp.ArDemo
                     capRenderers = repair.GetComponentsInChildren<Renderer>(true);
                     foreach (Renderer renderer in capRenderers)
                     {
+                        SetLayerRecursively(renderer.gameObject, repairParent.gameObject.layer);
                         renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                         renderer.receiveShadows = false;
+                        renderer.enabled = true;
                     }
                 }
                 // A depth-only proxy can erase the entire cap when its physical fit is
                 // not calibrated. Never enable a provisional occluder on the device.
-                if (profile.registeredOccluderPrefab != null
-                    && calibration != null
-                    && calibration.occluderVerified)
+                if (profile.registeredOccluderPrefab != null && calibration != null)
                 {
-                    registeredOccluder = Instantiate(profile.registeredOccluderPrefab, modelCoordinateAlignment);
-                    registeredOccluder.name = "RegisteredOccluder";
+                    registeredOccluder = Instantiate(profile.registeredOccluderPrefab, occluderParent);
+                    registeredOccluder.name = "RegisteredNeckOccluder";
                     registeredOccluder.transform.localPosition =
                         calibration != null ? calibration.occluderLocalPosition : Vector3.zero;
                     registeredOccluder.transform.localRotation = Quaternion.Euler(
@@ -183,12 +248,18 @@ namespace Urp.ArDemo
                 }
             }
 
+            if (occlusionRoot != null)
+            {
+                occlusionRoot.gameObject.SetActive(false);
+            }
+
             BuildTrackers();
             ResetTracking();
         }
 
         public void SetTrackingEnabled(bool enabled)
         {
+            ExitForceRepairDebug(false);
             modeEnabled = enabled;
             recognitionRunning = false;
             if (enabled)
@@ -217,6 +288,7 @@ namespace Urp.ArDemo
 
         public void StartRecognition()
         {
+            ExitForceRepairDebug(false);
             if (!modeEnabled || activeProfile == null || !activeProfile.HasTrackingAssets)
             {
                 UpdateStatus("当前对象尚不具备可用的独立跟踪与修复标定数据。");
@@ -224,13 +296,17 @@ namespace Urp.ArDemo
             }
 
             recognitionRunning = true;
+            trackingState = TrackingState.Searching;
+            SetRepairHierarchyVisible(true);
             nextProcessTime = 0f;
             UpdateStatus($"正在识别 {activeProfile.displayName}，请保持主体特征清晰可见。");
         }
 
         public void ResetTracking()
         {
+            ExitForceRepairDebug(false);
             recognitionRunning = false;
+            trackingState = TrackingState.Searching;
             hasTrackedPose = false;
             rejectedJumpFrames = 0;
             pendingRelocationPosition = Vector3.zero;
@@ -244,10 +320,203 @@ namespace Urp.ArDemo
         public void SetRepairVisible(bool visible)
         {
             repairVisibleRequested = visible;
+            SetRepairHierarchyVisible(visible && (modeEnabled || hasTrackedPose));
+        }
+
+        public void SetRepairHierarchyVisible(bool visible)
+        {
             if (trackedObjectPoseRoot != null)
+                trackedObjectPoseRoot.gameObject.SetActive(visible);
+            if (repairPartRoot != null)
+                repairPartRoot.gameObject.SetActive(visible);
+            if (registeredRepairPart != null)
+                registeredRepairPart.gameObject.SetActive(visible);
+            if (capRenderers == null) return;
+            foreach (Renderer renderer in capRenderers)
             {
-                trackedObjectPoseRoot.gameObject.SetActive(visible && (modeEnabled || hasTrackedPose));
+                if (renderer != null)
+                    renderer.enabled = visible;
             }
+        }
+
+        public void ForceRepairInFrontOfCamera()
+        {
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+            if (arCamera == null || trackedObjectPoseRoot == null || registeredRepairPart == null)
+            {
+                UpdateStatus("强制渲染失败：AR Camera、位姿根节点或瓶盖模型未加载。");
+                return;
+            }
+
+            ExitForceRepairDebug(false);
+            forceRepairDebug = true;
+            recognitionRunning = false;
+            hasTrackedPose = false;
+            if (occlusionRoot != null) occlusionRoot.gameObject.SetActive(false);
+            trackedObjectPoseRoot.SetParent(arCamera.transform, false);
+            trackedObjectPoseRoot.localPosition = new Vector3(0f, 0f, 0.5f);
+            trackedObjectPoseRoot.localRotation = Quaternion.identity;
+            trackedObjectPoseRoot.localScale = Vector3.one
+                * (calibration != null ? calibration.metersPerModelUnit : 0.17f);
+            SetRepairHierarchyVisible(true);
+            ApplyForceDebugMaterial();
+            EnsureDebugBoundsLine();
+            if (debugRoot != null) debugRoot.gameObject.SetActive(true);
+            UpdateDebugBounds();
+            string diagnostics = BuildRepairDiagnostics();
+            Debug.Log($"[ForceRepair] {diagnostics}");
+            UpdateStatus(IsRepairActuallyRenderable
+                ? "强制渲染：洋红瓶盖位于相机前方 0.50 m；请确认真机画面可见。"
+                : $"强制渲染失败：{diagnostics}");
+#else
+            UpdateStatus("强制渲染仅在 Development Build 中可用。");
+#endif
+        }
+
+        public void ExitForceRepairDebug()
+        {
+            ExitForceRepairDebug(true);
+        }
+
+        public void DebugShowRepairOnly()
+        {
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+            SetRepairHierarchyVisible(true);
+            if (occlusionRoot != null) occlusionRoot.gameObject.SetActive(false);
+            UpdateStatus("调试显示：仅修复瓶盖，遮挡体关闭。");
+#endif
+        }
+
+        public void DebugShowOccluderOnly()
+        {
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+            SetRepairHierarchyVisible(false);
+            if (trackedObjectPoseRoot != null) trackedObjectPoseRoot.gameObject.SetActive(true);
+            if (occlusionRoot != null) occlusionRoot.gameObject.SetActive(true);
+            UpdateStatus("调试显示：仅遮挡体。若遮挡体尚未验证，仅用于排查。");
+#endif
+        }
+
+        public void DebugShowRepairAndOccluder()
+        {
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+            SetRepairHierarchyVisible(true);
+            if (occlusionRoot != null) occlusionRoot.gameObject.SetActive(true);
+            UpdateStatus("调试显示：瓶盖与遮挡体同时启用。");
+#endif
+        }
+
+        private void ExitForceRepairDebug(bool restoreInitialPose)
+        {
+            if (!forceRepairDebug) return;
+            forceRepairDebug = false;
+            RestoreRepairMaterials();
+            if (debugBoundsLine != null) debugBoundsLine.enabled = false;
+            if (debugRoot != null) debugRoot.gameObject.SetActive(false);
+            if (occlusionRoot != null) occlusionRoot.gameObject.SetActive(false);
+            if (restoreInitialPose && modeEnabled) ShowInitialPose();
+        }
+
+        private void ApplyForceDebugMaterial()
+        {
+            if (capRenderers == null) return;
+            Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
+            if (shader == null)
+                throw new MissingReferenceException("Universal Render Pipeline/Unlit shader is missing.");
+            forceDebugMaterial = new Material(shader)
+            {
+                name = "ForceRepairMagentaRuntime"
+            };
+            forceDebugMaterial.SetColor("_BaseColor", Color.magenta);
+            forceDebugMaterial.SetColor("_Color", Color.magenta);
+            repairMaterialsBeforeDebug = new Material[capRenderers.Length];
+            for (int i = 0; i < capRenderers.Length; i++)
+            {
+                Renderer renderer = capRenderers[i];
+                if (renderer == null) continue;
+                repairMaterialsBeforeDebug[i] = renderer.sharedMaterial;
+                renderer.sharedMaterial = forceDebugMaterial;
+                renderer.enabled = true;
+            }
+        }
+
+        private void RestoreRepairMaterials()
+        {
+            if (capRenderers != null && repairMaterialsBeforeDebug != null)
+            {
+                for (int i = 0; i < capRenderers.Length && i < repairMaterialsBeforeDebug.Length; i++)
+                {
+                    if (capRenderers[i] != null && repairMaterialsBeforeDebug[i] != null)
+                        capRenderers[i].sharedMaterial = repairMaterialsBeforeDebug[i];
+                }
+            }
+            repairMaterialsBeforeDebug = null;
+            if (forceDebugMaterial != null) Destroy(forceDebugMaterial);
+            forceDebugMaterial = null;
+        }
+
+        private void EnsureDebugBoundsLine()
+        {
+            if (debugRoot == null || debugBoundsLine != null) return;
+            debugBoundsLine = debugRoot.gameObject.AddComponent<LineRenderer>();
+            debugBoundsLine.useWorldSpace = true;
+            debugBoundsLine.loop = false;
+            debugBoundsLine.widthMultiplier = 0.0015f;
+            debugBoundsLine.positionCount = 16;
+            Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
+            boundsDebugMaterial = new Material(shader) { name = "RepairBoundsGreenRuntime" };
+            boundsDebugMaterial.SetColor("_BaseColor", Color.green);
+            boundsDebugMaterial.SetColor("_Color", Color.green);
+            debugBoundsLine.sharedMaterial = boundsDebugMaterial;
+            debugBoundsLine.startColor = Color.green;
+            debugBoundsLine.endColor = Color.green;
+            debugBoundsLine.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            debugBoundsLine.receiveShadows = false;
+        }
+
+        private void UpdateDebugBounds()
+        {
+            if (!forceRepairDebug || debugBoundsLine == null || capRenderers == null) return;
+            if (!TryGetRepairBounds(out Bounds bounds)) return;
+            Vector3 min = bounds.min;
+            Vector3 max = bounds.max;
+            Vector3[] points =
+            {
+                new Vector3(min.x,min.y,min.z), new Vector3(max.x,min.y,min.z),
+                new Vector3(max.x,max.y,min.z), new Vector3(min.x,max.y,min.z),
+                new Vector3(min.x,min.y,min.z), new Vector3(min.x,min.y,max.z),
+                new Vector3(max.x,min.y,max.z), new Vector3(max.x,max.y,max.z),
+                new Vector3(min.x,max.y,max.z), new Vector3(min.x,min.y,max.z),
+                new Vector3(min.x,max.y,max.z), new Vector3(min.x,max.y,min.z),
+                new Vector3(max.x,max.y,min.z), new Vector3(max.x,max.y,max.z),
+                new Vector3(max.x,min.y,max.z), new Vector3(max.x,min.y,min.z)
+            };
+            debugBoundsLine.SetPositions(points);
+            debugBoundsLine.enabled = true;
+        }
+
+        private string BuildRepairDiagnostics()
+        {
+            StringBuilder text = new StringBuilder();
+            text.Append($"root={trackedObjectPoseRoot?.gameObject.activeSelf}, ");
+            text.Append($"repairRoot={repairPartRoot?.gameObject.activeSelf}, ");
+            text.Append($"cap={registeredRepairPart?.gameObject.activeSelf}, ");
+            text.Append($"cameraMask=0x{(arCamera != null ? arCamera.cullingMask : 0):X8}; ");
+            if (capRenderers == null || capRenderers.Length == 0)
+                return text.Append("renderers=0").ToString();
+            foreach (Renderer renderer in capRenderers)
+            {
+                if (renderer == null) continue;
+                MeshFilter filter = renderer.GetComponent<MeshFilter>();
+                Mesh mesh = filter != null ? filter.sharedMesh : null;
+                text.Append($"[{renderer.name}: active={renderer.gameObject.activeInHierarchy}, ");
+                text.Append($"enabled={renderer.enabled}, layer={renderer.gameObject.layer}, ");
+                text.Append($"shader={renderer.sharedMaterial?.shader?.name ?? "null"}, ");
+                text.Append($"verts={(mesh != null ? mesh.vertexCount : 0)}, ");
+                text.Append($"tris={(mesh != null ? mesh.triangles.Length / 3 : 0)}, ");
+                text.Append($"scale={renderer.transform.lossyScale}] ");
+            }
+            return text.ToString();
         }
 
         private void BuildTrackers()
@@ -312,9 +581,14 @@ namespace Urp.ArDemo
                     texture.width,
                     texture.height);
                 int rotationClockwise = ResolveFrameRotation(texture.width, texture.height);
+                lastIntrinsics = intrinsics;
+                lastFrameRotation = rotationClockwise;
+                lastSourceWidth = image.width;
+                lastSourceHeight = image.height;
                 byte[] frameRgba = NativeOrbTracker.GetRgbaBytes(texture);
 
                 NativeOrbResult best = default;
+                NativeOrbTracker bestTracker = null;
                 bool hasResult = false;
                 foreach (NativeOrbTracker tracker in trackers)
                 {
@@ -328,6 +602,7 @@ namespace Urp.ArDemo
                     if (!hasResult || IsBetter(candidate, best))
                     {
                         best = candidate;
+                        bestTracker = tracker;
                         hasResult = true;
                     }
                 }
@@ -338,15 +613,21 @@ namespace Urp.ArDemo
                     UpdateStatus($"已识别 {activeProfile.displayName}，正在求解稳定姿态。");
                     return;
                 }
+                lastNativeResult = best;
+                hasLastNativeResult = true;
+                bestTracker?.GetDebugPoints(lastDebugPoints);
 
                 if (!PassesPoseQuality(best, out string qualityReason))
                 {
+                    trackingState = best.goodMatches < minGoodMatches
+                        ? TrackingState.Candidate
+                        : TrackingState.PoseValidating;
                     HideOverlay(false);
                     UpdateStatus(qualityReason);
                     return;
                 }
 
-                if (!RepairPoseMath.TryGetObjectPose(
+                if (!OpenCvUnityPoseConverter.TryGetObjectPose(
                         best,
                         rotationClockwise,
                         arCamera,
@@ -359,26 +640,31 @@ namespace Urp.ArDemo
                     return;
                 }
 
-                if (!PassesAnchorProjection(best, targetPosition))
-                {
-                    HideOverlay(false);
-                    UpdateStatus("瓶口锚点与相机投影不一致，正在拒绝错误位姿。");
-                    return;
-                }
+                UpdateAnchorProjectionDiagnostic(best, targetPosition);
+                best.translationJumpMeters = hasTrackedPose
+                    ? Vector3.Distance(lastTargetPosition, targetPosition)
+                    : 0f;
+                best.rotationJumpDegrees = hasTrackedPose
+                    ? Quaternion.Angle(lastTargetRotation, targetRotation)
+                    : 0f;
 
                 if (!PassesPoseContinuity(targetPosition, targetRotation))
                 {
+                    trackingState = hasTrackedPose
+                        ? TrackingState.TemporarilyLost
+                        : TrackingState.PoseValidating;
                     if (trackedObjectPoseRoot != null && hasTrackedPose)
                     {
-                        trackedObjectPoseRoot.gameObject.SetActive(repairVisibleRequested);
+                        SetRepairHierarchyVisible(repairVisibleRequested);
                     }
                     UpdateStatus("检测到异常位姿跳变，正在等待稳定结果。");
                     return;
                 }
 
                 ApplyPose(targetPosition, targetRotation);
+                trackingState = TrackingState.Tracking;
                 ApplyLightingConsistency(best.localLuminance);
-                trackedObjectPoseRoot.gameObject.SetActive(repairVisibleRequested);
+                SetRepairHierarchyVisible(repairVisibleRequested);
                 lastValidPoseTime = Time.unscaledTime;
 
                 if (!ValidateRepairVisibility(out string visibilityReason))
@@ -389,12 +675,14 @@ namespace Urp.ArDemo
 
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
                 UpdateStatus(
-                    $"位姿有效：{activeProfile.objectId}，内点 {best.poseInliers}，"
+                    $"跟踪稳定，瓶盖 Renderer 已提交相机（等待真机像素确认）："
+                    + $"{activeProfile.objectId}，内点 {best.poseInliers}，"
                     + $"比例 {best.inlierRatio:P0}，误差 {best.reprojectionError:F2}px；"
+                    + $"{lastProjectionDiagnostic}；"
                     + $"标定 {(activeProfile.physicalScaleVerified ? "已验证" : "未验证")}。");
 #else
                 UpdateStatus(activeProfile.physicalScaleVerified
-                    ? "跟踪稳定，修复部件已进入有效视野并通过标定检查。"
+                    ? "跟踪稳定，修复部件 Renderer 已进入有效视野；请以真机可见瓶盖确认完成。"
                     : "修复部件已进入视野，但物理尺寸与连接区域标定尚未验证。");
 #endif
             }
@@ -408,34 +696,63 @@ namespace Urp.ArDemo
         {
             if (result.goodMatches < minGoodMatches)
             {
-                reason = $"正在搜索对象：有效匹配 {result.goodMatches}/{minGoodMatches}。";
+                reason = $"找到外观候选：关键点 {result.detectedKeypoints}，"
+                    + $"比例匹配 {result.ratioMatches}，互检 {result.mutualMatches}，"
+                    + $"唯一匹配 {result.uniqueMatches}/{minGoodMatches}；尚不足以进入 PnP。";
                 return false;
             }
 
-            if (result.poseValid == 0
-                || result.poseInliers < minPoseInliers
-                || result.inlierRatio < minimumInlierRatio
-                || result.reprojectionError > maximumReprojectionErrorPixels
-                || result.coverageX < minimumCoverageX
-                || result.coverageY < minimumCoverageY)
+            if (result.coverageY < minimumCoverageY)
             {
-                reason = "已识别对象，但当前特征分布或位姿稳定性不足。";
+                reason = $"已找到瓶身候选，但匹配点垂直覆盖仅 {result.coverageY:P0}，"
+                    + $"不足 {minimumCoverageY:P0}。";
+                return false;
+            }
+            if (result.coverageX < minimumCoverageX)
+            {
+                reason = $"已找到瓶身候选，但匹配点水平覆盖仅 {result.coverageX:P0}，"
+                    + $"不足 {minimumCoverageX:P0}。";
+                return false;
+            }
+            if (result.occupiedGridCells < 4)
+            {
+                reason = $"已找到瓶身候选，但 8×12 网格仅占用 {result.occupiedGridCells} 格，"
+                    + "特征过度集中。";
+                return false;
+            }
+            if (result.rejectionCode == 5)
+            {
+                reason = $"对应点 {result.uniqueMatches} 个且分布有效，但 solvePnPRansac 求解失败。";
+                return false;
+            }
+            if (result.poseInliers < minPoseInliers)
+            {
+                reason = $"PnP 内点 {result.poseInliers}/{result.uniqueMatches}，"
+                    + $"少于最低 {minPoseInliers} 个。";
+                return false;
+            }
+            if (result.inlierRatio < minimumInlierRatio)
+            {
+                reason = $"PnP 内点 {result.poseInliers}/{result.uniqueMatches}，"
+                    + $"内点比例 {result.inlierRatio:P1}，低于 {minimumInlierRatio:P0}。";
+                return false;
+            }
+            if (result.reprojectionError > maximumReprojectionErrorPixels)
+            {
+                reason = $"PnP 重投影 RMS {result.reprojectionError:F2}px、"
+                    + $"最大 {result.reprojectionMax:F2}px，超过 {maximumReprojectionErrorPixels:F2}px。";
+                return false;
+            }
+            if (result.poseValid == 0)
+            {
+                reason = $"PnP 被拒绝：rejectionCode={result.rejectionCode}，"
+                    + $"唯一匹配 {result.uniqueMatches}，内点 {result.poseInliers}。";
                 return false;
             }
 
             if (!float.IsFinite(result.tvecZ) || result.tvecZ <= 0f)
             {
                 reason = "已识别瓶身，但估计深度无效。";
-                return false;
-            }
-
-            if (result.anchorVisible == 0
-                || !float.IsFinite(result.anchorX01)
-                || !float.IsFinite(result.anchorY01)
-                || !float.IsFinite(result.anchorDepth)
-                || result.anchorDepth <= 0f)
-            {
-                reason = "已识别瓶身，但瓶口锚点不在有效视野内。";
                 return false;
             }
 
@@ -531,11 +848,12 @@ namespace Urp.ArDemo
             lastTargetRotation = rotation;
         }
 
-        private bool PassesAnchorProjection(NativeOrbResult result, Vector3 worldPosition)
+        private void UpdateAnchorProjectionDiagnostic(NativeOrbResult result, Vector3 worldPosition)
         {
             if (arCamera == null || result.anchorVisible == 0)
             {
-                return false;
+                lastProjectionDiagnostic = "Native 二维瓶口投影无效（不参与世界位姿）";
+                return;
             }
 
             Vector3 viewport = arCamera.WorldToViewportPoint(worldPosition);
@@ -543,12 +861,18 @@ namespace Urp.ArDemo
                 || !float.IsFinite(viewport.y)
                 || viewport.z <= 0f)
             {
-                return false;
+                lastProjectionDiagnostic = $"A 链 viewport 无效：{viewport}";
+                return;
             }
 
             Vector2 nativeAnchor = new Vector2(result.anchorX01, result.anchorY01);
             Vector2 unityAnchor = new Vector2(viewport.x, viewport.y);
-            return Vector2.Distance(nativeAnchor, unityAnchor) <= 0.12f;
+            float dx = (nativeAnchor.x - unityAnchor.x) * Screen.width;
+            float dy = (nativeAnchor.y - unityAnchor.y) * Screen.height;
+            float pixels = Mathf.Sqrt(dx * dx + dy * dy);
+            lastProjectionDiagnostic =
+                $"A=({unityAnchor.x:F3},{unityAnchor.y:F3}) "
+                + $"B=({nativeAnchor.x:F3},{nativeAnchor.y:F3}) Δ={pixels:F1}px";
         }
 
         private void ShowInitialPose()
@@ -572,42 +896,13 @@ namespace Urp.ArDemo
             trackedObjectPoseRoot.localPosition = rootPosition;
             trackedObjectPoseRoot.localRotation = previewRotation;
             trackedObjectPoseRoot.localScale = Vector3.one * calibration.metersPerModelUnit;
-            trackedObjectPoseRoot.gameObject.SetActive(repairVisibleRequested);
+            SetRepairHierarchyVisible(repairVisibleRequested);
         }
 
         private bool ValidateRepairVisibility(out string reason)
         {
-            if (registeredRepairPart == null || !registeredRepairPart.gameObject.activeInHierarchy)
-            {
-                reason = "修复部件未激活";
+            if (!ValidateRepairRenderable(out reason) || !TryGetRepairBounds(out Bounds bounds))
                 return false;
-            }
-
-            Bounds bounds = default;
-            bool initialized = false;
-            foreach (Renderer renderer in capRenderers)
-            {
-                if (renderer == null || !renderer.enabled)
-                {
-                    continue;
-                }
-
-                if (!initialized)
-                {
-                    bounds = renderer.bounds;
-                    initialized = true;
-                }
-                else
-                {
-                    bounds.Encapsulate(renderer.bounds);
-                }
-            }
-
-            if (!initialized)
-            {
-                reason = "修复部件没有启用的 Renderer";
-                return false;
-            }
 
             Vector3 center = arCamera.WorldToViewportPoint(bounds.center);
             Vector3 top = arCamera.WorldToViewportPoint(bounds.center + Vector3.up * bounds.extents.y);
@@ -643,6 +938,74 @@ namespace Urp.ArDemo
             return true;
         }
 
+        private bool ValidateRepairRenderable(out string reason)
+        {
+            if (registeredRepairPart == null || !registeredRepairPart.gameObject.activeInHierarchy)
+            {
+                reason = "修复部件未激活";
+                return false;
+            }
+            if (arCamera == null)
+            {
+                reason = "AR Camera 为空";
+                return false;
+            }
+            if (capRenderers == null || capRenderers.Length == 0)
+            {
+                reason = "修复部件没有 Renderer";
+                return false;
+            }
+
+            bool found = false;
+            foreach (Renderer renderer in capRenderers)
+            {
+                if (renderer == null || !renderer.enabled || !renderer.gameObject.activeInHierarchy)
+                    continue;
+                if ((arCamera.cullingMask & (1 << renderer.gameObject.layer)) == 0)
+                {
+                    reason = $"Renderer Layer {renderer.gameObject.layer} 不在 Camera cullingMask 中";
+                    return false;
+                }
+                Material material = renderer.sharedMaterial;
+                if (material == null || material.shader == null || !material.shader.isSupported)
+                {
+                    reason = $"Renderer {renderer.name} 的材质或 Shader 无效";
+                    return false;
+                }
+                Vector3 cameraPoint = arCamera.transform.InverseTransformPoint(renderer.bounds.center);
+                if (cameraPoint.z <= arCamera.nearClipPlane)
+                {
+                    reason = $"Renderer {renderer.name} 位于相机后方或近裁剪面内，cameraZ={cameraPoint.z:F3}";
+                    return false;
+                }
+                found = true;
+            }
+            reason = found ? string.Empty : "没有同时 activeInHierarchy 且 enabled 的 Renderer";
+            return found;
+        }
+
+        private bool TryGetRepairBounds(out Bounds bounds)
+        {
+            bounds = default;
+            bool initialized = false;
+            if (capRenderers == null) return false;
+            foreach (Renderer renderer in capRenderers)
+            {
+                if (renderer == null || !renderer.enabled || !renderer.gameObject.activeInHierarchy)
+                    continue;
+                if (!initialized)
+                {
+                    bounds = renderer.bounds;
+                    initialized = true;
+                }
+                else
+                {
+                    bounds.Encapsulate(renderer.bounds);
+                }
+            }
+            return initialized;
+        }
+
         private void ApplyLightingConsistency(float luminance)
         {
             if (!float.IsFinite(luminance) || capRenderers == null)
@@ -671,15 +1034,19 @@ namespace Urp.ArDemo
         {
             if (!force && hasTrackedPose && Time.unscaledTime - lastValidPoseTime <= lostPoseGraceSeconds)
             {
+                trackingState = TrackingState.TemporarilyLost;
                 return;
             }
 
-            if (trackedObjectPoseRoot != null)
+            hasTrackedPose = false;
+            if (!force && modeEnabled && recognitionRunning)
             {
-                trackedObjectPoseRoot.gameObject.SetActive(false);
+                trackingState = TrackingState.Lost;
+                ShowInitialPose();
+                return;
             }
 
-            hasTrackedPose = false;
+            SetRepairHierarchyVisible(false);
         }
 
         private static bool IsBetter(NativeOrbResult current, NativeOrbResult best)
@@ -760,14 +1127,170 @@ namespace Urp.ArDemo
             return frameTexture;
         }
 
-        private static int ResolveFrameRotation(int width, int height)
+        private int ResolveFrameRotation(int width, int height)
         {
-            if (Screen.height >= Screen.width && width > height)
+            if (width <= height)
             {
-                return Screen.orientation == ScreenOrientation.PortraitUpsideDown ? 270 : 90;
+                return 0;
             }
 
-            return 0;
+            switch (Screen.orientation)
+            {
+                case ScreenOrientation.Portrait:
+                    return 90;
+                case ScreenOrientation.PortraitUpsideDown:
+                    return 270;
+                case ScreenOrientation.LandscapeLeft:
+                    return 180;
+                case ScreenOrientation.LandscapeRight:
+                    return 0;
+                default:
+                    return Screen.height >= Screen.width ? 90 : 0;
+            }
+        }
+
+        public void SaveTrackingFailureFrame()
+        {
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+            if (frameTexture == null)
+            {
+                UpdateStatus("保存失败：尚未取得 CPU 相机帧。");
+                return;
+            }
+
+            string root = Path.Combine(Application.persistentDataPath,
+                "TrackingFailures", DateTime.UtcNow.ToString("yyyyMMdd_HHmmss_fff"));
+            Directory.CreateDirectory(root);
+            File.WriteAllBytes(Path.Combine(root, "frame.png"), frameTexture.EncodeToPNG());
+            File.WriteAllText(Path.Combine(root, "intrinsics.json"), JsonUtility.ToJson(
+                new IntrinsicsDiagnostics
+                {
+                    sourceWidth = lastSourceWidth,
+                    sourceHeight = lastSourceHeight,
+                    convertedWidth = frameTexture.width,
+                    convertedHeight = frameTexture.height,
+                    fx = lastIntrinsics.FocalLengthX,
+                    fy = lastIntrinsics.FocalLengthY,
+                    cx = lastIntrinsics.PrincipalPointX,
+                    cy = lastIntrinsics.PrincipalPointY
+                }, true));
+            File.WriteAllText(Path.Combine(root, "orientation.json"), JsonUtility.ToJson(
+                new OrientationDiagnostics
+                {
+                    screenWidth = Screen.width,
+                    screenHeight = Screen.height,
+                    screenOrientation = Screen.orientation.ToString(),
+                    nativeRotationClockwise = lastFrameRotation,
+                    hasDisplayMatrix = hasDisplayMatrix,
+                    displayMatrix = lastDisplayMatrix
+                }, true));
+            File.WriteAllText(Path.Combine(root, "matches.json"),
+                hasLastNativeResult ? JsonUtility.ToJson(lastNativeResult, true) : "{}");
+            File.WriteAllText(Path.Combine(root, "debug_points.json"), JsonUtility.ToJson(
+                new DebugPointDiagnostics { points = lastDebugPoints.ToArray() }, true));
+            File.WriteAllText(Path.Combine(root, "pose.json"), JsonUtility.ToJson(
+                new PoseDiagnostics
+                {
+                    state = trackingState.ToString(),
+                    hasTrackedPose = hasTrackedPose,
+                    rootPosition = trackedObjectPoseRoot != null
+                        ? trackedObjectPoseRoot.position : Vector3.zero,
+                    rootRotation = trackedObjectPoseRoot != null
+                        ? trackedObjectPoseRoot.rotation : Quaternion.identity,
+                    projectionDiagnostic = lastProjectionDiagnostic,
+                    renderDiagnostic = BuildRepairDiagnostics()
+                }, true));
+            File.WriteAllText(Path.Combine(root, "calibration.json"),
+                calibration != null ? JsonUtility.ToJson(calibration, true) : "{}");
+            File.WriteAllText(Path.Combine(root, "build_identity.json"),
+                JsonUtility.ToJson(BuildIdentity.Current, true));
+            Debug.Log($"[TrackingFailure] Saved {root}");
+            UpdateStatus($"失败帧已保存：{root}");
+#else
+            UpdateStatus("失败帧保存仅在 Development Build 中可用。");
+#endif
+        }
+
+        [Serializable]
+        private sealed class IntrinsicsDiagnostics
+        {
+            public int sourceWidth;
+            public int sourceHeight;
+            public int convertedWidth;
+            public int convertedHeight;
+            public float fx;
+            public float fy;
+            public float cx;
+            public float cy;
+        }
+
+        [Serializable]
+        private sealed class OrientationDiagnostics
+        {
+            public int screenWidth;
+            public int screenHeight;
+            public string screenOrientation;
+            public int nativeRotationClockwise;
+            public bool hasDisplayMatrix;
+            public Matrix4x4 displayMatrix;
+        }
+
+        [Serializable]
+        private sealed class PoseDiagnostics
+        {
+            public string state;
+            public bool hasTrackedPose;
+            public Vector3 rootPosition;
+            public Quaternion rootRotation;
+            public string projectionDiagnostic;
+            public string renderDiagnostic;
+        }
+
+        [Serializable]
+        private sealed class DebugPointDiagnostics
+        {
+            public NativeDebugPoint[] points;
+        }
+
+        private void OnGUI()
+        {
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+            if (!showNativeDebugOverlay || !modeEnabled || lastDebugPoints.Count == 0) return;
+            foreach (NativeDebugPoint point in lastDebugPoints)
+            {
+                Vector2 source = OrientedToSourceViewport(
+                    new Vector2(point.x01, point.y01), lastFrameRotation);
+                Vector3 display = hasDisplayMatrix
+                    ? lastDisplayMatrix.MultiplyPoint3x4(new Vector3(source.x, source.y, 0f))
+                    : new Vector3(source.x, source.y, 0f);
+                if (!float.IsFinite(display.x) || !float.IsFinite(display.y)) continue;
+                float size = point.kind == 3 ? 14f : point.kind == 2 ? 7f : 5f;
+                GUI.color = point.kind switch
+                {
+                    1 => Color.green,
+                    2 => Color.cyan,
+                    3 => Color.magenta,
+                    _ => new Color(1f, 0.75f, 0f, 1f)
+                };
+                GUI.DrawTexture(new Rect(display.x * Screen.width - size * 0.5f,
+                    (1f - display.y) * Screen.height - size * 0.5f, size, size),
+                    Texture2D.whiteTexture);
+            }
+            GUI.color = Color.white;
+            GUI.Label(new Rect(12f, Screen.height - 54f, 800f, 44f),
+                "ORB: 橙=唯一匹配 绿=PnP内点 青=重投影 洋红=瓶口（displayMatrix仅用于调试绘点）");
+#endif
+        }
+
+        private static Vector2 OrientedToSourceViewport(Vector2 oriented, int rotation)
+        {
+            switch ((rotation % 360 + 360) % 360)
+            {
+                case 90: return new Vector2(1f - oriented.y, oriented.x);
+                case 180: return new Vector2(1f - oriented.x, 1f - oriented.y);
+                case 270: return new Vector2(oriented.y, 1f - oriented.x);
+                default: return oriented;
+            }
         }
 
         private void UpdateStatus(string message)
@@ -788,6 +1311,14 @@ namespace Urp.ArDemo
             {
                 renderer.sharedMaterial = material;
             }
+        }
+
+        private static void SetLayerRecursively(GameObject root, int layer)
+        {
+            if (root == null) return;
+            root.layer = layer;
+            foreach (Transform child in root.transform)
+                SetLayerRecursively(child.gameObject, layer);
         }
     }
 }

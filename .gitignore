@@ -19,6 +19,15 @@ sysinfo.txt
 .vs/
 .idea/
 .vscode/
+__pycache__/
+*.py[cod]
+
+# Per-build identity payloads. The stable runtime/editor code is tracked; these
+# two JSON files are regenerated immediately before every Android build.
+Assets/Resources/BuildIdentity.json
+Assets/Resources/BuildIdentity.json.meta
+Assets/StreamingAssets/build_identity.json
+Assets/StreamingAssets/build_identity.json.meta
 
 # Installed locally from Unity Asset Store.
 Assets/OpenCV+Unity/

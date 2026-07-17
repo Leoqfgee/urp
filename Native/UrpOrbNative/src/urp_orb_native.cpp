@@ -6,6 +6,7 @@
 #include <memory>
 #include <mutex>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <opencv2/calib3d.hpp>
@@ -16,7 +17,7 @@
 namespace
 {
 constexpr char kModelMagic[8] = {'U', 'R', 'P', '3', 'D', 'M', '1', '\0'};
-constexpr char kBuildVersion[] = "urp-orb-native-2026.07.16-r3-16k";
+constexpr char kBuildVersion[] = "urp-orb-native-2026.07.17-r4-diagnostics-16k";
 constexpr int kDescriptorBytes = 32;
 constexpr int kModelRecordBytes = 3 * static_cast<int>(sizeof(float)) + kDescriptorBytes;
 
@@ -60,6 +61,39 @@ struct UrpOrbResult
     float coverageY;
     float modelSpread;
     float processingMilliseconds;
+    int detectedKeypoints;
+    int ratioMatches;
+    int mutualMatches;
+    int uniqueMatches;
+    int occupiedGridCells;
+    float modelSpreadX;
+    float modelSpreadY;
+    float modelSpreadZ;
+    float reprojectionMax;
+    int rejectionCode;
+    float translationJumpMeters;
+    float rotationJumpDegrees;
+};
+
+enum RejectionCode
+{
+    kAccepted = 0,
+    kInvalidInput = 1,
+    kNoDescriptors = 2,
+    kInsufficientUniqueMatches = 3,
+    kInsufficientSpatialDistribution = 4,
+    kPnpFailed = 5,
+    kInsufficientPoseInliers = 6,
+    kLowInlierRatio = 7,
+    kHighReprojectionError = 8,
+    kNegativeDepth = 9
+};
+
+struct DebugPoint
+{
+    float x01;
+    float y01;
+    float kind;
 };
 
 static float Clamp01(float value)
@@ -115,6 +149,19 @@ public:
         hasRepairAnchor_ = true;
     }
 
+    int CopyDebugPoints(float* packed, int capacity) const
+    {
+        if (packed == nullptr || capacity <= 0) return 0;
+        const int count = std::min(capacity, static_cast<int>(lastDebugPoints_.size()));
+        for (int index = 0; index < count; index++)
+        {
+            packed[index * 3] = lastDebugPoints_[index].x01;
+            packed[index * 3 + 1] = lastDebugPoints_[index].y01;
+            packed[index * 3 + 2] = lastDebugPoints_[index].kind;
+        }
+        return count;
+    }
+
     int Track(const uint8_t* rgba, int width, int height, float fx, float fy, float cx, float cy, int rotationClockwise, UrpOrbResult* result)
     {
         const auto startedAt = std::chrono::steady_clock::now();
@@ -124,6 +171,7 @@ public:
         }
 
         *result = UrpOrbResult{0};
+        lastDebugPoints_.clear();
         result->centerX01 = 0.5f;
         result->centerY01 = 0.5f;
         result->relativeWidth = 0.2f;
@@ -144,6 +192,7 @@ public:
 
         if (rgba == nullptr || width <= 0 || height <= 0 || targetDescriptors_.empty())
         {
+            result->rejectionCode = kInvalidInput;
             return 0;
         }
 
@@ -190,8 +239,11 @@ public:
         orb_->detectAndCompute(gray, cv::noArray(), frameKeypoints, frameDescriptors);
         if (frameDescriptors.empty() || frameKeypoints.size() < 8)
         {
+            result->detectedKeypoints = static_cast<int>(frameKeypoints.size());
+            result->rejectionCode = kNoDescriptors;
             return 0;
         }
+        result->detectedKeypoints = static_cast<int>(frameKeypoints.size());
 
         std::vector<std::vector<cv::DMatch>> targetToFrame;
         std::vector<std::vector<cv::DMatch>> frameToTarget;
@@ -220,6 +272,12 @@ public:
                 mutualMatches.push_back(pair[0]);
             }
         }
+        result->ratioMatches = static_cast<int>(
+            std::count_if(targetToFrame.begin(), targetToFrame.end(), [this](const auto& pair)
+            {
+                return pair.size() >= 2 && pair[0].distance < ratio_ * pair[1].distance;
+            }));
+        result->mutualMatches = static_cast<int>(mutualMatches.size());
 
         std::sort(mutualMatches.begin(), mutualMatches.end(), [](const cv::DMatch& a, const cv::DMatch& b)
         {
@@ -231,8 +289,15 @@ public:
         std::vector<int> cellCounts(gridColumns * gridRows, 0);
         std::vector<cv::DMatch> goodMatches;
         goodMatches.reserve(mutualMatches.size());
+        std::unordered_set<int> usedModelRecords;
+        std::unordered_set<int> usedFrameKeypoints;
         for (const cv::DMatch& match : mutualMatches)
         {
+            if (usedModelRecords.count(match.queryIdx) != 0
+                || usedFrameKeypoints.count(match.trainIdx) != 0)
+            {
+                continue;
+            }
             const cv::Point2f point = frameKeypoints[match.trainIdx].pt;
             const int column = std::clamp(
                 static_cast<int>(point.x / std::max(1.0f, static_cast<float>(frame.cols)) * gridColumns),
@@ -247,12 +312,18 @@ public:
             {
                 cellCounts[cell]++;
                 goodMatches.push_back(match);
+                usedModelRecords.insert(match.queryIdx);
+                usedFrameKeypoints.insert(match.trainIdx);
             }
         }
 
         result->goodMatches = static_cast<int>(goodMatches.size());
+        result->uniqueMatches = result->goodMatches;
+        result->occupiedGridCells = static_cast<int>(std::count_if(
+            cellCounts.begin(), cellCounts.end(), [](int count) { return count > 0; }));
         if (static_cast<int>(goodMatches.size()) < minMatches_)
         {
+            result->rejectionCode = kInsufficientUniqueMatches;
             return 0;
         }
 
@@ -264,6 +335,11 @@ public:
         {
             framePoints.push_back(frameKeypoints[match.trainIdx].pt);
             modelPoints.push_back(targetModelPoints_[match.queryIdx]);
+            const cv::Point2f point = frameKeypoints[match.trainIdx].pt;
+            lastDebugPoints_.push_back(DebugPoint{
+                point.x / static_cast<float>(frame.cols),
+                1.0f - point.y / static_cast<float>(frame.rows),
+                0.0f});
         }
 
         FillMatchedPointBox(framePoints, frame.cols, frame.rows, result);
@@ -285,6 +361,9 @@ public:
             maximum.x - minimum.x,
             maximum.y - minimum.y,
             maximum.z - minimum.z});
+        result->modelSpreadX = maximum.x - minimum.x;
+        result->modelSpreadY = maximum.y - minimum.y;
+        result->modelSpreadZ = maximum.z - minimum.z;
         cv::Rect luminanceRegion = cv::boundingRect(framePoints);
         luminanceRegion &= cv::Rect(0, 0, gray.cols, gray.rows);
         if (luminanceRegion.width > 4 && luminanceRegion.height > 4)
@@ -324,13 +403,11 @@ public:
             ? 0.0f
             : static_cast<float>(inliers.rows) / static_cast<float>(goodMatches.size());
         result->inlierRatio = inlierRatio;
-        if (poseOk
-            && tvec.at<double>(2) > 0.0
-            && inliers.rows >= std::max(20, minMatches_ / 2)
-            && inlierRatio >= 0.5f
-            && result->coverageX >= 0.12f
-            && result->coverageY >= 0.20f
-            && result->modelSpread >= 0.015f)
+        if (!poseOk)
+        {
+            result->rejectionCode = kPnpFailed;
+        }
+        else
         {
             std::vector<cv::Point3f> inlierModelPoints;
             std::vector<cv::Point2f> inlierFramePoints;
@@ -341,25 +418,36 @@ public:
                 int index = inliers.at<int>(row);
                 inlierModelPoints.push_back(modelPoints[index]);
                 inlierFramePoints.push_back(framePoints[index]);
+                lastDebugPoints_.push_back(DebugPoint{
+                    framePoints[index].x / static_cast<float>(frame.cols),
+                    1.0f - framePoints[index].y / static_cast<float>(frame.rows),
+                    1.0f});
             }
             cv::solvePnPRefineLM(inlierModelPoints, inlierFramePoints, cameraMatrix, distCoeffs, rvec, tvec);
             std::vector<cv::Point2f> projectedInliers;
             cv::projectPoints(inlierModelPoints, rvec, tvec, cameraMatrix, distCoeffs, projectedInliers);
             double squaredError = 0.0;
+            double maximumError = 0.0;
             for (size_t i = 0; i < projectedInliers.size(); i++)
             {
                 cv::Point2f delta = projectedInliers[i] - inlierFramePoints[i];
-                squaredError += static_cast<double>(delta.dot(delta));
+                const double errorSquared = static_cast<double>(delta.dot(delta));
+                squaredError += errorSquared;
+                maximumError = std::max(maximumError, std::sqrt(errorSquared));
+                lastDebugPoints_.push_back(DebugPoint{
+                    projectedInliers[i].x / static_cast<float>(frame.cols),
+                    1.0f - projectedInliers[i].y / static_cast<float>(frame.rows),
+                    2.0f});
             }
 
             result->reprojectionError = projectedInliers.empty()
                 ? 999.0f
                 : static_cast<float>(std::sqrt(squaredError / projectedInliers.size()));
+            result->reprojectionMax = static_cast<float>(maximumError);
 
             cv::Mat rotation;
             cv::Rodrigues(rvec, rotation);
             result->tracked = 1;
-            result->poseValid = result->reprojectionError <= 2.5f ? 1 : 0;
             result->poseInliers = inliers.rows;
             result->tvecX = static_cast<float>(tvec.at<double>(0));
             result->tvecY = static_cast<float>(tvec.at<double>(1));
@@ -373,6 +461,22 @@ public:
             result->r20 = static_cast<float>(rotation.at<double>(2, 0));
             result->r21 = static_cast<float>(rotation.at<double>(2, 1));
             result->r22 = static_cast<float>(rotation.at<double>(2, 2));
+
+            if (tvec.at<double>(2) <= 0.0)
+                result->rejectionCode = kNegativeDepth;
+            else if (inliers.rows < 10)
+                result->rejectionCode = kInsufficientPoseInliers;
+            else if (inlierRatio < 0.5f)
+                result->rejectionCode = kLowInlierRatio;
+            else if (result->reprojectionError > 2.5f)
+                result->rejectionCode = kHighReprojectionError;
+            else if (result->coverageX < 0.06f
+                || result->coverageY < 0.20f
+                || result->occupiedGridCells < 4)
+                result->rejectionCode = kInsufficientSpatialDistribution;
+            else
+                result->rejectionCode = kAccepted;
+            result->poseValid = result->rejectionCode == kAccepted ? 1 : 0;
 
             if (hasRepairAnchor_)
             {
@@ -390,6 +494,7 @@ public:
                 result->anchorVisible = anchorX >= -0.05f && anchorX <= 1.05f
                     && anchorY >= -0.05f && anchorY <= 1.05f
                     && result->anchorDepth > 0.0f;
+                lastDebugPoints_.push_back(DebugPoint{anchorX, anchorY, 3.0f});
             }
         }
 
@@ -456,6 +561,7 @@ private:
     cv::Mat targetDescriptors_;
     cv::Point3f repairAnchor_{0.0f, 0.0f, 0.0f};
     bool hasRepairAnchor_ = false;
+    std::vector<DebugPoint> lastDebugPoints_;
 };
 
 static std::mutex gMutex;
@@ -507,6 +613,14 @@ extern "C"
 
         found->second->SetRepairAnchor(x, y, z);
         return 1;
+    }
+
+    int urp_orb_get_debug_points(int handle, float* packed, int capacity)
+    {
+        std::lock_guard<std::mutex> lock(gMutex);
+        auto found = gTrackers.find(handle);
+        if (found == gTrackers.end()) return 0;
+        return found->second->CopyDebugPoints(packed, capacity);
     }
 
     int urp_orb_track(int handle, const uint8_t* rgba, int width, int height, float fx, float fy, float cx, float cy, int rotationClockwise, UrpOrbResult* result)

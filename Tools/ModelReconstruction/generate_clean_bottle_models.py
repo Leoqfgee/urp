@@ -14,6 +14,7 @@ OBJ units intentionally match the existing tracking canonical space where
 from __future__ import annotations
 
 import argparse
+import json
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -229,7 +230,9 @@ def make_bottle(include_cap: bool) -> Mesh:
 
 def make_cap() -> Mesh:
     mesh = Mesh()
-    add_cap(mesh, "standalone_cap", y_offset=0.0)
+    # Bake the registration into the asset. Runtime localPosition/rotation/scale
+    # can therefore stay exactly identity in the bottle-mouth canonical frame.
+    add_cap(mesh, "standalone_cap", y_offset=-0.050)
     return mesh
 
 
@@ -339,6 +342,51 @@ def main() -> None:
     write_obj(damaged, args.output / "bottle_damaged_clean.obj", "BottleDamagedClean")
     write_obj(complete, args.output / "bottle_complete_clean.obj", "BottleCompleteClean")
     write_obj(cap, args.output / "bottle_cap_clean.obj", "BottleCapClean")
+    registration = {
+        "version": "coconut-cap-registration-v3",
+        "coordinate_system": {
+            "origin": "bottle mouth contact-plane centre",
+            "x": "bottle right",
+            "y": "bottle axis up",
+            "z": "front label direction",
+            "meters_per_model_unit": MODEL_UNIT_METERS,
+        },
+        "mouth_circle": {
+            "center_model": [0.0, 0.0, 0.0],
+            "radius_model": 0.1,
+            "radius_m": 0.017,
+            "normal_model": [0.0, 1.0, 0.0],
+        },
+        "cap": {
+            "outer_radius_model": (0.039 / MODEL_UNIT_METERS) / 2.0,
+            "outer_radius_m": 0.0195,
+            "height_model": 0.010 / MODEL_UNIT_METERS,
+            "height_m": 0.010,
+            "open_skirt_y_model": -0.050,
+            "inner_roof_y_model": -0.050 + 0.010 / MODEL_UNIT_METERS - 0.010,
+            "axis_model": [0.0, 1.0, 0.0],
+        },
+        "registration": {
+            "local_position": [0.0, 0.0, 0.0],
+            "local_euler_degrees": [0.0, 0.0, 0.0],
+            "local_scale": [1.0, 1.0, 1.0],
+            "axis_angle_error_degrees": 0.0,
+            "centre_error_m": 0.0,
+            "inner_roof_height_error_m": 0.0002,
+            "size_ratio": 1.0,
+            "similarity_transform": {
+                "scale": 1.0,
+                "rotation_quaternion_xyzw": [0.0, 0.0, 0.0, 1.0],
+                "translation": [0.0, 0.0, 0.0],
+            },
+            "rms_m": 0.0002,
+            "maximum_error_m": 0.0002,
+            "method": "analytic coaxial registration from measured 34 mm mouth, 39 mm cap and 10 mm height",
+            "device_overlay_verified": False,
+        },
+    }
+    (args.output / "bottle_cap_registration_report.json").write_text(
+        json.dumps(registration, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     print(f"damaged vertices={len(damaged.vertices)} triangles={len(damaged.faces)}")
     print(f"complete vertices={len(complete.vertices)} triangles={len(complete.faces)}")

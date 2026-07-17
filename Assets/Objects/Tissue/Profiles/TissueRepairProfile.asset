@@ -11,7 +11,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 7155bfc119d520b4f8912cd4f4e7b4eb, type: 3}
   m_Name: TissueRepairProfile
-  m_EditorClassIdentifier:
+  m_EditorClassIdentifier: 
   objectId: tissue
   displayName: "Tissue \u91CD\u5EFA\u5BF9\u8C61"
   shortDescription: "\u6E90\u7167\u7247\u4E2D\u7684\u7EF4\u8FBE\u7EB8\u5DFE\u76D2

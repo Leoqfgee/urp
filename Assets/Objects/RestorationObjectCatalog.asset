@@ -11,7 +11,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 738bd3ed8f7a5094b9926129999dabbb, type: 3}
   m_Name: RestorationObjectCatalog
-  m_EditorClassIdentifier:
+  m_EditorClassIdentifier: 
   objects:
   - {fileID: 11400000, guid: 6d20c8874cbf3a249bc8b1c6d986a0d4, type: 2}
   - {fileID: 11400000, guid: 28e0bb92973c26146a130d89f861f566, type: 2}

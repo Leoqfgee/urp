@@ -1,0 +1,35 @@
+{
+  "version": "coconut-damaged-canonical-v3",
+  "input": "Assets\\OrbModels\\bottle_global.bytes",
+  "output": "Assets\\OrbModels\\bottle_global.bytes",
+  "input_sha256": "870E0354CECBAA32AB52A6AA7D58A3E32C6C650B6BEACA2E558951EA4A7001A6",
+  "output_sha256": "A046CD3386245B4A255A45088ECD9087366FF32A1352B2E20C3AC713253AC1EF",
+  "input_records": 5000,
+  "kept_records": 4100,
+  "removed_records": 900,
+  "canonical_bounds_min": [
+    -0.23538906872272491,
+    -1.2189726829528809,
+    -0.09627003967761993
+  ],
+  "canonical_bounds_max": [
+    0.23058083653450012,
+    -0.026713119819760323,
+    0.19327491521835327
+  ],
+  "filter": {
+    "y_model_units": [
+      -1.22,
+      0.02
+    ],
+    "outer_radial_margin_model_units": 0.045,
+    "inner_surface_margin_model_units": null,
+    "envelope_source": "measured clean bottle lathe profile"
+  },
+  "source_provenance": {
+    "intended_photo_set": "bottle_damaged (open/no-cap bottle)",
+    "sfm_source_file_present_in_repository": false,
+    "complete_bottle_or_cap_images_intentionally_used": false,
+    "limitation": "A 3D envelope rejects external background geometry; points inside the bottle envelope cannot be semantically proven without the original SfM observation file and masks."
+  }
+}

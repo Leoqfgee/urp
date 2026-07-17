@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.XR.ARFoundation;
+using Urp.ArDemo.Generated;
 #if UNITY_ANDROID && !UNITY_EDITOR
 using UnityEngine.Android;
 #endif
@@ -301,6 +302,34 @@ namespace Urp.ArDemo
                     new Vector2(0.02f, top - 0.20f), new Vector2(0.98f, top),
                     actions[i], Card, Ink, labels[i].Length > 2 ? 22 : 27);
             }
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+            GameObject debugPanel = CreatePanel(page.transform, "DevelopmentDebugPanel",
+                new Color32(12, 22, 32, 205), new Vector2(0.70f, 0.015f),
+                new Vector2(0.98f, 0.325f), true);
+            string[] debugLabels =
+            {
+                "强制洋红瓶盖", "仅瓶盖", "仅遮挡", "瓶盖+遮挡", "保存失败帧", "退出调试"
+            };
+            Action[] debugActions =
+            {
+                orbTracker != null ? orbTracker.ForceRepairInFrontOfCamera : (Action)null,
+                orbTracker != null ? orbTracker.DebugShowRepairOnly : (Action)null,
+                orbTracker != null ? orbTracker.DebugShowOccluderOnly : (Action)null,
+                orbTracker != null ? orbTracker.DebugShowRepairAndOccluder : (Action)null,
+                orbTracker != null ? orbTracker.SaveTrackingFailureFrame : (Action)null,
+                orbTracker != null ? orbTracker.ExitForceRepairDebug : (Action)null
+            };
+            for (int i = 0; i < debugLabels.Length; i++)
+            {
+                float top = 0.98f - i * 0.105f;
+                CreateButton(debugPanel.transform, debugLabels[i],
+                    new Vector2(0.05f, top - 0.085f), new Vector2(0.95f, top),
+                    debugActions[i], new Color32(44, 58, 78, 255), Color.white, 17);
+            }
+            CreateText(debugPanel.transform, BuildIdentity.Current.ShortText, 13,
+                new Color32(190, 220, 255, 255), new Vector2(0.04f, 0.02f),
+                new Vector2(0.96f, 0.29f), TextAnchor.LowerLeft);
+#endif
             return page;
         }
 

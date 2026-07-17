@@ -16,11 +16,11 @@ namespace Urp.ArDemo
     [Serializable]
     public sealed class TrackingSettings
     {
-        public int minimumGoodMatches = 24;
-        public int minimumPoseInliers = 20;
+        public int minimumGoodMatches = 14;
+        public int minimumPoseInliers = 10;
         public float minimumInlierRatio = 0.5f;
         public float maximumReprojectionErrorPixels = 2.5f;
-        public float minimumCoverageX = 0.12f;
+        public float minimumCoverageX = 0.06f;
         public float minimumCoverageY = 0.20f;
         public float lostPoseGraceSeconds = 2.5f;
         public float maximumPositionJumpMeters = 0.06f;

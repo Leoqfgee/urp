@@ -1,0 +1,76 @@
+{
+  "version": "coconut-cap-registration-v3",
+  "coordinate_system": {
+    "origin": "bottle mouth contact-plane centre",
+    "x": "bottle right",
+    "y": "bottle axis up",
+    "z": "front label direction",
+    "meters_per_model_unit": 0.17
+  },
+  "mouth_circle": {
+    "center_model": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "radius_model": 0.1,
+    "radius_m": 0.017,
+    "normal_model": [
+      0.0,
+      1.0,
+      0.0
+    ]
+  },
+  "cap": {
+    "outer_radius_model": 0.11470588235294117,
+    "outer_radius_m": 0.0195,
+    "height_model": 0.058823529411764705,
+    "height_m": 0.01,
+    "open_skirt_y_model": -0.05,
+    "inner_roof_y_model": -0.001176470588235298,
+    "axis_model": [
+      0.0,
+      1.0,
+      0.0
+    ]
+  },
+  "registration": {
+    "local_position": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "local_euler_degrees": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "local_scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "axis_angle_error_degrees": 0.0,
+    "centre_error_m": 0.0,
+    "inner_roof_height_error_m": 0.0002,
+    "size_ratio": 1.0,
+    "similarity_transform": {
+      "scale": 1.0,
+      "rotation_quaternion_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "translation": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "rms_m": 0.0002,
+    "maximum_error_m": 0.0002,
+    "method": "analytic coaxial registration from measured 34 mm mouth, 39 mm cap and 10 mm height",
+    "device_overlay_verified": false
+  }
+}

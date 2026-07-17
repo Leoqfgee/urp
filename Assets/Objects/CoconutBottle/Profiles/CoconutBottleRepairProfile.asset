@@ -11,7 +11,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 7155bfc119d520b4f8912cd4f4e7b4eb, type: 3}
   m_Name: CoconutBottleRepairProfile
-  m_EditorClassIdentifier:
+  m_EditorClassIdentifier: 
   objectId: coconut_bottle
   displayName: "\u74F6\u76D6\u7F3A\u5931\u996E\u6599\u74F6"
   shortDescription: "\u74F6\u8EAB\u4FDD\u7559\u74F6\u53E3\u4E0E\u87BA\u7EB9\u7ED3\u6784\uFF0C\u7F3A\u5931\u90E8\u5206\u4E3A\u74F6\u76D6\u3002"
@@ -31,11 +31,11 @@ MonoBehaviour:
   orbModelDatabase: {fileID: 4900000, guid: 74f6e847ec051504f8201ec44a464747, type: 3}
   calibration: {fileID: 11400000, guid: e7d3920b1d5f71b47b94a88c936e56bc, type: 2}
   trackingSettings:
-    minimumGoodMatches: 24
-    minimumPoseInliers: 20
+    minimumGoodMatches: 14
+    minimumPoseInliers: 10
     minimumInlierRatio: 0.5
     maximumReprojectionErrorPixels: 2.5
-    minimumCoverageX: 0.12
+    minimumCoverageX: 0.06
     minimumCoverageY: 0.2
     lostPoseGraceSeconds: 2.5
     maximumPositionJumpMeters: 0.06

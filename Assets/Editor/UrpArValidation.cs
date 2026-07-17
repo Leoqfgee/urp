@@ -44,13 +44,13 @@ namespace Urp.ArDemo.Editor
                 poseValid = 1, tvecX = 0.2f, tvecY = -0.3f, tvecZ = 2f,
                 r00 = 1f, r11 = 1f, r22 = 1f
             };
-            Require(Calibration.RepairPoseMath.TryGetObjectPose(
+            Require(Calibration.OpenCvUnityPoseConverter.TryGetObjectPose(
                 identity, 0, camera, profile, out Vector3 position, out _),
                 "PnP pose conversion failed.");
             Require(Vector3.Distance(position, new Vector3(0.2f, 0.3f, 2f)) < 0.0001f,
                 $"Full PnP translation was not preserved: {position}");
 
-            Require(Calibration.RepairPoseMath.TryGetObjectPose(
+            Require(Calibration.OpenCvUnityPoseConverter.TryGetObjectPose(
                 identity, 90, camera, profile,
                 out Vector3 portraitPosition, out Quaternion portraitRotation),
                 "Portrait PnP pose conversion failed.");
@@ -59,8 +59,61 @@ namespace Urp.ArDemo.Editor
                 $"Portrait translation was converted incorrectly: {portraitPosition}");
             Require(Vector3.Angle(portraitRotation * Vector3.up, Vector3.right) < 0.01f,
                 "Portrait pose did not keep the repair part on the rotated bottle axis.");
+
+            ValidateOrientation(identity, 0, new Vector3(0.2f, 0.3f, 2f), camera, profile);
+            ValidateOrientation(identity, 90, new Vector3(-0.3f, 0.2f, 2f), camera, profile);
+            ValidateOrientation(identity, 180, new Vector3(-0.2f, -0.3f, 2f), camera, profile);
+            ValidateOrientation(identity, 270, new Vector3(0.3f, -0.2f, 2f), camera, profile);
+            NativeOrbResult right = identity;
+            right.tvecX = 0.5f;
+            ValidateOrientation(right, 0, new Vector3(0.5f, 0.3f, 2f), camera, profile);
+            NativeOrbResult up = identity;
+            up.tvecY = -0.6f;
+            ValidateOrientation(up, 0, new Vector3(0.2f, 0.6f, 2f), camera, profile);
+            ValidateSyntheticRotation(Quaternion.Euler(0f, 30f, 0f), camera, profile, "yaw 30");
+            ValidateSyntheticRotation(Quaternion.Euler(20f, 0f, 0f), camera, profile, "pitch 20");
             UnityEngine.Object.DestroyImmediate(profile);
             UnityEngine.Object.DestroyImmediate(cameraObject);
+        }
+
+        private static void ValidateOrientation(NativeOrbResult result, int rotation,
+            Vector3 expected, Camera camera, Calibration.RepairCalibrationProfile profile)
+        {
+            Require(Calibration.OpenCvUnityPoseConverter.TryGetObjectPose(
+                    result, rotation, camera, profile, out Vector3 position,
+                    out Quaternion converted),
+                $"Pose conversion failed for display rotation {rotation}.");
+            Require(Vector3.Distance(position, expected) < 0.0001f,
+                $"Position mismatch for display rotation {rotation}: {position} != {expected}");
+            Require(float.IsFinite(converted.x) && float.IsFinite(converted.w),
+                $"Quaternion invalid for display rotation {rotation}.");
+            Require(camera.transform.InverseTransformPoint(position).z > 0f,
+                $"Pose moved behind camera for display rotation {rotation}.");
+            Vector3 right = converted * Vector3.right;
+            Vector3 up = converted * Vector3.up;
+            Vector3 forward = converted * Vector3.forward;
+            Require(Mathf.Abs(Vector3.Dot(right, up)) < 0.001f
+                    && Mathf.Abs(Vector3.Dot(up, forward)) < 0.001f,
+                $"Converted basis is mirrored or non-orthogonal at {rotation} degrees.");
+        }
+
+        private static void ValidateSyntheticRotation(Quaternion source, Camera camera,
+            Calibration.RepairCalibrationProfile profile, string label)
+        {
+            Matrix4x4 matrix = Matrix4x4.Rotate(source);
+            NativeOrbResult result = new NativeOrbResult
+            {
+                poseValid = 1, tvecZ = 2f,
+                r00 = matrix.m00, r01 = matrix.m01, r02 = matrix.m02,
+                r10 = matrix.m10, r11 = matrix.m11, r12 = matrix.m12,
+                r20 = matrix.m20, r21 = matrix.m21, r22 = matrix.m22
+            };
+            Require(Calibration.OpenCvUnityPoseConverter.TryGetObjectPose(
+                    result, 0, camera, profile, out Vector3 position,
+                    out Quaternion rotation),
+                $"Synthetic {label} conversion failed.");
+            Require(position.z > 0f && float.IsFinite(rotation.w),
+                $"Synthetic {label} produced an invalid or rear-camera pose.");
         }
 
         private static void ValidateAssets()
@@ -88,18 +141,14 @@ namespace Urp.ArDemo.Editor
                         < 0.000001f
                     && Mathf.Abs(bottle.calibration.expectedPhysicalCapHeight - 0.010f)
                         < 0.000001f
-                    && Vector3.Distance(bottle.calibration.capLocalPosition,
-                        new Vector3(0f, -0.05f, 0f)) < 0.000001f
+                    && bottle.calibration.capLocalPosition == Vector3.zero
                     && !bottle.calibration.occluderVerified,
                 "Bottle canonical physical calibration is incomplete.");
             Require(bottle.physicalMeasurements.Length == 3
                     && bottle.physicalMeasurements.All(item => item.verified),
                 "Bottle measurements are not recorded in the profile.");
-            float registeredCapTop = bottle.calibration.capLocalPosition.y
-                + bottle.calibration.expectedPhysicalCapHeight
-                / bottle.calibration.metersPerModelUnit;
-            Require(registeredCapTop > 0f && registeredCapTop < 0.01f,
-                "Registered cap must surround the threads and finish just above the mouth plane.");
+            Require(File.Exists(CleanBottleFolder + "bottle_cap_registration_report.json"),
+                "Bottle cap registration report is missing.");
             Require(bottle.defaultViewerEuler == Vector3.zero,
                 "Bottle viewer must open in an upright front view.");
             Require(AssetDatabase.GetAssetPath(bottle.damagedViewerPrefab)
@@ -132,6 +181,9 @@ namespace Urp.ArDemo.Editor
                     && bottle.repairMaterial.GetColor("_EmissionColor").maxColorComponent >= 0.15f,
                 "Bottle cap material lacks the minimum camera-independent fill light.");
             Require(bottle.trackingSettings.lostPoseGraceSeconds >= 2f
+                    && bottle.trackingSettings.minimumGoodMatches == 14
+                    && bottle.trackingSettings.minimumPoseInliers == 10
+                    && bottle.trackingSettings.minimumCoverageX <= 0.06f
                     && bottle.trackingSettings.maximumPositionJumpMeters <= 0.06f
                     && bottle.trackingSettings.maximumRotationJumpDegrees <= 18f,
                 "Bottle tracking continuity settings do not protect the world anchor.");
@@ -209,6 +261,15 @@ namespace Urp.ArDemo.Editor
             Transform objectRoot = FindRequired("TrackedObjectPoseRoot");
             Transform alignment = FindRequired("ModelCoordinateAlignment");
             Require(alignment.IsChildOf(objectRoot), "Model alignment is outside pose root.");
+            Transform repairRoot = FindRequired("RepairPartRoot");
+            Transform occlusionRoot = FindRequired("OcclusionRoot");
+            Transform debugRoot = FindRequired("DebugRoot");
+            Require(repairRoot.parent == objectRoot && repairRoot.gameObject.activeSelf,
+                "RepairPartRoot must be an active child whose visibility is restored explicitly.");
+            Require(occlusionRoot.parent == objectRoot && !occlusionRoot.gameObject.activeSelf,
+                "Unverified occluder must be disabled by default.");
+            Require(debugRoot.parent == objectRoot && !debugRoot.gameObject.activeSelf,
+                "DebugRoot must be disabled outside Development diagnostics.");
 
             Camera arCamera = FindRequired("AR Camera").GetComponent<Camera>();
             ARSession arSession = FindRequired("AR Session").GetComponent<ARSession>();
@@ -220,6 +281,8 @@ namespace Urp.ArDemo.Editor
             Require((arCamera.cullingMask & viewerCamera.cullingMask) == 0,
                 "AR and viewer cameras render the same model layer.");
             Require(background != null, "AR camera background is missing.");
+            Require((arCamera.cullingMask & 1) != 0,
+                "AR camera cullingMask does not include the bottle-cap layer.");
             Require(arSession != null && !arSession.enabled,
                 "AR Session must stay disabled outside tracking mode at scene load.");
             Require(cameraManager != null && !cameraManager.enabled
@@ -241,6 +304,8 @@ namespace Urp.ArDemo.Editor
             UrpAppController app =
                 UnityEngine.Object.FindObjectOfType<UrpAppController>(true);
             Require(app != null, "Application controller is missing.");
+            Require(UnityEngine.Object.FindObjectOfType<BuildIdentityRuntime>(true) != null,
+                "BuildIdentity runtime logger is missing.");
             MethodInfo build = typeof(UrpAppController).GetMethod(
                 "BuildInterface", BindingFlags.Instance | BindingFlags.NonPublic);
             build?.Invoke(app, null);

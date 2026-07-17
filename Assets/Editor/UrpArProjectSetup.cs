@@ -15,6 +15,7 @@ using UnityEngine.SceneManagement;
 using UnityEngine.XR.ARFoundation;
 using UnityEngine.XR.Management;
 using Urp.ArDemo.Calibration;
+using Urp.ArDemo.Generated;
 
 namespace Urp.ArDemo.Editor
 {
@@ -69,21 +70,27 @@ namespace Urp.ArDemo.Editor
 
         public static void BuildAndroidFromCommandLine()
         {
+            BuildIdentityData identity = BuildIdentityGenerator.Generate();
             SetupPrototypeScene();
+            AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
             CleanStaleSimulationTempAssets();
             Directory.CreateDirectory("Builds");
+            const string apkPath = "Builds/urp-ar-rebuilt.apk";
             BuildReport report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
             {
                 scenes = new[] { ScenePath },
-                locationPathName = "Builds/urp-ar-rebuilt.apk",
+                locationPathName = apkPath,
                 target = BuildTarget.Android,
                 targetGroup = BuildTargetGroup.Android,
-                options = BuildOptions.None
+                options = BuildOptions.Development
             });
             if (report.summary.result != BuildResult.Succeeded)
             {
                 throw new BuildFailedException($"Android build failed: {report.summary.result}");
             }
+            BuildIdentityGenerator.VerifyApk(apkPath, identity);
+            BuildIdentityGenerator.VerifyNativePluginInApk(apkPath);
+            Debug.Log($"[BuildIdentity] APK SHA256: {BuildIdentityGenerator.Sha256(apkPath)}");
         }
 
         private static void CleanStaleSimulationTempAssets()
@@ -314,10 +321,9 @@ namespace Urp.ArDemo.Editor
             bottleCalibration.expectedPhysicalNeckDiameter = 0.034f;
             bottleCalibration.expectedPhysicalCapDiameter = 0.039f;
             bottleCalibration.expectedPhysicalCapHeight = 0.010f;
-            // Match the cap placement embedded in bottle_complete_clean.obj:
-            // the measured 10 mm cap surrounds the threads and ends 1.5 mm
-            // above the canonical mouth plane instead of floating on top of it.
-            bottleCalibration.capLocalPosition = new Vector3(0f, -0.05f, 0f);
+            // The registration is baked into bottle_cap_clean.obj. Runtime
+            // transform remains identity in the mouth-centred canonical frame.
+            bottleCalibration.capLocalPosition = Vector3.zero;
             bottleCalibration.capLocalEulerAngles = Vector3.zero;
             bottleCalibration.capLocalScale = Vector3.one;
             bottleCalibration.occluderVerified = false;
@@ -332,6 +338,12 @@ namespace Urp.ArDemo.Editor
             bottle.defaultViewerEuler = Vector3.zero;
             bottle.viewerMargin = 0.18f;
             bottle.trackingSettings.lostPoseGraceSeconds = 2.5f;
+            bottle.trackingSettings.minimumGoodMatches = 14;
+            bottle.trackingSettings.minimumPoseInliers = 10;
+            bottle.trackingSettings.minimumInlierRatio = 0.50f;
+            bottle.trackingSettings.maximumReprojectionErrorPixels = 2.5f;
+            bottle.trackingSettings.minimumCoverageX = 0.06f;
+            bottle.trackingSettings.minimumCoverageY = 0.20f;
             bottle.trackingSettings.maximumPositionJumpMeters = 0.06f;
             bottle.trackingSettings.maximumRotationJumpDegrees = 18f;
             bottle.physicalScaleVerified =
@@ -438,6 +450,7 @@ namespace Urp.ArDemo.Editor
             cameraObject.tag = "MainCamera";
             arCamera.clearFlags = CameraClearFlags.SolidColor;
             arCamera.backgroundColor = Color.black;
+            arCamera.cullingMask |= 1 << 0;
             cameraObject.AddComponent<UniversalAdditionalCameraData>();
             cameraObject.AddComponent<AudioListener>();
             ARCameraManager cameraManager = cameraObject.AddComponent<ARCameraManager>();
@@ -451,12 +464,18 @@ namespace Urp.ArDemo.Editor
             GameObject trackedRoot = new GameObject("TrackedObjectPoseRoot");
             GameObject alignment = new GameObject("ModelCoordinateAlignment");
             alignment.transform.SetParent(trackedRoot.transform, false);
-            GameObject debug = new GameObject("DebugAxes");
-            debug.transform.SetParent(alignment.transform, false);
-            debug.SetActive(false);
+            GameObject repairRoot = new GameObject("RepairPartRoot");
+            repairRoot.transform.SetParent(trackedRoot.transform, false);
+            GameObject occlusionRoot = new GameObject("OcclusionRoot");
+            occlusionRoot.transform.SetParent(trackedRoot.transform, false);
+            occlusionRoot.SetActive(false);
+            GameObject debugRoot = new GameObject("DebugRoot");
+            debugRoot.transform.SetParent(trackedRoot.transform, false);
+            debugRoot.SetActive(false);
             trackedRoot.SetActive(false);
 
             GameObject application = new GameObject("URP Application");
+            application.AddComponent<BuildIdentityRuntime>();
             RepairOverlayController overlay = application.AddComponent<RepairOverlayController>();
             OrbImageTrackingController tracker =
                 originObject.AddComponent<OrbImageTrackingController>();
@@ -464,6 +483,9 @@ namespace Urp.ArDemo.Editor
             AssignReference(tracker, "arCamera", arCamera);
             AssignReference(tracker, "trackedObjectPoseRoot", trackedRoot.transform);
             AssignReference(tracker, "modelCoordinateAlignment", alignment.transform);
+            AssignReference(tracker, "repairPartRoot", repairRoot.transform);
+            AssignReference(tracker, "occlusionRoot", occlusionRoot.transform);
+            AssignReference(tracker, "debugRoot", debugRoot.transform);
             AssignReference(overlay, "orbTracker", tracker);
 
             ModelViewerController viewer = CreateModelViewer(arCamera);

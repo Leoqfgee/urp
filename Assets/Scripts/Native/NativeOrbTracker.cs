@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Urp.ArDemo.Native
@@ -109,6 +110,24 @@ namespace Urp.ArDemo.Native
             }
         }
 
+        public int GetDebugPoints(List<NativeDebugPoint> output, int maximum = 256)
+        {
+            output?.Clear();
+            if (!IsValid || output == null || maximum <= 0) return 0;
+            float[] packed = new float[maximum * 3];
+            int count = urp_orb_get_debug_points(handle, packed, maximum);
+            for (int index = 0; index < count; index++)
+            {
+                output.Add(new NativeDebugPoint
+                {
+                    x01 = packed[index * 3],
+                    y01 = packed[index * 3 + 1],
+                    kind = Mathf.RoundToInt(packed[index * 3 + 2])
+                });
+            }
+            return count;
+        }
+
         [DllImport(DllName)]
         private static extern int urp_orb_create(int featureCount, float ratio, int minMatches, int maxWidth);
 
@@ -123,6 +142,10 @@ namespace Urp.ArDemo.Native
 
         [DllImport(DllName)]
         private static extern int urp_orb_set_repair_anchor(int handle, float x, float y, float z);
+
+        [DllImport(DllName)]
+        private static extern int urp_orb_get_debug_points(
+            int handle, [Out] float[] packed, int capacity);
 
         [DllImport(DllName)]
         private static extern unsafe int urp_orb_track(
@@ -164,6 +187,15 @@ namespace Urp.ArDemo.Native
         }
     }
 
+
+    [Serializable]
+    public struct NativeDebugPoint
+    {
+        public float x01;
+        public float y01;
+        public int kind;
+    }
+
     internal readonly struct CameraIntrinsics
     {
         public CameraIntrinsics(float focalLengthX, float focalLengthY, float principalPointX, float principalPointY)
@@ -180,7 +212,7 @@ namespace Urp.ArDemo.Native
         public float PrincipalPointY { get; }
     }
 
-    [StructLayout(LayoutKind.Sequential)]
+    [Serializable, StructLayout(LayoutKind.Sequential)]
     public struct NativeOrbResult
     {
         public int tracked;
@@ -221,5 +253,20 @@ namespace Urp.ArDemo.Native
         public float coverageY;
         public float modelSpread;
         public float processingMilliseconds;
+        public int detectedKeypoints;
+        public int ratioMatches;
+        public int mutualMatches;
+        public int uniqueMatches;
+        public int occupiedGridCells;
+        public float modelSpreadX;
+        public float modelSpreadY;
+        public float modelSpreadZ;
+        public float reprojectionMax;
+        public int rejectionCode;
+        public float translationJumpMeters;
+        public float rotationJumpDegrees;
+
+        public float coverageWidth => coverageX;
+        public float coverageHeight => coverageY;
     }
 }
