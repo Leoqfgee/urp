@@ -16,6 +16,7 @@ namespace Urp.ArDemo.Editor
     {
         private const string ScenePath = "Assets/Scenes/UrpARPrototype.unity";
         private const string CatalogPath = "Assets/Objects/RestorationObjectCatalog.asset";
+        private const string CleanBottleFolder = "Assets/Models/CleanBottleReconstruction/";
 
         public static void RunFromCommandLine()
         {
@@ -83,6 +84,14 @@ namespace Urp.ArDemo.Editor
                 "Bottle measurements are not recorded in the profile.");
             Require(bottle.defaultViewerEuler == Vector3.zero,
                 "Bottle viewer must open in an upright front view.");
+            Require(AssetDatabase.GetAssetPath(bottle.damagedViewerPrefab)
+                        == CleanBottleFolder + "bottle_damaged_clean.obj"
+                    && AssetDatabase.GetAssetPath(bottle.completeViewerPrefab)
+                        == CleanBottleFolder + "bottle_complete_clean.obj"
+                    && AssetDatabase.GetAssetPath(bottle.registeredRepairPrefab)
+                        == CleanBottleFolder + "bottle_cap_clean.obj",
+                "Bottle profile is not using all three clean reconstructed models.");
+            ValidateCleanBottleGeometry();
             Require(tissue != null && tissue.damagedViewerPrefab != null,
                 "Tissue viewer profile is incomplete.");
             Require(tissue.orbModelDatabase == null && tissue.registeredRepairPrefab == null,
@@ -112,6 +121,57 @@ namespace Urp.ArDemo.Editor
                 Require(!text.Contains(@"F:\Au\暑期任务\Tissue"),
                     $"Runtime asset contains a source-drive absolute path: {path}");
             }
+        }
+
+        private static void ValidateCleanBottleGeometry()
+        {
+            ValidateObjBounds(CleanBottleFolder + "bottle_damaged_clean.obj",
+                new Vector3(0.40f, 1.20f, 0.40f), 0.012f, 4800, 9000);
+            ValidateObjBounds(CleanBottleFolder + "bottle_complete_clean.obj",
+                new Vector3(0.40f, 1.2088235f, 0.40f), 0.015f, 7000, 13500);
+            ValidateObjBounds(CleanBottleFolder + "bottle_cap_clean.obj",
+                new Vector3(0.2294118f, 0.0588235f, 0.2294118f), 0.004f, 2000, 4000);
+        }
+
+        private static void ValidateObjBounds(string path, Vector3 expectedSize,
+            float tolerance, int minimumVertices, int minimumFaces)
+        {
+            Require(File.Exists(path), $"Clean model is missing: {path}");
+            int vertices = 0;
+            int faces = 0;
+            Vector3 minimum = new Vector3(float.PositiveInfinity, float.PositiveInfinity,
+                float.PositiveInfinity);
+            Vector3 maximum = new Vector3(float.NegativeInfinity, float.NegativeInfinity,
+                float.NegativeInfinity);
+            foreach (string line in File.ReadLines(path))
+            {
+                if (line.StartsWith("v ", StringComparison.Ordinal))
+                {
+                    string[] values = line.Split(new[] { ' ' },
+                        StringSplitOptions.RemoveEmptyEntries);
+                    Vector3 vertex = new Vector3(
+                        float.Parse(values[1], System.Globalization.CultureInfo.InvariantCulture),
+                        float.Parse(values[2], System.Globalization.CultureInfo.InvariantCulture),
+                        float.Parse(values[3], System.Globalization.CultureInfo.InvariantCulture));
+                    minimum = Vector3.Min(minimum, vertex);
+                    maximum = Vector3.Max(maximum, vertex);
+                    vertices++;
+                }
+                else if (line.StartsWith("f ", StringComparison.Ordinal))
+                {
+                    faces++;
+                }
+            }
+
+            Vector3 size = maximum - minimum;
+            Require(vertices >= minimumVertices && faces >= minimumFaces,
+                $"Clean model is unexpectedly sparse: {path}");
+            Require(Mathf.Abs(size.x - expectedSize.x) <= tolerance
+                    && Mathf.Abs(size.y - expectedSize.y) <= tolerance
+                    && Mathf.Abs(size.z - expectedSize.z) <= tolerance,
+                $"Clean model bounds do not match the measured envelope: {path}, {size}");
+            Require(Mathf.Max(size.x, size.z) < 0.45f && size.y < 1.30f,
+                $"Clean model contains out-of-envelope background geometry: {path}");
         }
 
         private static void ValidateGeneratedScene()

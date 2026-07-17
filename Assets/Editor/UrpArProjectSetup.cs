@@ -23,13 +23,13 @@ namespace Urp.ArDemo.Editor
         private const string ScenePath = "Assets/Scenes/UrpARPrototype.unity";
         private const string FontPath = "Assets/Fonts/NotoSansSC-Regular.otf";
         private const string BottleDamagedPath =
-            "Assets/Models/MeshroomBottleDamagedProcessed/damaged_bottle_processed.obj";
+            "Assets/Models/CleanBottleReconstruction/bottle_damaged_clean.obj";
         private const string BottleCompletePath =
-            "Assets/Models/MeshroomBottleFullProcessed/complete_bottle_processed.obj";
+            "Assets/Models/CleanBottleReconstruction/bottle_complete_clean.obj";
         private const string BottleTexturePath =
-            "Assets/Models/MeshroomBottleDamagedProcessed/damaged_bottle_processed_albedo.png";
+            "Assets/Models/CleanBottleReconstruction/bottle_atlas.png";
         private const string BottleRepairPath =
-            "Assets/Models/RegisteredRepair/coconut_bottle_cap_registered.obj";
+            "Assets/Models/CleanBottleReconstruction/bottle_cap_clean.obj";
         private const string BottleOccluderPath =
             "Assets/Objects/CoconutBottle/Prefabs/BottleNeckOccluder.prefab";
         private const string OccluderShaderPath =
@@ -283,8 +283,8 @@ namespace Urp.ArDemo.Editor
             bottle.displayName = "瓶盖缺失饮料瓶";
             bottle.shortDescription = "瓶身保留瓶口与螺纹结构，缺失部分为瓶盖。";
             bottle.viewerDescription =
-                "残缺模型来自清理后的 Meshroom 瓶身；完整模型为离线组合预览。"
-                + "瓶口外径 34 mm、瓶盖外径 39 mm、高 10 mm 已用于当前视觉标定。";
+                "完整、残缺和瓶盖模型由实拍照片定形，并按实测尺寸重建为连续、封闭的干净网格。"
+                + "瓶口外径 34 mm、瓶盖外径 39 mm、高 10 mm 已用于模型尺度标定；模型不含桌面或房间背景碎片。";
             bottle.trackingDescription =
                 "使用该对象自己的 ORB 2D—3D 数据和 PnP 位姿驱动已注册瓶盖。"
                 + "跟踪坐标原点位于瓶口中心，并使用瓶颈深度遮挡体改善虚实穿插。";

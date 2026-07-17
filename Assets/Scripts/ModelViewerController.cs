@@ -258,42 +258,12 @@ namespace Urp.ArDemo
                 Destroy(completeInstance);
             }
 
-            if (profile != null && profile.objectId == "coconut_bottle")
-            {
-                damagedInstance = InstantiateGeneratedModel(
-                    BottleViewerProxy.Create(false), "Damaged Viewer Model");
-                completeInstance = InstantiateGeneratedModel(
-                    BottleViewerProxy.Create(true), "Complete Viewer Model");
-            }
-            else
-            {
-                damagedInstance = InstantiateModel(
-                    profile?.damagedViewerPrefab, "Damaged Viewer Model");
-                completeInstance = InstantiateModel(
-                    profile?.completeViewerPrefab, "Complete Viewer Model");
-            }
+            damagedInstance = InstantiateModel(
+                profile?.damagedViewerPrefab, "Damaged Viewer Model");
+            completeInstance = InstantiateModel(
+                profile?.completeViewerPrefab, "Complete Viewer Model");
             damagedState = damagedInstance == null ? null : new ModelViewState(damagedInstance.transform);
             completeState = completeInstance == null ? null : new ModelViewState(completeInstance.transform);
-        }
-
-        private GameObject InstantiateGeneratedModel(GameObject instance, string instanceName)
-        {
-            if (instance == null)
-            {
-                return null;
-            }
-
-            GameObject pivotObject = new GameObject(instanceName + " Pivot");
-            pivotObject.transform.SetParent(modelViewRoot, false);
-            instance.name = instanceName;
-            instance.transform.SetParent(pivotObject.transform, false);
-            instance.transform.localPosition = Vector3.zero;
-            instance.transform.localRotation = Quaternion.identity;
-            SetLayerRecursively(instance, viewerCamera.gameObject.layer);
-            Bounds bounds = CalculateBounds(instance);
-            instance.transform.position += pivotObject.transform.position - bounds.center;
-            pivotObject.SetActive(false);
-            return pivotObject;
         }
 
         private GameObject InstantiateModel(GameObject prefab, string instanceName)
