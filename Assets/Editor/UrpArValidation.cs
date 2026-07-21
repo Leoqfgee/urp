@@ -323,11 +323,11 @@ namespace Urp.ArDemo.Editor
         private static void ValidateGeneratedScene()
         {
             EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
-            Require(PlayerSettings.productName == "瓶口拼合 AR"
+            Require(PlayerSettings.productName == "瓶模配准修复 AR"
                     && PlayerSettings.GetApplicationIdentifier(BuildTargetGroup.Android)
-                        == "com.qfgeeee.canonicalbottlerepairar"
-                    && PlayerSettings.bundleVersion == "2.0.0"
-                    && PlayerSettings.Android.bundleVersionCode == 200,
+                        == "com.qfgeeee.referencebrepairar"
+                    && PlayerSettings.bundleVersion == "3.0.0"
+                    && PlayerSettings.Android.bundleVersionCode == 300,
                 "Android app identity reverted to the legacy application.");
             RestorationObjectCatalog catalog =
                 AssetDatabase.LoadAssetAtPath<RestorationObjectCatalog>(CatalogPath);

@@ -39,7 +39,7 @@ namespace Urp.ArDemo.Editor
             "Assets/Shaders/ForceMagentaDebug.shader";
         private const string ForceMagentaMaterialPath =
             "Assets/Resources/ForceMagentaDebug.mat";
-        private const string AndroidApkPath = "Builds/CanonicalBottleRepairAR.apk";
+        private const string AndroidApkPath = "Builds/BottleReferenceBRepairAR.apk";
         private const string BottleReferenceOrbPath =
             "Assets/OrbModels/bottle_reference_b.bytes";
         private const string BottleCalibrationPath =
@@ -141,14 +141,14 @@ namespace Urp.ArDemo.Editor
 
         private static void ConfigureAndroidProject()
         {
-            PlayerSettings.productName = "瓶口拼合 AR";
+            PlayerSettings.productName = "瓶模配准修复 AR";
             PlayerSettings.companyName = "qfgeeee";
-            PlayerSettings.bundleVersion = "2.0.0";
+            PlayerSettings.bundleVersion = "3.0.0";
             PlayerSettings.SetApplicationIdentifier(
-                BuildTargetGroup.Android, "com.qfgeeee.canonicalbottlerepairar");
+                BuildTargetGroup.Android, "com.qfgeeee.referencebrepairar");
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
-            PlayerSettings.Android.bundleVersionCode = 200;
+            PlayerSettings.Android.bundleVersionCode = 300;
             PlayerSettings.SetScriptingBackend(
                 BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
