@@ -39,7 +39,7 @@ namespace Urp.ArDemo.Editor
             "Assets/Shaders/ForceMagentaDebug.shader";
         private const string ForceMagentaMaterialPath =
             "Assets/Resources/ForceMagentaDebug.mat";
-        private const string AndroidApkPath = "Builds/BottleCapRepairAR-v1.apk";
+        private const string AndroidApkPath = "Builds/CanonicalBottleRepairAR.apk";
         private const string BottleOrbPath = "Assets/OrbModels/bottle_global.bytes";
         private const string BottleCalibrationPath =
             "Assets/Calibration/CoconutBottleRepairCalibration.asset";
@@ -140,14 +140,14 @@ namespace Urp.ArDemo.Editor
 
         private static void ConfigureAndroidProject()
         {
-            PlayerSettings.productName = "瓶盖智复 AR";
+            PlayerSettings.productName = "瓶口拼合 AR";
             PlayerSettings.companyName = "qfgeeee";
-            PlayerSettings.bundleVersion = "1.0.0";
+            PlayerSettings.bundleVersion = "2.0.0";
             PlayerSettings.SetApplicationIdentifier(
-                BuildTargetGroup.Android, "com.qfgeeee.bottlecaprepairar");
+                BuildTargetGroup.Android, "com.qfgeeee.canonicalbottlerepairar");
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
-            PlayerSettings.Android.bundleVersionCode = 100;
+            PlayerSettings.Android.bundleVersionCode = 200;
             PlayerSettings.SetScriptingBackend(
                 BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
@@ -314,11 +314,13 @@ namespace Urp.ArDemo.Editor
             bottle.displayName = "瓶盖缺失饮料瓶";
             bottle.shortDescription = "瓶身保留瓶口与螺纹结构，缺失部分为瓶盖。";
             bottle.viewerDescription =
-                "完整、残缺和瓶盖模型由实拍照片定形，并按实测尺寸重建为连续、封闭的干净网格。"
-                + "瓶口外径 34 mm、瓶盖外径 39 mm、高 10 mm 已用于模型尺度标定；模型不含桌面或房间背景碎片。";
+                "残缺模型 b 保留用户指定的原始摄影测量瓶身，只切除错误重建的旧瓶盖，"
+                + "并在 Blender 中补齐瓶口坐标基准。该模型仍保留源扫描的粗糙与缺损，不再用圆柱替换瓶身。"
+                + "瓶盖 c 按外径 39 mm、高 10 mm 建模并与 34 mm 瓶口同轴注册。";
             bottle.trackingDescription =
-                "使用该对象自己的 ORB 2D—3D 数据和 PnP 位姿驱动已注册瓶盖。"
-                + "跟踪坐标原点位于瓶口中心，并使用瓶颈深度遮挡体改善虚实穿插。";
+                "真实瓶 a 与无盖参考模型 b 通过瓶身自然特征和 ORB 2D—3D/PnP 配准。"
+                + "b 与瓶盖 c 已在 Blender 中共享瓶口 canonical 坐标系；运行时 b 的 Renderer 永久关闭，"
+                + "只显示随共同位姿根节点移动的 c。遮挡体在实机配准通过前保持关闭。";
             bottle.missingPartName = "瓶盖";
             bottle.thumbnail = AssetDatabase.LoadAssetAtPath<Texture2D>(
                 "Assets/Textures/Targets/DamagedBottleOrbViews/orb_view_01.jpg");
@@ -487,13 +489,15 @@ namespace Urp.ArDemo.Editor
             GameObject trackedRoot = new GameObject("TrackedObjectPoseRoot");
             GameObject alignment = new GameObject("ModelCoordinateAlignment");
             alignment.transform.SetParent(trackedRoot.transform, false);
+            GameObject referenceRoot = new GameObject("ModelReferenceRoot");
+            referenceRoot.transform.SetParent(alignment.transform, false);
             GameObject repairRoot = new GameObject("RepairPartRoot");
-            repairRoot.transform.SetParent(trackedRoot.transform, false);
+            repairRoot.transform.SetParent(alignment.transform, false);
             GameObject occlusionRoot = new GameObject("OcclusionRoot");
-            occlusionRoot.transform.SetParent(trackedRoot.transform, false);
+            occlusionRoot.transform.SetParent(alignment.transform, false);
             occlusionRoot.SetActive(false);
             GameObject debugRoot = new GameObject("DebugRoot");
-            debugRoot.transform.SetParent(trackedRoot.transform, false);
+            debugRoot.transform.SetParent(alignment.transform, false);
             debugRoot.SetActive(false);
             trackedRoot.SetActive(false);
 
@@ -506,6 +510,7 @@ namespace Urp.ArDemo.Editor
             AssignReference(tracker, "arCamera", arCamera);
             AssignReference(tracker, "trackedObjectPoseRoot", trackedRoot.transform);
             AssignReference(tracker, "modelCoordinateAlignment", alignment.transform);
+            AssignReference(tracker, "modelReferenceRoot", referenceRoot.transform);
             AssignReference(tracker, "repairPartRoot", repairRoot.transform);
             AssignReference(tracker, "occlusionRoot", occlusionRoot.transform);
             AssignReference(tracker, "debugRoot", debugRoot.transform);

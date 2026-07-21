@@ -1,5 +1,13 @@
 {
-  "version": "coconut-cap-registration-v3",
+  "version": "coconut-photogrammetry-b-c-registration-v4",
+  "source": {
+    "blend": "F:\\Au\\暑期任务\\bottle0720\\processed_20260721\\final_bottle\\bottle0720_extracted.blend",
+    "texture": "F:\\Au\\暑期任务\\bottle0720\\processed_20260721\\final_bottle\\texture_1001.png",
+    "body_policy": "preserve approved photogrammetry body; remove only triangles touching the reconstructed cap region",
+    "source_cap_cut_z": 1.25,
+    "source_mouth_z": 1.34,
+    "source_to_canonical_uniform_scale": 0.8955223880597014
+  },
   "coordinate_system": {
     "origin": "bottle mouth contact-plane centre",
     "x": "bottle right",
@@ -7,32 +15,44 @@
     "z": "front label direction",
     "meters_per_model_unit": 0.17
   },
-  "mouth_circle": {
-    "center_model": [
-      0.0,
-      0.0,
-      0.0
-    ],
-    "radius_model": 0.1,
-    "radius_m": 0.017,
-    "normal_model": [
-      0.0,
-      1.0,
-      0.0
-    ]
+  "reference_b": {
+    "purpose": "natural-feature reference for real bottle a; hidden in AR tracking mode",
+    "source_faces_kept": 110799,
+    "generated_mouth_faces": 3456,
+    "bounds_model": {
+      "min": [
+        -0.26229047063571304,
+        -1.2,
+        -0.35994220135816885
+      ],
+      "max": [
+        0.26229047063571304,
+        0.0,
+        0.35994220135816885
+      ]
+    }
   },
-  "cap": {
-    "outer_radius_model": 0.11470588235294117,
-    "outer_radius_m": 0.0195,
-    "height_model": 0.058823529411764705,
+  "cap_c": {
+    "outer_diameter_m": 0.039,
     "height_m": 0.01,
-    "open_skirt_y_model": -0.05,
-    "inner_roof_y_model": -0.001176470588235298,
+    "bottom_contact_y_model": -0.05,
     "axis_model": [
       0.0,
       1.0,
       0.0
-    ]
+    ],
+    "bounds_model": {
+      "min": [
+        -0.11470588235294117,
+        -0.05,
+        -0.11470588235294117
+      ],
+      "max": [
+        0.11470588235294117,
+        0.008823529411764702,
+        0.11470588235294117
+      ]
+    }
   },
   "registration": {
     "local_position": [
@@ -52,25 +72,8 @@
     ],
     "axis_angle_error_degrees": 0.0,
     "centre_error_m": 0.0,
-    "inner_roof_height_error_m": 0.0002,
     "size_ratio": 1.0,
-    "similarity_transform": {
-      "scale": 1.0,
-      "rotation_quaternion_xyzw": [
-        0.0,
-        0.0,
-        0.0,
-        1.0
-      ],
-      "translation": [
-        0.0,
-        0.0,
-        0.0
-      ]
-    },
-    "rms_m": 0.0002,
-    "maximum_error_m": 0.0002,
-    "method": "analytic coaxial registration from measured 34 mm mouth, 39 mm cap and 10 mm height",
+    "method": "Blender canonical registration: b mouth centre and c axis share one measured frame",
     "device_overlay_verified": false
   }
 }

@@ -31,6 +31,7 @@ namespace Urp.ArDemo
         [Header("Object-coordinate overlay")]
         [SerializeField] private Transform trackedObjectPoseRoot;
         [SerializeField] private Transform modelCoordinateAlignment;
+        [SerializeField] private Transform modelReferenceRoot;
         [SerializeField] private Transform repairPartRoot;
         [SerializeField] private Transform occlusionRoot;
         [SerializeField] private Transform debugRoot;
@@ -80,6 +81,8 @@ namespace Urp.ArDemo
         private Vector3 pendingRelocationPosition;
         private Quaternion pendingRelocationRotation;
         private float lastPoseApplyTime = -1f;
+        private Transform registeredReferenceModel;
+        private Renderer[] referenceRenderers;
         private Transform registeredRepairPart;
         private GameObject registeredOccluder;
         private RepairCalibrationProfile calibration;
@@ -192,6 +195,10 @@ namespace Urp.ArDemo
             trackers.Clear();
 
             ExitForceRepairDebug(false);
+            if (registeredReferenceModel != null)
+            {
+                Destroy(registeredReferenceModel.gameObject);
+            }
             if (registeredRepairPart != null)
             {
                 Destroy(registeredRepairPart.gameObject);
@@ -201,18 +208,44 @@ namespace Urp.ArDemo
                 Destroy(registeredOccluder);
             }
 
+            registeredReferenceModel = null;
+            referenceRenderers = null;
             registeredRepairPart = null;
             registeredOccluder = null;
             capRenderers = null;
             Transform repairParent = repairPartRoot != null
                 ? repairPartRoot
                 : modelCoordinateAlignment;
+            Transform referenceParent = modelReferenceRoot != null
+                ? modelReferenceRoot
+                : modelCoordinateAlignment;
             Transform occluderParent = occlusionRoot != null
                 ? occlusionRoot
                 : modelCoordinateAlignment;
-            if (profile != null && repairParent != null)
+            if (profile != null)
             {
-                if (profile.registeredRepairPrefab != null)
+                // b is the no-cap photogrammetry model registered with c in Blender.
+                // It defines the natural-feature object frame but must never be drawn
+                // over the real bottle a in tracking mode.
+                if (profile.damagedViewerPrefab != null && referenceParent != null)
+                {
+                    GameObject reference = Instantiate(profile.damagedViewerPrefab, referenceParent);
+                    reference.name = "ReferenceBottleB_Hidden";
+                    reference.transform.localPosition = Vector3.zero;
+                    reference.transform.localRotation = Quaternion.identity;
+                    reference.transform.localScale = Vector3.one;
+                    registeredReferenceModel = reference.transform;
+                    referenceRenderers = reference.GetComponentsInChildren<Renderer>(true);
+                    foreach (Renderer renderer in referenceRenderers)
+                    {
+                        renderer.enabled = false;
+                        renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                        renderer.receiveShadows = false;
+                    }
+                    foreach (Collider collider in reference.GetComponentsInChildren<Collider>(true))
+                        collider.enabled = false;
+                }
+                if (profile.registeredRepairPrefab != null && repairParent != null)
                 {
                     GameObject repair = Instantiate(profile.registeredRepairPrefab, repairParent);
                     repair.name = "RegisteredBottleCap";
@@ -331,11 +364,25 @@ namespace Urp.ArDemo
                 repairPartRoot.gameObject.SetActive(visible);
             if (registeredRepairPart != null)
                 registeredRepairPart.gameObject.SetActive(visible);
+            EnsureReferenceModelHidden();
             if (capRenderers == null) return;
             foreach (Renderer renderer in capRenderers)
             {
                 if (renderer != null)
                     renderer.enabled = visible;
+            }
+        }
+
+        private void EnsureReferenceModelHidden()
+        {
+            if (modelReferenceRoot != null)
+                modelReferenceRoot.gameObject.SetActive(true);
+            if (registeredReferenceModel != null)
+                registeredReferenceModel.gameObject.SetActive(true);
+            if (referenceRenderers == null) return;
+            foreach (Renderer renderer in referenceRenderers)
+            {
+                if (renderer != null) renderer.enabled = false;
             }
         }
 

@@ -23,4 +23,4 @@ The Android ORB/PnP implementation is the project-owned native plugin under `Nat
 - Unity version: 2022.3.62f2.
 - Unity menu: `URP AR/Setup Prototype Scene`.
 - Command-line method: `Urp.ArDemo.Editor.UrpArProjectSetup.BuildAndroidFromCommandLine`.
-- APK output: `Builds/urp-ar-rebuilt.apk`.
+- APK output: `Builds/CanonicalBottleRepairAR.apk`.

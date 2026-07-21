@@ -215,7 +215,7 @@ namespace Urp.ArDemo.Editor
                         == CleanBottleFolder + "bottle_complete_clean.obj"
                     && AssetDatabase.GetAssetPath(bottle.registeredRepairPrefab)
                         == CleanBottleFolder + "bottle_cap_clean.obj",
-                "Bottle profile is not using all three clean reconstructed models.");
+                "Bottle profile is not using the registered b/c model set.");
             ValidateCleanBottleGeometry();
             Require(tissue != null && tissue.damagedViewerPrefab != null,
                 "Tissue viewer profile is incomplete.");
@@ -264,17 +264,17 @@ namespace Urp.ArDemo.Editor
         private static void ValidateCleanBottleGeometry()
         {
             ValidateObjBounds(CleanBottleFolder + "bottle_damaged_clean.obj",
-                new Vector3(0.40f, 1.20f, 0.40f), 0.012f, 4800, 9000);
+                new Vector3(0.524581f, 1.20f, 0.719884f), 0.015f, 50000, 100000);
             ValidateObjBounds(CleanBottleFolder + "bottle_complete_clean.obj",
-                new Vector3(0.40f, 1.2088235f, 0.40f), 0.015f, 7000, 13500);
+                new Vector3(0.524581f, 1.2088235f, 0.719884f), 0.018f, 50000, 100000);
             ValidateObjBounds(CleanBottleFolder + "bottle_cap_clean.obj",
-                new Vector3(0.2294118f, 0.0588235f, 0.2294118f), 0.004f, 2000, 4000);
+                new Vector3(0.2294118f, 0.0588235f, 0.2294118f), 0.004f, 1400, 2500);
         }
 
         private static void ValidateObjBounds(string path, Vector3 expectedSize,
             float tolerance, int minimumVertices, int minimumFaces)
         {
-            Require(File.Exists(path), $"Clean model is missing: {path}");
+            Require(File.Exists(path), $"Registered model is missing: {path}");
             int vertices = 0;
             int faces = 0;
             Vector3 minimum = new Vector3(float.PositiveInfinity, float.PositiveInfinity,
@@ -303,23 +303,23 @@ namespace Urp.ArDemo.Editor
 
             Vector3 size = maximum - minimum;
             Require(vertices >= minimumVertices && faces >= minimumFaces,
-                $"Clean model is unexpectedly sparse: {path}");
+                $"Registered model is unexpectedly sparse: {path}");
             Require(Mathf.Abs(size.x - expectedSize.x) <= tolerance
                     && Mathf.Abs(size.y - expectedSize.y) <= tolerance
                     && Mathf.Abs(size.z - expectedSize.z) <= tolerance,
                 $"Clean model bounds do not match the measured envelope: {path}, {size}");
-            Require(Mathf.Max(size.x, size.z) < 0.45f && size.y < 1.30f,
-                $"Clean model contains out-of-envelope background geometry: {path}");
+            Require(Mathf.Max(size.x, size.z) < 0.75f && size.y < 1.30f,
+                $"Registered model exceeds the approved photogrammetry envelope: {path}");
         }
 
         private static void ValidateGeneratedScene()
         {
             EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
-            Require(PlayerSettings.productName == "瓶盖智复 AR"
+            Require(PlayerSettings.productName == "瓶口拼合 AR"
                     && PlayerSettings.GetApplicationIdentifier(BuildTargetGroup.Android)
-                        == "com.qfgeeee.bottlecaprepairar"
-                    && PlayerSettings.bundleVersion == "1.0.0"
-                    && PlayerSettings.Android.bundleVersionCode == 100,
+                        == "com.qfgeeee.canonicalbottlerepairar"
+                    && PlayerSettings.bundleVersion == "2.0.0"
+                    && PlayerSettings.Android.bundleVersionCode == 200,
                 "Android app identity reverted to the legacy application.");
             RestorationObjectCatalog catalog =
                 AssetDatabase.LoadAssetAtPath<RestorationObjectCatalog>(CatalogPath);
@@ -327,14 +327,25 @@ namespace Urp.ArDemo.Editor
             Transform objectRoot = FindRequired("TrackedObjectPoseRoot");
             Transform alignment = FindRequired("ModelCoordinateAlignment");
             Require(alignment.IsChildOf(objectRoot), "Model alignment is outside pose root.");
+            Transform referenceRoot = FindRequired("ModelReferenceRoot");
             Transform repairRoot = FindRequired("RepairPartRoot");
             Transform occlusionRoot = FindRequired("OcclusionRoot");
             Transform debugRoot = FindRequired("DebugRoot");
-            Require(repairRoot.parent == objectRoot && repairRoot.gameObject.activeSelf,
+            Require(referenceRoot.parent == alignment && referenceRoot.gameObject.activeSelf,
+                "Hidden reference model root must share the canonical alignment frame.");
+            OrbImageTrackingController tracker =
+                UnityEngine.Object.FindObjectOfType<OrbImageTrackingController>(true);
+            Require(tracker != null, "ORB tracking controller is missing.");
+            SerializedProperty referenceProperty = new SerializedObject(tracker)
+                .FindProperty("modelReferenceRoot");
+            Require(referenceProperty != null
+                    && referenceProperty.objectReferenceValue == referenceRoot,
+                "Tracking controller is not bound to the hidden reference-model root.");
+            Require(repairRoot.parent == alignment && repairRoot.gameObject.activeSelf,
                 "RepairPartRoot must be an active child whose visibility is restored explicitly.");
-            Require(occlusionRoot.parent == objectRoot && !occlusionRoot.gameObject.activeSelf,
+            Require(occlusionRoot.parent == alignment && !occlusionRoot.gameObject.activeSelf,
                 "Unverified occluder must be disabled by default.");
-            Require(debugRoot.parent == objectRoot && !debugRoot.gameObject.activeSelf,
+            Require(debugRoot.parent == alignment && !debugRoot.gameObject.activeSelf,
                 "DebugRoot must be disabled outside Development diagnostics.");
 
             Camera arCamera = FindRequired("AR Camera").GetComponent<Camera>();
