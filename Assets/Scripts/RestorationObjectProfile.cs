@@ -47,8 +47,13 @@ namespace Urp.ArDemo
         [Range(0.05f, 0.5f)] public float viewerMargin = 0.18f;
 
         [Header("Tracking and repair")]
+        [Tooltip("Hidden no-cap model b whose canonical frame is solved from real bottle a.")]
+        public GameObject trackingReferencePrefab;
+        [Tooltip("Natural-feature observations registered into model b's canonical frame.")]
+        public TextAsset trackingReferenceDatabase;
         public GameObject registeredRepairPrefab;
         public GameObject registeredOccluderPrefab;
+        [HideInInspector]
         public TextAsset orbModelDatabase;
         public RepairCalibrationProfile calibration;
         public TrackingSettings trackingSettings = new TrackingSettings();
@@ -60,6 +65,9 @@ namespace Urp.ArDemo
         public PhysicalMeasurement[] physicalMeasurements = Array.Empty<PhysicalMeasurement>();
 
         public bool HasTrackingAssets =>
-            orbModelDatabase != null && calibration != null && registeredRepairPrefab != null;
+            trackingReferencePrefab != null
+            && trackingReferenceDatabase != null
+            && calibration != null
+            && registeredRepairPrefab != null;
     }
 }

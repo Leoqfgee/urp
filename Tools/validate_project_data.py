@@ -45,10 +45,19 @@ def main() -> None:
     if np.any(global_min < np.array([-0.35, -1.60, -0.20])) \
             or np.any(global_max > np.array([0.35, 0.15, 0.25])):
         raise SystemExit("ORB models do not share the expected canonical mouth domain")
-    global_model_path = ROOT / "Assets/OrbModels/bottle_global.bytes"
-    global_points = read_orb(global_model_path)
-    if len(global_points) < 1000:
-        raise SystemExit("merged global ORB model contains too few records")
+    reference_model_path = ROOT / "Assets/OrbModels/bottle_reference_b.bytes"
+    reference_points = read_orb(reference_model_path)
+    if len(reference_points) < 1000:
+        raise SystemExit("reference model b ORB database contains too few records")
+    reference_manifest = json.loads(
+        reference_model_path.with_name("bottle_reference_b_manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    if not reference_manifest.get("repair_c_excluded_from_matching"):
+        raise SystemExit("repair cap c leaked into reference model b matching data")
+    if "solvePnP estimates b" not in reference_manifest.get("logic", ""):
+        raise SystemExit("reference database does not document the a-to-b pose chain")
 
     calibration = json.loads(
         (ROOT / "Tools/calibration/coconut_bottle_repair_calibration.json").read_text(
@@ -104,7 +113,9 @@ def main() -> None:
 
     report = {
         "orb_model_count": len(orb_paths),
-        "merged_orb_record_count": len(global_points),
+        "reference_b_orb_record_count": len(reference_points),
+        "reference_b_orb_version": reference_manifest["version"],
+        "repair_c_excluded_from_matching": True,
         "orb_global_min": global_min.tolist(),
         "orb_global_max": global_max.tolist(),
         "calibration_status": calibration["status"],

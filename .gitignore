@@ -32,3 +32,6 @@ Assets/StreamingAssets/build_identity.json.meta
 # Installed locally from Unity Asset Store.
 Assets/OpenCV+Unity/
 Assets/OpenCV+Unity.meta
+
+# Regenerable Blender renders, ray-hit tables, and extracted replay frames.
+Tools/TrackingReferenceB/

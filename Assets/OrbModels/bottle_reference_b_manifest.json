@@ -1,0 +1,56 @@
+{
+  "version": "coconut-reference-b-observed-v2",
+  "logic": "real bottle a observation descriptors are globally similarity-registered into no-cap Blender model b coordinates; solvePnP estimates b; only registered child c is rendered",
+  "input_observation_database": "Assets\\OrbModels\\bottle_global.bytes",
+  "input_sha256": "A046CD3386245B4A255A45088ECD9087366FF32A1352B2E20C3AC713253AC1EF",
+  "output": "Assets\\OrbModels\\bottle_reference_b.bytes",
+  "output_sha256": "A041BEA0B10643C8775EB278A411177E5DF426E8C10FC6960C13AC5E579E8405",
+  "input_records": 4100,
+  "registered_records": 4100,
+  "rejected_records": 0,
+  "registration_strategy": "one robust global similarity maps SfM observation geometry into Blender b coordinates",
+  "source_to_reference_b_similarity": {
+    "scale": 0.9598292830754007,
+    "rotation_row_major": [
+      0.9981595110600353,
+      -0.05019137485724764,
+      0.03403551630767536,
+      0.04563477718419692,
+      0.9912938776372355,
+      0.12350674180093117,
+      -0.03993817211314874,
+      -0.12172622580558562,
+      0.9917598844273687
+    ],
+    "translation": [
+      -0.044889246146650005,
+      -0.049376055104135896,
+      -0.07858461161456523
+    ],
+    "fit_correspondences": 2889
+  },
+  "surface_qa_records_within_tolerance": 4072,
+  "maximum_surface_distance_model_units": 0.12,
+  "surface_distance_mean_model_units": 0.03730682656168938,
+  "surface_distance_rms_model_units": 0.04706878587603569,
+  "surface_distance_max_model_units": 0.11989860236644745,
+  "canonical_bounds_min": [
+    -0.22099329367221027,
+    -1.196586539014783,
+    -0.14310584343283414
+  ],
+  "canonical_bounds_max": [
+    0.20910689380340708,
+    -0.06992758473624741,
+    0.19765576078253608
+  ],
+  "registered_blend": "F:\\Au\\\u6691\u671f\u4efb\u52a1\\bottle0720\\processed_20260721\\b_c_registration\\b_c_registered_canonical.blend",
+  "registered_blend_sha256": "7BB2D87B63D503A168E0D1783ABBFBBFE08AB1D34D2D14089CE15A762DAFDFB0",
+  "reference_b_objects": [
+    "ReferenceBottleB_OriginalPhotogrammetry",
+    "ReferenceBottleB_RegisteredOpenMouth"
+  ],
+  "repair_c_excluded_from_matching": true,
+  "meters_per_model_unit": 0.17,
+  "device_overlay_verified": false
+}

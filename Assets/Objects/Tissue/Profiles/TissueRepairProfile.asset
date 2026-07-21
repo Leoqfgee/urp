@@ -25,6 +25,8 @@ MonoBehaviour:
   viewerMaterial: {fileID: 2100000, guid: 4974899771addaf4a975bfe84f8d8bab, type: 2}
   defaultViewerEuler: {x: -90, y: 0, z: 0}
   viewerMargin: 0.2
+  trackingReferencePrefab: {fileID: 0}
+  trackingReferenceDatabase: {fileID: 0}
   registeredRepairPrefab: {fileID: 0}
   registeredOccluderPrefab: {fileID: 0}
   orbModelDatabase: {fileID: 0}

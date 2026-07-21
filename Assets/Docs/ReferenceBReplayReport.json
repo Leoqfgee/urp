@@ -1,0 +1,29 @@
+{
+  "database": "Assets/OrbModels/bottle_reference_b.bytes",
+  "database_version": "coconut-reference-b-observed-v2",
+  "source": "21 sampled frames from the three user-supplied real-device videos",
+  "frames": 21,
+  "accepted": 7,
+  "success_rate": 0.3333333333,
+  "thresholds": {
+    "minimum_unique_matches": 14,
+    "minimum_pose_inliers": 10,
+    "minimum_inlier_ratio": 0.5,
+    "maximum_reprojection_rms_pixels": 2.5,
+    "minimum_horizontal_coverage": 0.06,
+    "minimum_vertical_coverage": 0.20,
+    "minimum_occupied_grid_cells": 4
+  },
+  "rejections": {
+    "accepted": 7,
+    "unique_matches": 12,
+    "vertical_coverage": 2
+  },
+  "comparison": {
+    "synthetic_blender_b_descriptors": "0/21 accepted; rejected as runtime database",
+    "observations_snapped_to_rough_b_surface_0_075": "5/21 accepted; rejected",
+    "observations_snapped_to_rough_b_surface_0_12": "4/21 accepted; rejected",
+    "observed_sfm_geometry_globally_registered_to_b": "7/21 accepted; selected"
+  },
+  "scope": "Offline replay validates matching/PnP behavior only; it does not prove phone-screen cap visibility or alignment."
+}

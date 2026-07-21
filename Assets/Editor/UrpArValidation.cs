@@ -213,13 +213,21 @@ namespace Urp.ArDemo.Editor
                         == CleanBottleFolder + "bottle_damaged_clean.obj"
                     && AssetDatabase.GetAssetPath(bottle.completeViewerPrefab)
                         == CleanBottleFolder + "bottle_complete_clean.obj"
+                    && AssetDatabase.GetAssetPath(bottle.trackingReferencePrefab)
+                        == CleanBottleFolder + "bottle_damaged_clean.obj"
+                    && AssetDatabase.GetAssetPath(bottle.trackingReferenceDatabase)
+                        == "Assets/OrbModels/bottle_reference_b.bytes"
+                    && bottle.orbModelDatabase == null
                     && AssetDatabase.GetAssetPath(bottle.registeredRepairPrefab)
                         == CleanBottleFolder + "bottle_cap_clean.obj",
-                "Bottle profile is not using the registered b/c model set.");
+                "Bottle profile is not using the explicit a-to-b-to-c tracking set.");
             ValidateCleanBottleGeometry();
             Require(tissue != null && tissue.damagedViewerPrefab != null,
                 "Tissue viewer profile is incomplete.");
-            Require(tissue.orbModelDatabase == null && tissue.registeredRepairPrefab == null,
+            Require(tissue.trackingReferencePrefab == null
+                    && tissue.trackingReferenceDatabase == null
+                    && tissue.orbModelDatabase == null
+                    && tissue.registeredRepairPrefab == null,
                 "Tissue must not inherit bottle tracking or repair assets.");
             Require(!tissue.physicalScaleVerified,
                 "Tissue physical scale cannot be marked verified without measurements.");
@@ -327,7 +335,7 @@ namespace Urp.ArDemo.Editor
             Transform objectRoot = FindRequired("TrackedObjectPoseRoot");
             Transform alignment = FindRequired("ModelCoordinateAlignment");
             Require(alignment.IsChildOf(objectRoot), "Model alignment is outside pose root.");
-            Transform referenceRoot = FindRequired("ModelReferenceRoot");
+            Transform referenceRoot = FindRequired("TrackingReferenceBRoot");
             Transform repairRoot = FindRequired("RepairPartRoot");
             Transform occlusionRoot = FindRequired("OcclusionRoot");
             Transform debugRoot = FindRequired("DebugRoot");

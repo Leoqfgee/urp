@@ -40,7 +40,8 @@ namespace Urp.ArDemo.Editor
         private const string ForceMagentaMaterialPath =
             "Assets/Resources/ForceMagentaDebug.mat";
         private const string AndroidApkPath = "Builds/CanonicalBottleRepairAR.apk";
-        private const string BottleOrbPath = "Assets/OrbModels/bottle_global.bytes";
+        private const string BottleReferenceOrbPath =
+            "Assets/OrbModels/bottle_reference_b.bytes";
         private const string BottleCalibrationPath =
             "Assets/Calibration/CoconutBottleRepairCalibration.asset";
         private const string TissueModelPath =
@@ -328,10 +329,16 @@ namespace Urp.ArDemo.Editor
                 AssetDatabase.LoadAssetAtPath<GameObject>(BottleDamagedPath);
             bottle.completeViewerPrefab =
                 AssetDatabase.LoadAssetAtPath<GameObject>(BottleCompletePath);
+            bottle.trackingReferencePrefab =
+                AssetDatabase.LoadAssetAtPath<GameObject>(BottleDamagedPath);
+            bottle.trackingReferenceDatabase =
+                AssetDatabase.LoadAssetAtPath<TextAsset>(BottleReferenceOrbPath);
             bottle.registeredRepairPrefab =
                 AssetDatabase.LoadAssetAtPath<GameObject>(BottleRepairPath);
             bottle.registeredOccluderPrefab = bottleOccluder;
-            bottle.orbModelDatabase = AssetDatabase.LoadAssetAtPath<TextAsset>(BottleOrbPath);
+            // Legacy direct-repair field is deliberately empty. Tracking must
+            // go through the explicit hidden model-b reference pair above.
+            bottle.orbModelDatabase = null;
             RepairCalibrationProfile bottleCalibration =
                 AssetDatabase.LoadAssetAtPath<RepairCalibrationProfile>(BottleCalibrationPath);
             bottleCalibration.objectOriginInModel = Vector3.zero;
@@ -433,6 +440,8 @@ namespace Urp.ArDemo.Editor
             tissue.damagedViewerPrefab =
                 AssetDatabase.LoadAssetAtPath<GameObject>(TissueModelPath);
             tissue.completeViewerPrefab = null;
+            tissue.trackingReferencePrefab = null;
+            tissue.trackingReferenceDatabase = null;
             tissue.registeredRepairPrefab = null;
             tissue.registeredOccluderPrefab = null;
             tissue.orbModelDatabase = null;
@@ -489,7 +498,7 @@ namespace Urp.ArDemo.Editor
             GameObject trackedRoot = new GameObject("TrackedObjectPoseRoot");
             GameObject alignment = new GameObject("ModelCoordinateAlignment");
             alignment.transform.SetParent(trackedRoot.transform, false);
-            GameObject referenceRoot = new GameObject("ModelReferenceRoot");
+            GameObject referenceRoot = new GameObject("TrackingReferenceBRoot");
             referenceRoot.transform.SetParent(alignment.transform, false);
             GameObject repairRoot = new GameObject("RepairPartRoot");
             repairRoot.transform.SetParent(alignment.transform, false);

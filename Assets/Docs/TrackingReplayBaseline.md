@@ -6,7 +6,7 @@ Command:
 
 ```powershell
 python Tools/TrackingReplay/replay_orb.py `
-  --model Assets/OrbModels/bottle_global.bytes `
+  --model Assets/OrbModels/bottle_reference_b.bytes `
   --frames "F:\Au\暑期任务\抽帧照片\bottle_damaged" `
   --output Builds/tracking-replay-final `
   --step 12 --minimum-matches 14
@@ -38,4 +38,4 @@ removed 900 records outside the measured bottle volume. The original SfM file
 and per-observation masks are not present in the repository, so records that
 fall inside the physical bottle envelope cannot be semantically proven from
 repository data alone; that limitation is recorded in
-`Assets/OrbModels/bottle_global_manifest.json`.
+`Assets/OrbModels/bottle_reference_b_manifest.json`.

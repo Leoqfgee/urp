@@ -227,9 +227,9 @@ namespace Urp.ArDemo
                 // b is the no-cap photogrammetry model registered with c in Blender.
                 // It defines the natural-feature object frame but must never be drawn
                 // over the real bottle a in tracking mode.
-                if (profile.damagedViewerPrefab != null && referenceParent != null)
+                if (profile.trackingReferencePrefab != null && referenceParent != null)
                 {
-                    GameObject reference = Instantiate(profile.damagedViewerPrefab, referenceParent);
+                    GameObject reference = Instantiate(profile.trackingReferencePrefab, referenceParent);
                     reference.name = "ReferenceBottleB_Hidden";
                     reference.transform.localPosition = Vector3.zero;
                     reference.transform.localRotation = Quaternion.identity;
@@ -580,12 +580,15 @@ namespace Urp.ArDemo
         private void BuildTrackers()
         {
             trackers.Clear();
-            if (activeProfile == null || activeProfile.orbModelDatabase == null)
+            if (activeProfile == null || activeProfile.trackingReferenceDatabase == null)
             {
                 return;
             }
 
-            foreach (TextAsset model in new[] { activeProfile.orbModelDatabase })
+            // This database estimates the pose of hidden reference model b.
+            // Repair part c never contributes descriptors and only inherits the
+            // solved b pose through their common Blender-registered root.
+            foreach (TextAsset model in new[] { activeProfile.trackingReferenceDatabase })
             {
                 if (model == null)
                 {

@@ -18,7 +18,7 @@ namespace Urp.ArDemo.Editor
         private const string NativeSourcePath = "Native/UrpOrbNative/src/urp_orb_native.cpp";
         private const string NativePluginPath =
             "Assets/Plugins/Android/arm64-v8a/libUrpOrbNative.so";
-        private const string OrbPath = "Assets/OrbModels/bottle_global.bytes";
+        private const string OrbPath = "Assets/OrbModels/bottle_reference_b.bytes";
         private const string CalibrationPath =
             "Assets/Calibration/CoconutBottleRepairCalibration.asset";
 

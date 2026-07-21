@@ -38,12 +38,14 @@ Scene hierarchy is:
 
 ```text
 TrackedObjectPoseRoot
-|- ModelCoordinateAlignment
-|- RepairPartRoot
-|  `- RegisteredBottleCap (runtime)
-|- OcclusionRoot
-|  `- RegisteredNeckOccluder (runtime, disabled by default)
-`- DebugRoot
+`- ModelCoordinateAlignment
+   |- TrackingReferenceBRoot
+   |  `- ReferenceBottleB_Hidden (runtime, all renderers disabled)
+   |- RepairPartRoot
+   |  `- RegisteredBottleCap (runtime)
+   |- OcclusionRoot
+   |  `- RegisteredNeckOccluder (runtime, disabled by default)
+   `- DebugRoot
 ```
 
 `SetRepairHierarchyVisible()` explicitly restores the root, repair root, cap
@@ -55,7 +57,10 @@ with `activeSelf=false`.
 - Origin: bottle-mouth contact-plane centre.
 - +X: bottle right; +Y: bottle axis upward; +Z: front label direction.
 - Scale: 0.17 metres per model unit.
-- ORB points, clean damaged bottle and cap use this frame.
+- Real-photo ORB observations are globally similarity-registered into hidden
+  reference model b's frame; b and cap c share that canonical frame.
+- Runtime loads `trackingReferenceDatabase`, solves the pose of b, and then
+  moves c through their common parent. Cap c contributes no ORB descriptors.
 - The cap registration is baked into `bottle_cap_clean.obj`, so runtime local
   position, rotation and scale are identity.
 - Occlusion geometry remains disabled until a real-device visible cap is

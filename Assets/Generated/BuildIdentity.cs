@@ -40,9 +40,9 @@ namespace Urp.ArDemo.Generated
     /// </summary>
     public static class BuildIdentity
     {
-        public const string TrackingBuildVersion = "orb-tracking-v8-hidden-b-visible-c";
-        public const string CalibrationVersion = "coconut-mouth-bc-registration-v4";
-        public const string OrbDatabaseVersion = "coconut-damaged-canonical-v3";
+        public const string TrackingBuildVersion = "orb-tracking-v9-a-to-b-to-c";
+        public const string CalibrationVersion = "coconut-mouth-bc-registration-v5";
+        public const string OrbDatabaseVersion = "coconut-reference-b-observed-v2";
 
         private static BuildIdentityData cached;
 
