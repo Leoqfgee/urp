@@ -337,8 +337,8 @@ namespace Urp.ArDemo.Editor
             Require(PlayerSettings.productName == "论文式三维跟踪修复"
                     && PlayerSettings.GetApplicationIdentifier(BuildTargetGroup.Android)
                         == "com.qfgeeee.paper52objecttrackingar"
-                    && PlayerSettings.bundleVersion == "4.0.1"
-                    && PlayerSettings.Android.bundleVersionCode == 401,
+                    && PlayerSettings.bundleVersion == "4.0.2"
+                    && PlayerSettings.Android.bundleVersionCode == 402,
                 "Android app identity reverted to the legacy application.");
             RestorationObjectCatalog catalog =
                 AssetDatabase.LoadAssetAtPath<RestorationObjectCatalog>(CatalogPath);

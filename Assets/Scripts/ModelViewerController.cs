@@ -49,6 +49,11 @@ namespace Urp.ArDemo
 
         public void SetProfile(RestorationObjectProfile value)
         {
+            if (ReferenceEquals(profile, value) && damagedInstance != null)
+            {
+                ShowDamagedModel();
+                return;
+            }
             profile = value;
             BuildProfileModels();
             ShowDamagedModel();

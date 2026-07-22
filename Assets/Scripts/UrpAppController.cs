@@ -428,14 +428,19 @@ namespace Urp.ArDemo
             yield return null;
             try
             {
-                modelViewer?.SetProfile(profile);
-                orbTracker?.SetProfile(profile);
                 if (destination == Page.Resource)
                 {
+                    // The resource viewer owns a separate off-screen model and
+                    // render texture.  Never rebuild it while entering AR tracking.
+                    modelViewer?.SetProfile(profile);
                     ShowDamagedResource();
                 }
                 else if (destination == Page.Tracking)
                 {
+                    // Tracking only needs B, C and the ORB database.  Rebuilding
+                    // viewer objects here caused the MissingReferenceException
+                    // seen on the device before the tracker could initialize.
+                    orbTracker?.SetProfile(profile);
                     orbTracker?.SetTrackingEnabled(true);
                 }
             }
@@ -445,7 +450,7 @@ namespace Urp.ArDemo
                 Text target = destination == Page.Tracking ? trackingStatus : resourceStatus;
                 if (target != null)
                 {
-                    target.text = $"已进入页面，但对象资源加载失败：{exception.GetType().Name}";
+                    target.text = $"已进入页面，但对象资源加载失败：{exception.GetType().Name}：{exception.Message}";
                 }
             }
         }

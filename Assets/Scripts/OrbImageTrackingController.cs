@@ -183,6 +183,19 @@ namespace Urp.ArDemo
 
         public void SetProfile(RestorationObjectProfile profile)
         {
+            bool sameReadyProfile = ReferenceEquals(activeProfile, profile)
+                && profile != null
+                && registeredReferenceModel != null
+                && registeredRepairPart != null
+                && trackers.Count > 0;
+            if (sameReadyProfile)
+            {
+                // Awake already built this exact B/C hierarchy and ORB tracker.
+                // Destroying and recreating it on every card selection leaves
+                // Unity fake-null Renderer references alive until end-of-frame.
+                return;
+            }
+
             activeProfile = profile;
             calibration = profile != null ? profile.calibration : null;
             if (profile != null && profile.trackingSettings != null)
