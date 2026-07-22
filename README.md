@@ -5,9 +5,9 @@ Unity Android prototype for the cultural heritage digital restoration and AR pre
 ## Implemented application flow
 
 - Three-dimensional resource viewer for the reconstructed damaged bottle and complete bottle.
-- Thesis section 5.2 Object Tracking flow: show translucent no-cap reference
-  model B, let the user coarsely align real bottle A and B, capture that pose on
-  Start, estimate B with ORB/PnP, then hide B and render only repair cap C.
+- Thesis section 5.2 Object Tracking flow: show a clean cyan outline registered
+  to no-cap reference B, let the user frame real bottle A inside it, capture that
+  pose on Start, estimate B with adaptive ORB/PnP, then hide B and render only C.
 - Chinese navigation, compact tracking controls, safe-area title coverage and a
   collapsed Development diagnostics drawer for inspecting B, C and B+C registration.
 

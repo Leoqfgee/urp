@@ -256,13 +256,15 @@ namespace Urp.ArDemo.Editor
                     && bottle.initialGuideMaterial.GetColor("_BaseColor").a < 0.5f,
                 "Reference model B does not use the translucent initial-alignment guide material.");
             Require(bottle.trackingSettings.lostPoseGraceSeconds >= 2f
-                    && bottle.trackingSettings.minimumGoodMatches == 14
-                    && bottle.trackingSettings.minimumPoseInliers == 10
-                    && bottle.trackingSettings.minimumCoverageX <= 0.06f
+                    && bottle.trackingSettings.minimumGoodMatches == 9
+                    && bottle.trackingSettings.minimumPoseInliers == 6
+                    && bottle.trackingSettings.minimumInlierRatio >= 0.50f
+                    && bottle.trackingSettings.maximumReprojectionErrorPixels <= 3.0f
+                    && bottle.trackingSettings.minimumCoverageX <= 0.05f
                     && bottle.trackingSettings.maximumPositionJumpMeters <= 0.06f
                     && bottle.trackingSettings.maximumRotationJumpDegrees <= 18f
-                    && bottle.trackingSettings.initialAlignmentMaximumPositionErrorMeters <= 0.30f
-                    && bottle.trackingSettings.initialAlignmentMaximumRotationErrorDegrees <= 85f,
+                    && bottle.trackingSettings.initialAlignmentMaximumViewportError <= 0.28f
+                    && bottle.trackingSettings.initialAlignmentMaximumUpAxisErrorDegrees <= 55f,
                 "Bottle tracking continuity settings do not protect the world anchor.");
 
             string[] runtimeFiles = Directory.GetFiles("Assets", "*", SearchOption.AllDirectories)
@@ -358,6 +360,12 @@ namespace Urp.ArDemo.Editor
             Require(referenceProperty != null
                     && referenceProperty.objectReferenceValue == referenceRoot,
                 "Tracking controller is not bound to the hidden reference-model root.");
+            SerializedObject trackerSerialized = new SerializedObject(tracker);
+            Require(trackerSerialized.FindProperty("initialMouthPositionInCamera").vector3Value
+                        == new Vector3(0f, 0.16f, 0.42f)
+                    && trackerSerialized.FindProperty("initialObjectEulerInCamera").vector3Value
+                        == new Vector3(0f, 180f, 0f),
+                "Initial B outline framing or front-facing convention has regressed.");
             Require(repairRoot.parent == alignment && repairRoot.gameObject.activeSelf,
                 "RepairPartRoot must be an active child whose visibility is restored explicitly.");
             Require(occlusionRoot.parent == alignment && !occlusionRoot.gameObject.activeSelf,

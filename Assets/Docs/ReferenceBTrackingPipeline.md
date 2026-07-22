@@ -4,13 +4,15 @@ The tracking path is explicit and contains no direct `a -> c` registration.
 
 1. `b_c_registered_canonical.blend` registers the no-cap photogrammetry model
    **b** and measured repair cap **c** to one mouth-centred canonical frame.
-2. On entering Object Tracking, **b** is shown with a translucent guide material.
-   The user moves the phone until real bottle **a** and **b** approximately overlap,
-   matching the initialization described in thesis section 5.2.
+2. On entering Object Tracking, a clean cyan physical-envelope outline registered
+   to **b** is shown. The user frames real bottle **a** inside that outline,
+   matching the initialization described in thesis section 5.2. The incomplete
+   raw photogrammetry triangles are available only in Diagnostics.
 3. Start captures that coarse **b** pose, hides both **b** and **c**, and begins
    matching natural features from **a** against `bottle_reference_b.bytes`.
 4. ORB 2D-3D matching and solvePnP estimate the pose of **b**. The first accepted
-   pose must remain consistent with the user's coarse initialization.
+   pose must remain consistent with the guide's mouth projection and vertical
+   axis; complete Quaternion/yaw equality is deliberately not required.
 5. After a valid pose, `TrackingReferenceBRoot` stays hidden and
    `RepairPartRoot` renders only **c**. **c** contributes no descriptors.
 

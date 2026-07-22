@@ -41,12 +41,12 @@ namespace Urp.ArDemo
         [Header("Runtime profile")]
         [SerializeField] private RestorationObjectProfile activeProfile;
         [SerializeField] private int maxFrameWidth = 640;
-        [SerializeField] private int minGoodMatches = 14;
-        [SerializeField] private int minPoseInliers = 10;
-        [SerializeField] private float minimumInlierRatio = 0.5f;
-        [SerializeField] private float maximumReprojectionErrorPixels = 2.5f;
-        [SerializeField] private float minimumCoverageX = 0.06f;
-        [SerializeField] private float minimumCoverageY = 0.20f;
+        [SerializeField] private int minGoodMatches = 9;
+        [SerializeField] private int minPoseInliers = 6;
+        [SerializeField] private float minimumInlierRatio = 0.50f;
+        [SerializeField] private float maximumReprojectionErrorPixels = 3.0f;
+        [SerializeField] private float minimumCoverageX = 0.05f;
+        [SerializeField] private float minimumCoverageY = 0.18f;
         [SerializeField] private float ratioTest = 0.72f;
 
         [Header("Timing and continuity")]
@@ -62,8 +62,8 @@ namespace Urp.ArDemo
         [SerializeField] private float rotationDeadZoneDegrees = 1.5f;
 
         [Header("Initial paper-style alignment")]
-        [SerializeField] private Vector3 initialMouthPositionInCamera = new Vector3(0f, 0.10f, 0.55f);
-        [SerializeField] private Vector3 initialObjectEulerInCamera = Vector3.zero;
+        [SerializeField] private Vector3 initialMouthPositionInCamera = new Vector3(0f, 0.16f, 0.42f);
+        [SerializeField] private Vector3 initialObjectEulerInCamera = new Vector3(0f, 180f, 0f);
 
         private readonly List<NativeOrbTracker> trackers = new List<NativeOrbTracker>();
         private Texture2D frameTexture;
@@ -84,6 +84,9 @@ namespace Urp.ArDemo
         private float lastPoseApplyTime = -1f;
         private Transform registeredReferenceModel;
         private Renderer[] referenceRenderers;
+        private GameObject alignmentOutlineRoot;
+        private Material alignmentOutlineMaterial;
+        private bool referenceModelVisible;
         private Transform registeredRepairPart;
         private GameObject registeredOccluder;
         private RepairCalibrationProfile calibration;
@@ -109,8 +112,8 @@ namespace Urp.ArDemo
         private bool alignmentPriorConsumed;
         private Vector3 startAlignmentPosition;
         private Quaternion startAlignmentRotation;
-        private float initialAlignmentMaximumPositionErrorMeters = 0.30f;
-        private float initialAlignmentMaximumRotationErrorDegrees = 85f;
+        private float initialAlignmentMaximumViewportError = 0.28f;
+        private float initialAlignmentMaximumUpAxisErrorDegrees = 55f;
 
         public bool HasTrackedPose => hasTrackedPose;
         public TrackingState State => trackingState;
@@ -137,6 +140,7 @@ namespace Urp.ArDemo
             }
             if (forceDebugMaterial != null) Destroy(forceDebugMaterial);
             if (boundsDebugMaterial != null) Destroy(boundsDebugMaterial);
+            if (alignmentOutlineMaterial != null) Destroy(alignmentOutlineMaterial);
         }
 
         private void OnEnable()
@@ -195,10 +199,10 @@ namespace Urp.ArDemo
                     profile.trackingSettings.maximumPositionJumpMeters;
                 maximumRotationJumpDegrees =
                     profile.trackingSettings.maximumRotationJumpDegrees;
-                initialAlignmentMaximumPositionErrorMeters =
-                    profile.trackingSettings.initialAlignmentMaximumPositionErrorMeters;
-                initialAlignmentMaximumRotationErrorDegrees =
-                    profile.trackingSettings.initialAlignmentMaximumRotationErrorDegrees;
+                initialAlignmentMaximumViewportError =
+                    profile.trackingSettings.initialAlignmentMaximumViewportError;
+                initialAlignmentMaximumUpAxisErrorDegrees =
+                    profile.trackingSettings.initialAlignmentMaximumUpAxisErrorDegrees;
             }
             foreach (NativeOrbTracker tracker in trackers)
             {
@@ -211,6 +215,14 @@ namespace Urp.ArDemo
             {
                 Destroy(registeredReferenceModel.gameObject);
             }
+            if (alignmentOutlineRoot != null)
+            {
+                Destroy(alignmentOutlineRoot);
+            }
+            if (alignmentOutlineMaterial != null)
+            {
+                Destroy(alignmentOutlineMaterial);
+            }
             if (registeredRepairPart != null)
             {
                 Destroy(registeredRepairPart.gameObject);
@@ -222,6 +234,9 @@ namespace Urp.ArDemo
 
             registeredReferenceModel = null;
             referenceRenderers = null;
+            alignmentOutlineRoot = null;
+            alignmentOutlineMaterial = null;
+            referenceModelVisible = false;
             registeredRepairPart = null;
             registeredOccluder = null;
             capRenderers = null;
@@ -264,6 +279,8 @@ namespace Urp.ArDemo
                     }
                     foreach (Collider collider in reference.GetComponentsInChildren<Collider>(true))
                         collider.enabled = false;
+
+                    BuildAlignmentOutlineGuide(referenceParent);
                 }
                 if (profile.registeredRepairPrefab != null && repairParent != null)
                 {
@@ -331,7 +348,7 @@ namespace Urp.ArDemo
                 }
                 ShowInitialPose();
                 UpdateStatus(
-                    $"移动手机，使半透明参考模型 B 与真实 {activeProfile.displayName} 大致重合，然后点击“开始”。");
+                    $"移动手机，把青色参考 B 瓶体轮廓套住真实 {activeProfile.displayName}，然后点击“开始”。");
             }
             else
             {
@@ -371,7 +388,7 @@ namespace Urp.ArDemo
             hasStartAlignmentPose = false;
             alignmentPriorConsumed = false;
             ShowInitialPose();
-            UpdateStatus("已恢复参考模型 B，请移动手机完成粗对齐，然后点击“开始”。");
+            UpdateStatus("已恢复参考 B 的青色瓶体轮廓，请套住实物瓶身后点击“开始”。");
         }
 
         public void SetRepairVisible(bool visible)
@@ -382,7 +399,7 @@ namespace Urp.ArDemo
 
         public void SetRepairHierarchyVisible(bool visible)
         {
-            bool rootVisible = visible || alignmentGuideVisible;
+            bool rootVisible = visible || alignmentGuideVisible || referenceModelVisible;
             if (trackedObjectPoseRoot != null)
                 trackedObjectPoseRoot.gameObject.SetActive(rootVisible);
             if (repairPartRoot != null)
@@ -399,20 +416,118 @@ namespace Urp.ArDemo
 
         public void SetReferenceHierarchyVisible(bool visible)
         {
-            alignmentGuideVisible = visible;
-            bool rootVisible = visible
+            referenceModelVisible = visible;
+            alignmentGuideVisible = false;
+            bool rootVisible = referenceModelVisible
                 || (registeredRepairPart != null && registeredRepairPart.gameObject.activeSelf);
             if (trackedObjectPoseRoot != null)
                 trackedObjectPoseRoot.gameObject.SetActive(rootVisible);
             if (modelReferenceRoot != null)
+                modelReferenceRoot.gameObject.SetActive(referenceModelVisible);
+            if (registeredReferenceModel != null)
+                registeredReferenceModel.gameObject.SetActive(referenceModelVisible);
+            if (alignmentOutlineRoot != null)
+                alignmentOutlineRoot.SetActive(false);
+            if (referenceRenderers != null)
+            {
+                foreach (Renderer renderer in referenceRenderers)
+                {
+                    if (renderer != null) renderer.enabled = referenceModelVisible;
+                }
+            }
+        }
+
+        private void SetInitialAlignmentGuideVisible(bool visible)
+        {
+            alignmentGuideVisible = visible;
+            referenceModelVisible = false;
+            bool repairVisible = registeredRepairPart != null
+                && registeredRepairPart.gameObject.activeSelf;
+            if (trackedObjectPoseRoot != null)
+                trackedObjectPoseRoot.gameObject.SetActive(visible || repairVisible);
+            if (modelReferenceRoot != null)
                 modelReferenceRoot.gameObject.SetActive(visible);
             if (registeredReferenceModel != null)
-                registeredReferenceModel.gameObject.SetActive(visible);
-            if (referenceRenderers == null) return;
-            foreach (Renderer renderer in referenceRenderers)
+                registeredReferenceModel.gameObject.SetActive(false);
+            if (referenceRenderers != null)
             {
-                if (renderer != null) renderer.enabled = visible;
+                foreach (Renderer renderer in referenceRenderers)
+                {
+                    if (renderer != null) renderer.enabled = false;
+                }
             }
+            if (alignmentOutlineRoot != null)
+                alignmentOutlineRoot.SetActive(visible);
+        }
+
+        private void BuildAlignmentOutlineGuide(Transform parent)
+        {
+            if (parent == null || calibration == null) return;
+
+            alignmentOutlineRoot = new GameObject("ReferenceBottleB_AlignmentOutline");
+            alignmentOutlineRoot.transform.SetParent(parent, false);
+            SetLayerRecursively(alignmentOutlineRoot, parent.gameObject.layer);
+
+            Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
+            if (shader == null)
+                throw new MissingReferenceException("URP/Unlit is required for the alignment outline.");
+            alignmentOutlineMaterial = new Material(shader)
+            {
+                name = "ReferenceBottleBOutlineRuntime"
+            };
+            Color color = new Color(0.08f, 0.95f, 1f, 0.95f);
+            alignmentOutlineMaterial.SetColor("_BaseColor", color);
+            alignmentOutlineMaterial.SetColor("_Color", color);
+
+            const float frontZ = 0.205f;
+            Vector3[] outline =
+            {
+                new Vector3(-0.10f, 0.00f, frontZ),
+                new Vector3(-0.12f, -0.18f, frontZ),
+                new Vector3(-0.20f, -0.28f, frontZ),
+                new Vector3(-0.27f, -0.43f, frontZ),
+                new Vector3(-0.29f, -1.10f, frontZ),
+                new Vector3(-0.24f, -1.38f, frontZ),
+                new Vector3(0.24f, -1.38f, frontZ),
+                new Vector3(0.29f, -1.10f, frontZ),
+                new Vector3(0.27f, -0.43f, frontZ),
+                new Vector3(0.20f, -0.28f, frontZ),
+                new Vector3(0.12f, -0.18f, frontZ),
+                new Vector3(0.10f, 0.00f, frontZ)
+            };
+            CreateAlignmentLine("BottleBodyOutline", outline, false);
+
+            const int rimSegments = 40;
+            Vector3[] rim = new Vector3[rimSegments];
+            for (int index = 0; index < rimSegments; index++)
+            {
+                float angle = index / (float)rimSegments * Mathf.PI * 2f;
+                rim[index] = new Vector3(
+                    Mathf.Cos(angle) * 0.105f,
+                    Mathf.Sin(angle) * 0.018f,
+                    frontZ + 0.004f);
+            }
+            CreateAlignmentLine("BottleMouthOutline", rim, true);
+            alignmentOutlineRoot.SetActive(false);
+        }
+
+        private void CreateAlignmentLine(string name, Vector3[] points, bool loop)
+        {
+            GameObject lineObject = new GameObject(name);
+            lineObject.transform.SetParent(alignmentOutlineRoot.transform, false);
+            SetLayerRecursively(lineObject, alignmentOutlineRoot.layer);
+            LineRenderer line = lineObject.AddComponent<LineRenderer>();
+            line.useWorldSpace = false;
+            line.loop = loop;
+            line.alignment = LineAlignment.View;
+            line.widthMultiplier = 0.010f;
+            line.positionCount = points.Length;
+            line.SetPositions(points);
+            line.sharedMaterial = alignmentOutlineMaterial;
+            line.startColor = Color.cyan;
+            line.endColor = Color.cyan;
+            line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            line.receiveShadows = false;
         }
 
         public void ShowRegisteredPairDiagnostic()
@@ -840,10 +955,14 @@ namespace Urp.ArDemo
                 reason = $"对应点 {result.uniqueMatches} 个且分布有效，但 solvePnPRansac 求解失败。";
                 return false;
             }
-            if (result.poseInliers < minPoseInliers)
+            int requiredPoseInliers = Mathf.Clamp(
+                Mathf.CeilToInt(result.uniqueMatches * 0.50f),
+                minPoseInliers,
+                10);
+            if (result.poseInliers < requiredPoseInliers)
             {
                 reason = $"PnP 内点 {result.poseInliers}/{result.uniqueMatches}，"
-                    + $"少于最低 {minPoseInliers} 个。";
+                    + $"当前匹配规模至少需要 {requiredPoseInliers} 个。";
                 return false;
             }
             if (result.inlierRatio < minimumInlierRatio)
@@ -856,6 +975,13 @@ namespace Urp.ArDemo
             {
                 reason = $"PnP 重投影 RMS {result.reprojectionError:F2}px、"
                     + $"最大 {result.reprojectionMax:F2}px，超过 {maximumReprojectionErrorPixels:F2}px。";
+                return false;
+            }
+            if (result.rejectionCode == 10)
+            {
+                reason = $"低点数 PnP 尚不稳定：内点 {result.poseInliers}/{result.uniqueMatches}，"
+                    + $"网格 {result.occupiedGridCells}，RMS {result.reprojectionError:F2}px；"
+                    + "低点数位姿要求至少 5 个网格且 RMS 不超过 1.50px。";
                 return false;
             }
             if (result.poseValid == 0)
@@ -945,19 +1071,39 @@ namespace Urp.ArDemo
                 return true;
             }
 
-            float positionError = Vector3.Distance(startAlignmentPosition, position);
-            float rotationError = Quaternion.Angle(startAlignmentRotation, rotation);
-            if (positionError <= initialAlignmentMaximumPositionErrorMeters
-                && rotationError <= initialAlignmentMaximumRotationErrorDegrees)
+            if (arCamera == null)
             {
                 reason = string.Empty;
                 return true;
             }
 
-            reason = $"已匹配到瓶身特征，但 PnP 位姿与开始前参考模型 B 的粗对齐差异过大："
-                + $"位置 {positionError:F2} m / {initialAlignmentMaximumPositionErrorMeters:F2} m，"
-                + $"旋转 {rotationError:F0}° / {initialAlignmentMaximumRotationErrorDegrees:F0}°。"
-                + "请点“重置”，重新用 B 对齐实物 A。";
+            Vector3 startViewport = arCamera.WorldToViewportPoint(startAlignmentPosition);
+            Vector3 poseViewport = arCamera.WorldToViewportPoint(position);
+            float viewportError = Vector2.Distance(
+                new Vector2(startViewport.x, startViewport.y),
+                new Vector2(poseViewport.x, poseViewport.y));
+            Vector3 startUp = startAlignmentRotation * Vector3.up;
+            Vector3 poseUp = rotation * Vector3.up;
+            float upAxisError = Vector3.Angle(startUp, poseUp);
+
+            // The bottle can differ by almost 180 degrees around its vertical
+            // axis because the initial guide is only a framing aid while PnP
+            // resolves the textured front. Comparing complete Quaternions here
+            // rejected otherwise valid upright poses. The paper-style prior now
+            // checks only the mouth projection and the bottle's vertical axis.
+            if (startViewport.z > 0f
+                && poseViewport.z > 0f
+                && viewportError <= initialAlignmentMaximumViewportError
+                && upAxisError <= initialAlignmentMaximumUpAxisErrorDegrees)
+            {
+                reason = string.Empty;
+                return true;
+            }
+
+            reason = $"已匹配到瓶身并求得 PnP，但瓶口投影或瓶身竖直方向与开始前引导差异过大："
+                + $"屏幕误差 {viewportError:P0}/{initialAlignmentMaximumViewportError:P0}，"
+                + $"竖直轴误差 {upAxisError:F0}°/{initialAlignmentMaximumUpAxisErrorDegrees:F0}°。"
+                + "请点“重置”，把青色瓶体轮廓套住实物后再开始。";
             return false;
         }
 
@@ -1068,7 +1214,8 @@ namespace Urp.ArDemo
             trackingState = TrackingState.Aligning;
             if (occlusionRoot != null) occlusionRoot.gameObject.SetActive(false);
             SetRepairHierarchyVisible(false);
-            SetReferenceHierarchyVisible(true);
+            SetReferenceHierarchyVisible(false);
+            SetInitialAlignmentGuideVisible(true);
         }
 
         private bool ValidateRepairVisibility(out string reason)

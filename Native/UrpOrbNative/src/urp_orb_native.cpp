@@ -17,7 +17,7 @@
 namespace
 {
 constexpr char kModelMagic[8] = {'U', 'R', 'P', '3', 'D', 'M', '1', '\0'};
-constexpr char kBuildVersion[] = "urp-orb-native-2026.07.17-r4-diagnostics-16k";
+constexpr char kBuildVersion[] = "urp-orb-native-2026.07.22-r5-adaptive-pnp-16k";
 constexpr int kDescriptorBytes = 32;
 constexpr int kModelRecordBytes = 3 * static_cast<int>(sizeof(float)) + kDescriptorBytes;
 
@@ -86,7 +86,8 @@ enum RejectionCode
     kInsufficientPoseInliers = 6,
     kLowInlierRatio = 7,
     kHighReprojectionError = 8,
-    kNegativeDepth = 9
+    kNegativeDepth = 9,
+    kLowCountPoseUnstable = 10
 };
 
 struct DebugPoint
@@ -462,18 +463,23 @@ public:
             result->r21 = static_cast<float>(rotation.at<double>(2, 1));
             result->r22 = static_cast<float>(rotation.at<double>(2, 2));
 
+            const int requiredPoseInliers = std::clamp(
+                static_cast<int>(std::ceil(goodMatches.size() * 0.50f)), 6, 10);
             if (tvec.at<double>(2) <= 0.0)
                 result->rejectionCode = kNegativeDepth;
-            else if (inliers.rows < 10)
+            else if (inliers.rows < requiredPoseInliers)
                 result->rejectionCode = kInsufficientPoseInliers;
-            else if (inlierRatio < 0.5f)
+            else if (inlierRatio < 0.50f)
                 result->rejectionCode = kLowInlierRatio;
-            else if (result->reprojectionError > 2.5f)
+            else if (result->reprojectionError > 3.0f)
                 result->rejectionCode = kHighReprojectionError;
-            else if (result->coverageX < 0.06f
-                || result->coverageY < 0.20f
+            else if (result->coverageX < 0.05f
+                || result->coverageY < 0.18f
                 || result->occupiedGridCells < 4)
                 result->rejectionCode = kInsufficientSpatialDistribution;
+            else if (inliers.rows < 8
+                && (result->reprojectionError > 1.5f || result->occupiedGridCells < 5))
+                result->rejectionCode = kLowCountPoseUnstable;
             else
                 result->rejectionCode = kAccepted;
             result->poseValid = result->rejectionCode == kAccepted ? 1 : 0;

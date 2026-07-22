@@ -159,20 +159,22 @@ def replay(image_path: Path, model_points: np.ndarray, model_desc: np.ndarray,
     rejection = "accepted"
     if len(good) < minimum_matches:
         rejection = "unique_matches"
-    elif coverage[1] < .20:
+    elif coverage[1] < .18:
         rejection = "vertical_coverage"
-    elif coverage[0] < .06:
+    elif coverage[0] < .05:
         rejection = "horizontal_coverage"
     elif occupied < 4:
         rejection = "grid_occupancy"
-    elif inliers < 10:
+    elif inliers < min(10, max(6, math.ceil(len(good) * .50))):
         rejection = "pose_inliers"
     elif inlier_ratio < .50:
         rejection = "inlier_ratio"
-    elif rms > 2.5:
+    elif rms > 3.0:
         rejection = "reprojection_rms"
     elif not positive:
         rejection = "negative_depth"
+    elif inliers < 8 and (rms > 1.5 or occupied < 5):
+        rejection = "low_count_pose_unstable"
     accepted = rejection == "accepted"
 
     debug = image.copy()
@@ -200,7 +202,7 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--step", type=int, default=12)
     parser.add_argument("--ratio", type=float, default=.72)
-    parser.add_argument("--minimum-matches", type=int, default=14)
+    parser.add_argument("--minimum-matches", type=int, default=9)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     points, descriptors = load_model(args.model)
@@ -220,11 +222,12 @@ def main() -> None:
         "success_rate": sum(result.accepted for result in results) / max(1, len(results)),
         "thresholds": {
             "minimum_unique_matches": args.minimum_matches,
-            "minimum_pose_inliers": 10,
-            "minimum_inlier_ratio": .5,
-            "maximum_reprojection_rms": 2.5,
-            "minimum_horizontal_coverage": .06,
-            "minimum_vertical_coverage": .20,
+            "minimum_pose_inliers": "adaptive: clamp(ceil(unique*0.50), 6, 10)",
+            "minimum_inlier_ratio": .50,
+            "low_count_rule": "when inliers < 8: grid >= 5 and RMS <= 1.5px",
+            "maximum_reprojection_rms": 3.0,
+            "minimum_horizontal_coverage": .05,
+            "minimum_vertical_coverage": .18,
             "minimum_occupied_grid_cells": 4,
         },
         "rejections": {reason: sum(r.rejection == reason for r in results)

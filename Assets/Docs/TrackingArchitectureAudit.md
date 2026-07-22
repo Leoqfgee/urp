@@ -23,7 +23,8 @@ All three supplied strings were in `Assets/Scripts/OrbImageTrackingController.cs
 
 The first is now split into exact match, coverage, grid, PnP, inlier-ratio,
 RMS, depth and continuity reasons. The second now uses the replay-backed
-14/10 layered gate. The third no longer controls world position.
+9-match entry gate plus adaptive 6-10 PnP inliers and a stricter low-count
+precision rule. The third no longer controls world position.
 
 ## Pose and hierarchy
 
@@ -40,7 +41,8 @@ Scene hierarchy is:
 TrackedObjectPoseRoot
 `- ModelCoordinateAlignment
    |- TrackingReferenceBRoot
-   |  `- ReferenceBottleB_AlignmentGuide (visible only before Start)
+   |  |- ReferenceBottleB_AlignmentOutline (visible only before Start)
+   |  `- ReferenceBottleB_AlignmentGuide (raw B, diagnostics only)
    |- RepairPartRoot
    |  `- RegisteredBottleCap (runtime)
    |- OcclusionRoot

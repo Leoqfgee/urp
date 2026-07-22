@@ -323,7 +323,7 @@ namespace Urp.ArDemo.Editor
                 + "并在 Blender 中补齐瓶口坐标基准。该模型仍保留源扫描的粗糙与缺损，不再用圆柱替换瓶身。"
                 + "瓶盖 c 按外径 39 mm、高 10 mm 建模并与 34 mm 瓶口同轴注册。";
             bottle.trackingDescription =
-                "依照论文 5.2 Object Tracking 流程：进入页面先显示半透明无盖参考模型 B，"
+                "依照论文 5.2 Object Tracking 流程：进入页面先显示无盖参考模型 B 的青色瓶体轮廓，"
                 + "移动手机使真实瓶 A 与 B 大致对齐，点击开始后再使用瓶身自然特征完成 A→B 配准。"
                 + "B 与瓶盖 C 已在 Blender 中固定注册；跟踪成功后隐藏 B，只渲染补全部分 C。";
             bottle.missingPartName = "瓶盖";
@@ -372,16 +372,16 @@ namespace Urp.ArDemo.Editor
             bottle.defaultViewerEuler = Vector3.zero;
             bottle.viewerMargin = 0.18f;
             bottle.trackingSettings.lostPoseGraceSeconds = 2.5f;
-            bottle.trackingSettings.minimumGoodMatches = 14;
-            bottle.trackingSettings.minimumPoseInliers = 10;
+            bottle.trackingSettings.minimumGoodMatches = 9;
+            bottle.trackingSettings.minimumPoseInliers = 6;
             bottle.trackingSettings.minimumInlierRatio = 0.50f;
-            bottle.trackingSettings.maximumReprojectionErrorPixels = 2.5f;
-            bottle.trackingSettings.minimumCoverageX = 0.06f;
-            bottle.trackingSettings.minimumCoverageY = 0.20f;
+            bottle.trackingSettings.maximumReprojectionErrorPixels = 3.0f;
+            bottle.trackingSettings.minimumCoverageX = 0.05f;
+            bottle.trackingSettings.minimumCoverageY = 0.18f;
             bottle.trackingSettings.maximumPositionJumpMeters = 0.06f;
             bottle.trackingSettings.maximumRotationJumpDegrees = 18f;
-            bottle.trackingSettings.initialAlignmentMaximumPositionErrorMeters = 0.30f;
-            bottle.trackingSettings.initialAlignmentMaximumRotationErrorDegrees = 85f;
+            bottle.trackingSettings.initialAlignmentMaximumViewportError = 0.28f;
+            bottle.trackingSettings.initialAlignmentMaximumUpAxisErrorDegrees = 55f;
             bottle.physicalScaleVerified =
                 bottle.calibration != null && bottle.calibration.physicalScaleVerified;
             bottle.physicalMeasurements = new[]
@@ -529,6 +529,8 @@ namespace Urp.ArDemo.Editor
             AssignReference(tracker, "repairPartRoot", repairRoot.transform);
             AssignReference(tracker, "occlusionRoot", occlusionRoot.transform);
             AssignReference(tracker, "debugRoot", debugRoot.transform);
+            AssignVector3(tracker, "initialMouthPositionInCamera", new Vector3(0f, 0.16f, 0.42f));
+            AssignVector3(tracker, "initialObjectEulerInCamera", new Vector3(0f, 180f, 0f));
             AssignReference(overlay, "orbTracker", tracker);
 
             ModelViewerController viewer = CreateModelViewer(arCamera);
@@ -749,6 +751,17 @@ namespace Urp.ArDemo.Editor
             if (property == null)
                 throw new MissingFieldException(target.GetType().Name, propertyName);
             property.objectReferenceValue = value;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static void AssignVector3(
+            UnityEngine.Object target, string propertyName, Vector3 value)
+        {
+            SerializedObject serialized = new SerializedObject(target);
+            SerializedProperty property = serialized.FindProperty(propertyName);
+            if (property == null)
+                throw new MissingFieldException(target.GetType().Name, propertyName);
+            property.vector3Value = value;
             serialized.ApplyModifiedPropertiesWithoutUndo();
         }
     }

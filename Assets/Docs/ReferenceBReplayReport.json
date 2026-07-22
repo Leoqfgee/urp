@@ -1,23 +1,24 @@
 {
   "database": "Assets/OrbModels/bottle_reference_b.bytes",
   "database_version": "coconut-reference-b-observed-v2",
-  "source": "21 sampled frames from the three user-supplied real-device videos",
-  "frames": 21,
-  "accepted": 7,
-  "success_rate": 0.3333333333,
+  "source": "20 evenly sampled frames from the 240-frame no-cap bottle set",
+  "frames": 20,
+  "accepted": 10,
+  "success_rate": 0.5,
   "thresholds": {
-    "minimum_unique_matches": 14,
-    "minimum_pose_inliers": 10,
+    "minimum_unique_matches": 9,
+    "minimum_pose_inliers": "adaptive: clamp(ceil(unique*0.50), 6, 10)",
     "minimum_inlier_ratio": 0.5,
-    "maximum_reprojection_rms_pixels": 2.5,
-    "minimum_horizontal_coverage": 0.06,
-    "minimum_vertical_coverage": 0.20,
+    "maximum_reprojection_rms_pixels": 3.0,
+    "minimum_horizontal_coverage": 0.05,
+    "minimum_vertical_coverage": 0.18,
+    "low_count_rule": "when pose inliers are below 8, require at least 5 grid cells and RMS <= 1.5 px",
     "minimum_occupied_grid_cells": 4
   },
   "rejections": {
-    "accepted": 7,
-    "unique_matches": 12,
-    "vertical_coverage": 2
+    "accepted": 10,
+    "unique_matches": 8,
+    "inlier_ratio": 2
   },
   "comparison": {
     "synthetic_blender_b_descriptors": "0/21 accepted; rejected as runtime database",
@@ -25,5 +26,6 @@
     "observations_snapped_to_rough_b_surface_0_12": "4/21 accepted; rejected",
     "observed_sfm_geometry_globally_registered_to_b": "7/21 accepted; selected"
   },
+  "new_regression": "frame_0133: 11 unique, 5 grid cells, 6/11 inliers, RMS 0.24 px; now accepted by the low-count high-precision gate",
   "scope": "Offline replay validates matching/PnP behavior only; it does not prove phone-screen cap visibility or alignment."
 }

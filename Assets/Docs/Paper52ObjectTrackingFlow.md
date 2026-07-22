@@ -20,14 +20,21 @@ The thesis describes this sequence:
 ## Bottle mapping
 
 - **A**: the real no-cap bottle seen by the phone camera.
-- **B**: the no-cap photogrammetry reference model, rendered translucently only
-  during the pre-Start alignment phase and used as the ORB/PnP object frame.
+- **B**: the no-cap photogrammetry reference model used as the ORB/PnP object
+  frame. Because its raw mesh is incomplete, the pre-Start UI displays a clean
+  cyan physical-envelope outline registered to B instead of covering the real
+  bottle with broken dark triangles. Raw B remains available in Diagnostics.
 - **C**: the Blender-registered repair cap. It is hidden before Start and is the
   only model rendered after a valid B pose is obtained.
 
 Runtime state flow:
 
-`Aligning(show B) -> Start(hide B and C) -> Search A features -> solve B pose -> Tracking(show only C)`
+`Aligning(show B outline) -> Start(hide B and C) -> Search A features -> solve B pose -> Tracking(show only C)`
+
+The initial prior compares bottle-mouth viewport position and vertical-axis
+direction. It deliberately does not compare complete Quaternions: a nearly
+180-degree yaw difference between the front-facing guide convention and PnP
+must not reject an otherwise upright, correctly projected bottle pose.
 
 If tracking is lost, the user is prompted to Reset. Reset returns to
 `Aligning(show B)`; it does not directly place C over A.
