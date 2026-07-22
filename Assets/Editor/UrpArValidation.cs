@@ -337,8 +337,8 @@ namespace Urp.ArDemo.Editor
             Require(PlayerSettings.productName == "论文式三维跟踪修复"
                     && PlayerSettings.GetApplicationIdentifier(BuildTargetGroup.Android)
                         == "com.qfgeeee.paper52objecttrackingar"
-                    && PlayerSettings.bundleVersion == "4.0.2"
-                    && PlayerSettings.Android.bundleVersionCode == 402,
+                    && PlayerSettings.bundleVersion == "4.0.3"
+                    && PlayerSettings.Android.bundleVersionCode == 403,
                 "Android app identity reverted to the legacy application.");
             RestorationObjectCatalog catalog =
                 AssetDatabase.LoadAssetAtPath<RestorationObjectCatalog>(CatalogPath);
@@ -411,6 +411,12 @@ namespace Urp.ArDemo.Editor
                     && forceMagenta.shader != null
                     && forceMagenta.shader.name == "Hidden/URP/ForceMagentaDebug",
                 "Force-render test does not use the hard-coded magenta shader.");
+            Material alignmentOutline = AssetDatabase.LoadAssetAtPath<Material>(
+                "Assets/Resources/AlignmentOutline.mat");
+            Require(alignmentOutline != null
+                    && alignmentOutline.shader != null
+                    && alignmentOutline.shader.name == "Hidden/URP/AlignmentOutline",
+                "Alignment outline does not use its packaged unlit shader.");
 
             UrpAppController app =
                 UnityEngine.Object.FindObjectOfType<UrpAppController>(true);

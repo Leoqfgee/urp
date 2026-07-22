@@ -269,6 +269,10 @@ namespace Urp.ArDemo
                 // user alignment. Start hides b; successful tracking renders only c.
                 if (profile.trackingReferencePrefab != null && referenceParent != null)
                 {
+                    // Build the lightweight outline first.  If its packaged
+                    // material is unavailable, no raw B mesh may be left behind.
+                    BuildAlignmentOutlineGuide(referenceParent);
+
                     GameObject reference = Instantiate(profile.trackingReferencePrefab, referenceParent);
                     reference.name = "ReferenceBottleB_AlignmentGuide";
                     reference.transform.localPosition = Vector3.zero;
@@ -292,8 +296,6 @@ namespace Urp.ArDemo
                     }
                     foreach (Collider collider in reference.GetComponentsInChildren<Collider>(true))
                         collider.enabled = false;
-
-                    BuildAlignmentOutlineGuide(referenceParent);
                 }
                 if (profile.registeredRepairPrefab != null && repairParent != null)
                 {
@@ -481,10 +483,12 @@ namespace Urp.ArDemo
             alignmentOutlineRoot.transform.SetParent(parent, false);
             SetLayerRecursively(alignmentOutlineRoot, parent.gameObject.layer);
 
-            Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
-            if (shader == null)
-                throw new MissingReferenceException("URP/Unlit is required for the alignment outline.");
-            alignmentOutlineMaterial = new Material(shader)
+            Material packagedMaterial = Resources.Load<Material>("AlignmentOutline");
+            if (packagedMaterial == null || packagedMaterial.shader == null
+                || packagedMaterial.shader.name != "Hidden/URP/AlignmentOutline")
+                throw new MissingReferenceException(
+                    "Packaged alignment-outline material is unavailable.");
+            alignmentOutlineMaterial = new Material(packagedMaterial)
             {
                 name = "ReferenceBottleBOutlineRuntime"
             };
@@ -573,6 +577,17 @@ namespace Urp.ArDemo
         public void ExitForceRepairDebug()
         {
             ExitForceRepairDebug(true);
+        }
+
+        public void HideFailedProfileVisuals()
+        {
+            recognitionRunning = false;
+            alignmentGuideVisible = false;
+            referenceModelVisible = false;
+            if (modelReferenceRoot != null) modelReferenceRoot.gameObject.SetActive(false);
+            if (repairPartRoot != null) repairPartRoot.gameObject.SetActive(false);
+            if (occlusionRoot != null) occlusionRoot.gameObject.SetActive(false);
+            if (trackedObjectPoseRoot != null) trackedObjectPoseRoot.gameObject.SetActive(false);
         }
 
         public void DebugShowRepairOnly()
@@ -692,8 +707,9 @@ namespace Urp.ArDemo
             debugBoundsLine.loop = false;
             debugBoundsLine.widthMultiplier = 0.0015f;
             debugBoundsLine.positionCount = 16;
-            Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
-            boundsDebugMaterial = new Material(shader) { name = "RepairBoundsGreenRuntime" };
+            Material source = Resources.Load<Material>("AlignmentOutline");
+            if (source == null || source.shader == null) return;
+            boundsDebugMaterial = new Material(source) { name = "RepairBoundsGreenRuntime" };
             boundsDebugMaterial.SetColor("_BaseColor", Color.green);
             boundsDebugMaterial.SetColor("_Color", Color.green);
             debugBoundsLine.sharedMaterial = boundsDebugMaterial;

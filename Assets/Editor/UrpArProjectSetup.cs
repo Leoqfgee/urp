@@ -39,6 +39,10 @@ namespace Urp.ArDemo.Editor
             "Assets/Shaders/ForceMagentaDebug.shader";
         private const string ForceMagentaMaterialPath =
             "Assets/Resources/ForceMagentaDebug.mat";
+        private const string AlignmentOutlineShaderPath =
+            "Assets/Shaders/AlignmentOutline.shader";
+        private const string AlignmentOutlineMaterialPath =
+            "Assets/Resources/AlignmentOutline.mat";
         private const string BottleGuideMaterialPath =
             "Assets/Materials/ReferenceBottleBAlignmentGuide.mat";
         private const string AndroidApkPath = "Builds/Paper52ObjectTrackingAR.apk";
@@ -145,12 +149,12 @@ namespace Urp.ArDemo.Editor
         {
             PlayerSettings.productName = "论文式三维跟踪修复";
             PlayerSettings.companyName = "qfgeeee";
-            PlayerSettings.bundleVersion = "4.0.2";
+            PlayerSettings.bundleVersion = "4.0.3";
             PlayerSettings.SetApplicationIdentifier(
                 BuildTargetGroup.Android, "com.qfgeeee.paper52objecttrackingar");
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
-            PlayerSettings.Android.bundleVersionCode = 402;
+            PlayerSettings.Android.bundleVersionCode = 403;
             PlayerSettings.SetScriptingBackend(
                 BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
@@ -297,6 +301,7 @@ namespace Urp.ArDemo.Editor
         private static RestorationObjectCatalog CreateProfiles()
         {
             CreateForceMagentaDebugMaterial();
+            CreateAlignmentOutlineMaterial();
             Material bottleMaterial = CreateLitMaterial(
                 "Assets/Materials/BottleViewerLit.mat", BottleTexturePath, 0.20f);
             Material tissueMaterial = CreateLitMaterial(
@@ -683,6 +688,29 @@ namespace Urp.ArDemo.Editor
             }
             material.shader = shader;
             material.renderQueue = (int)RenderQueue.Geometry;
+            EditorUtility.SetDirty(material);
+        }
+
+        private static void CreateAlignmentOutlineMaterial()
+        {
+            AssetDatabase.ImportAsset(
+                AlignmentOutlineShaderPath, ImportAssetOptions.ForceUpdate);
+            Shader shader = AssetDatabase.LoadAssetAtPath<Shader>(
+                AlignmentOutlineShaderPath);
+            if (shader == null || shader.name != "Hidden/URP/AlignmentOutline")
+                throw new InvalidOperationException(
+                    "Packaged alignment-outline shader is missing.");
+            Material material = AssetDatabase.LoadAssetAtPath<Material>(
+                AlignmentOutlineMaterialPath);
+            if (material == null)
+            {
+                material = new Material(shader);
+                AssetDatabase.CreateAsset(material, AlignmentOutlineMaterialPath);
+            }
+            material.shader = shader;
+            material.name = "AlignmentOutline";
+            material.SetColor("_BaseColor", new Color(0.08f, 0.95f, 1f, 0.95f));
+            material.renderQueue = (int)RenderQueue.Transparent;
             EditorUtility.SetDirty(material);
         }
 

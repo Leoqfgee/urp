@@ -447,6 +447,8 @@ namespace Urp.ArDemo
             catch (Exception exception)
             {
                 Debug.LogException(exception);
+                if (destination == Page.Tracking)
+                    orbTracker?.HideFailedProfileVisuals();
                 Text target = destination == Page.Tracking ? trackingStatus : resourceStatus;
                 if (target != null)
                 {
