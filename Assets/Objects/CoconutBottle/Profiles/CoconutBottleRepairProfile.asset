@@ -11,7 +11,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 7155bfc119d520b4f8912cd4f4e7b4eb, type: 3}
   m_Name: CoconutBottleRepairProfile
-  m_EditorClassIdentifier:
+  m_EditorClassIdentifier: 
   objectId: coconut_bottle
   displayName: "\u74F6\u76D6\u7F3A\u5931\u996E\u6599\u74F6"
   shortDescription: "\u74F6\u8EAB\u4FDD\u7559\u74F6\u53E3\u4E0E\u87BA\u7EB9\u7ED3\u6784\uFF0C\u7F3A\u5931\u90E8\u5206\u4E3A\u74F6\u76D6\u3002"

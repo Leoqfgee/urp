@@ -145,12 +145,12 @@ namespace Urp.ArDemo.Editor
         {
             PlayerSettings.productName = "论文式三维跟踪修复";
             PlayerSettings.companyName = "qfgeeee";
-            PlayerSettings.bundleVersion = "4.0.0";
+            PlayerSettings.bundleVersion = "4.0.1";
             PlayerSettings.SetApplicationIdentifier(
                 BuildTargetGroup.Android, "com.qfgeeee.paper52objecttrackingar");
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
-            PlayerSettings.Android.bundleVersionCode = 400;
+            PlayerSettings.Android.bundleVersionCode = 401;
             PlayerSettings.SetScriptingBackend(
                 BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;

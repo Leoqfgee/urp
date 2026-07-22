@@ -192,12 +192,19 @@ namespace Urp.ArDemo
                 BuildCatalogErrorCard(content.transform);
             }
 
-            ScrollRect scroll = viewport.AddComponent<ScrollRect>();
-            scroll.viewport = viewport.GetComponent<RectTransform>();
-            scroll.content = contentRect;
-            scroll.horizontal = false;
-            scroll.vertical = true;
-            scroll.movementType = ScrollRect.MovementType.Clamped;
+            // Two cards fit on the phone without scrolling.  A ScrollRect on this
+            // page used to win the Android touch gesture before the child Button
+            // received PointerClick, making an otherwise visible card appear dead.
+            // Only install scrolling when the catalog actually overflows.
+            if (count > 2)
+            {
+                ScrollRect scroll = viewport.AddComponent<ScrollRect>();
+                scroll.viewport = viewport.GetComponent<RectTransform>();
+                scroll.content = contentRect;
+                scroll.horizontal = false;
+                scroll.vertical = true;
+                scroll.movementType = ScrollRect.MovementType.Clamped;
+            }
             LayoutRebuilder.ForceRebuildLayoutImmediate(contentRect);
             return page;
         }
@@ -215,11 +222,6 @@ namespace Urp.ArDemo
             element.preferredHeight = 390f;
             element.minHeight = 390f;
             element.flexibleHeight = 0f;
-
-            Button cardButton = card.AddComponent<Button>();
-            cardButton.targetGraphic = card.GetComponent<Image>();
-            cardButton.navigation = new Navigation { mode = Navigation.Mode.None };
-            cardButton.onClick.AddListener(() => SelectAndOpen(profile, selectionDestination));
 
             if (profile.thumbnail != null)
             {
@@ -239,6 +241,22 @@ namespace Urp.ArDemo
                 new Vector2(0.44f, 0.52f), new Vector2(0.94f, 0.69f), TextAnchor.MiddleLeft);
             CreateText(card.transform, profile.shortDescription, 21, Muted,
                 new Vector2(0.44f, 0.14f), new Vector2(0.94f, 0.53f), TextAnchor.UpperLeft);
+
+            // Keep the tap target as the last child so it is the top-most UI
+            // raycast target.  Text and thumbnails never participate in raycasts.
+            Button tapTarget = CreateButton(card.transform, string.Empty,
+                Vector2.zero, Vector2.one,
+                () => SelectAndOpen(profile, selectionDestination),
+                new Color(1f, 1f, 1f, 0.001f), Color.clear, 1);
+            tapTarget.gameObject.name = profile.objectId + " Card Tap Target";
+            tapTarget.transition = Selectable.Transition.ColorTint;
+            ColorBlock colors = tapTarget.colors;
+            colors.normalColor = Color.white;
+            colors.highlightedColor = new Color(0.94f, 0.97f, 1f, 1f);
+            colors.pressedColor = new Color(0.82f, 0.90f, 1f, 1f);
+            colors.selectedColor = colors.highlightedColor;
+            colors.colorMultiplier = 1f;
+            tapTarget.colors = colors;
         }
 
         private void BuildCatalogErrorCard(Transform parent)
@@ -396,9 +414,39 @@ namespace Urp.ArDemo
         private void SelectAndOpen(RestorationObjectProfile profile, Page page)
         {
             selectedProfile = profile;
-            modelViewer?.SetProfile(profile);
-            orbTracker?.SetProfile(profile);
+            // Navigation must be visible immediately.  Rebuilding the viewer mesh
+            // and native ORB database can take long enough on Android to make a tap
+            // look ignored, and an exception previously prevented ShowPage entirely.
             ShowPage(page);
+            StartCoroutine(ApplySelectedProfileNextFrame(profile, page));
+        }
+
+        private IEnumerator ApplySelectedProfileNextFrame(
+            RestorationObjectProfile profile, Page destination)
+        {
+            yield return null;
+            try
+            {
+                modelViewer?.SetProfile(profile);
+                orbTracker?.SetProfile(profile);
+                if (destination == Page.Resource)
+                {
+                    ShowDamagedResource();
+                }
+                else if (destination == Page.Tracking)
+                {
+                    orbTracker?.SetTrackingEnabled(true);
+                }
+            }
+            catch (Exception exception)
+            {
+                Debug.LogException(exception);
+                Text target = destination == Page.Tracking ? trackingStatus : resourceStatus;
+                if (target != null)
+                {
+                    target.text = $"已进入页面，但对象资源加载失败：{exception.GetType().Name}";
+                }
+            }
         }
 
         private void OpenSelection(Page destination)
