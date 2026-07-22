@@ -25,6 +25,7 @@ MonoBehaviour:
   viewerMaterial: {fileID: 2100000, guid: 4974899771addaf4a975bfe84f8d8bab, type: 2}
   defaultViewerEuler: {x: -90, y: 0, z: 0}
   viewerMargin: 0.2
+  registeredBottlePairPrefab: {fileID: 0}
   trackingReferencePrefab: {fileID: 0}
   trackingReferenceDatabase: {fileID: 0}
   registeredRepairPrefab: {fileID: 0}
@@ -41,6 +42,10 @@ MonoBehaviour:
     registrationConfirmationFrames: 4
     registrationPositionToleranceMeters: 0.025
     registrationRotationToleranceDegrees: 8
+    maximumProjectionConsistencyErrorPixels: 80
+    temporaryLossHoldSeconds: 0.8
+    positionSmoothing: 0.3
+    rotationSmoothing: 0.25
     initialAlignmentMaximumViewportError: 0.28
     initialAlignmentMaximumUpAxisErrorDegrees: 55
   repairMaterial: {fileID: 0}

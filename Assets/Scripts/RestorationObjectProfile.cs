@@ -22,9 +22,13 @@ namespace Urp.ArDemo
         public float maximumReprojectionErrorPixels = 3.0f;
         public float minimumCoverageX = 0.05f;
         public float minimumCoverageY = 0.18f;
-        public int registrationConfirmationFrames = 4;
+        public int registrationConfirmationFrames = 12;
         public float registrationPositionToleranceMeters = 0.025f;
         public float registrationRotationToleranceDegrees = 8f;
+        public float maximumProjectionConsistencyErrorPixels = 80f;
+        public float temporaryLossHoldSeconds = 0.8f;
+        [Range(0.01f, 1f)] public float positionSmoothing = 0.30f;
+        [Range(0.01f, 1f)] public float rotationSmoothing = 0.25f;
         public float initialAlignmentMaximumViewportError = 0.28f;
         public float initialAlignmentMaximumUpAxisErrorDegrees = 55f;
     }
@@ -49,6 +53,8 @@ namespace Urp.ArDemo
         [Range(0.05f, 0.5f)] public float viewerMargin = 0.18f;
 
         [Header("Tracking and repair")]
+        [Tooltip("Blender-authored rigid hierarchy BottleRepairRoot/DamagedBottleB + BottleCapC.")]
+        public GameObject registeredBottlePairPrefab;
         [Tooltip("Hidden no-cap model b whose canonical frame is solved from real bottle a.")]
         public GameObject trackingReferencePrefab;
         [Tooltip("Natural-feature observations registered into model b's canonical frame.")]
@@ -67,9 +73,8 @@ namespace Urp.ArDemo
         public PhysicalMeasurement[] physicalMeasurements = Array.Empty<PhysicalMeasurement>();
 
         public bool HasTrackingAssets =>
-            trackingReferencePrefab != null
+            registeredBottlePairPrefab != null
             && trackingReferenceDatabase != null
-            && calibration != null
-            && registeredRepairPrefab != null;
+            && calibration != null;
     }
 }

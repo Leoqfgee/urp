@@ -31,6 +31,7 @@ namespace Urp.ArDemo
         [Header("Object-coordinate overlay")]
         [SerializeField] private Transform trackedObjectPoseRoot;
         [SerializeField] private Transform modelCoordinateAlignment;
+        [Tooltip("Legacy scene slots kept only for serialized-scene compatibility.")]
         [SerializeField] private Transform modelReferenceRoot;
         [SerializeField] private Transform repairPartRoot;
         [SerializeField] private Transform occlusionRoot;
@@ -51,10 +52,14 @@ namespace Urp.ArDemo
         [Header("Timing and continuity")]
         [SerializeField] private float relocationIntervalSeconds = 0.14f;
 
-        [Header("A to B registration lock")]
-        [SerializeField] private int registrationConfirmationFrames = 4;
+        [Header("A to B rigid registration")]
+        [SerializeField] private int registrationConfirmationFrames = 12;
         [SerializeField] private float registrationPositionToleranceMeters = 0.025f;
         [SerializeField] private float registrationRotationToleranceDegrees = 8f;
+        [SerializeField] private float maximumProjectionConsistencyErrorPixels = 80f;
+        [SerializeField] private float temporaryLossHoldSeconds = 0.8f;
+        [Range(0.01f, 1f)] [SerializeField] private float positionSmoothing = 0.30f;
+        [Range(0.01f, 1f)] [SerializeField] private float rotationSmoothing = 0.25f;
 
         [Header("Initial paper-style alignment")]
         [SerializeField] private Vector3 initialMouthPositionInCamera = new Vector3(0f, 0.16f, 0.42f);
@@ -67,7 +72,7 @@ namespace Urp.ArDemo
         private bool modeEnabled;
         private bool recognitionRunning;
         private bool hasTrackedPose;
-        private bool registrationWorldLocked;
+        private bool registrationEstablished;
         private int registrationStableFrames;
         private Vector3 registrationAveragePosition;
         private Quaternion registrationAverageRotation = Quaternion.identity;
@@ -79,6 +84,7 @@ namespace Urp.ArDemo
         private Vector3 lastTargetPosition;
         private Quaternion lastTargetRotation;
         private Transform registeredReferenceModel;
+        private Transform registeredBottlePairRoot;
         private Renderer[] referenceRenderers;
         private GameObject alignmentOutlineRoot;
         private Material alignmentOutlineMaterial;
@@ -106,13 +112,18 @@ namespace Urp.ArDemo
         private bool alignmentGuideVisible;
         private bool hasStartAlignmentPose;
         private bool alignmentPriorConsumed;
+        private bool hasSmoothedPose;
+        private Vector3 smoothedRootPosition;
+        private Quaternion smoothedRootRotation = Quaternion.identity;
+        private float lastValidPoseTime = float.NegativeInfinity;
+        private float lastProjectionErrorPixels = float.PositiveInfinity;
         private Vector3 startAlignmentPosition;
         private Quaternion startAlignmentRotation;
         private float initialAlignmentMaximumViewportError = 0.28f;
         private float initialAlignmentMaximumUpAxisErrorDegrees = 55f;
 
         public bool HasTrackedPose => hasTrackedPose;
-        public bool IsRegistrationWorldLocked => registrationWorldLocked;
+        public bool IsRigidRegistrationEstablished => registrationEstablished;
         public TrackingState State => trackingState;
         public bool IsRepairActuallyRenderable =>
             ValidateRepairRenderable(out _);
@@ -182,6 +193,7 @@ namespace Urp.ArDemo
         {
             bool sameReadyProfile = ReferenceEquals(activeProfile, profile)
                 && profile != null
+                && registeredBottlePairRoot != null
                 && registeredReferenceModel != null
                 && registeredRepairPart != null
                 && trackers.Count > 0;
@@ -210,6 +222,11 @@ namespace Urp.ArDemo
                     profile.trackingSettings.registrationPositionToleranceMeters;
                 registrationRotationToleranceDegrees =
                     profile.trackingSettings.registrationRotationToleranceDegrees;
+                maximumProjectionConsistencyErrorPixels =
+                    profile.trackingSettings.maximumProjectionConsistencyErrorPixels;
+                temporaryLossHoldSeconds = profile.trackingSettings.temporaryLossHoldSeconds;
+                positionSmoothing = profile.trackingSettings.positionSmoothing;
+                rotationSmoothing = profile.trackingSettings.rotationSmoothing;
                 initialAlignmentMaximumViewportError =
                     profile.trackingSettings.initialAlignmentMaximumViewportError;
                 initialAlignmentMaximumUpAxisErrorDegrees =
@@ -222,10 +239,8 @@ namespace Urp.ArDemo
             trackers.Clear();
 
             ExitForceRepairDebug(false);
-            if (registeredReferenceModel != null)
-            {
-                Destroy(registeredReferenceModel.gameObject);
-            }
+            if (registeredBottlePairRoot != null)
+                Destroy(registeredBottlePairRoot.gameObject);
             if (alignmentOutlineRoot != null)
             {
                 Destroy(alignmentOutlineRoot);
@@ -234,15 +249,12 @@ namespace Urp.ArDemo
             {
                 Destroy(alignmentOutlineMaterial);
             }
-            if (registeredRepairPart != null)
-            {
-                Destroy(registeredRepairPart.gameObject);
-            }
             if (registeredOccluder != null)
             {
                 Destroy(registeredOccluder);
             }
 
+            registeredBottlePairRoot = null;
             registeredReferenceModel = null;
             referenceRenderers = null;
             alignmentOutlineRoot = null;
@@ -251,33 +263,46 @@ namespace Urp.ArDemo
             registeredRepairPart = null;
             registeredOccluder = null;
             capRenderers = null;
-            Transform repairParent = repairPartRoot != null
-                ? repairPartRoot
-                : modelCoordinateAlignment;
-            Transform referenceParent = modelReferenceRoot != null
-                ? modelReferenceRoot
-                : modelCoordinateAlignment;
             Transform occluderParent = occlusionRoot != null
                 ? occlusionRoot
                 : modelCoordinateAlignment;
             if (profile != null)
             {
-                // b is the no-cap photogrammetry model registered with c in Blender.
-                // Paper section 5.2 requires b to be visible only for the initial
-                // user alignment. Start hides b; successful tracking renders only c.
-                if (profile.trackingReferencePrefab != null && referenceParent != null)
-                {
-                    // Build the lightweight outline first.  If its packaged
-                    // material is unavailable, no raw B mesh may be left behind.
-                    BuildAlignmentOutlineGuide(referenceParent);
+                if (modelCoordinateAlignment == null)
+                    throw new MissingReferenceException("ModelCoordinateAlignment is required.");
 
-                    GameObject reference = Instantiate(profile.trackingReferencePrefab, referenceParent);
-                    reference.name = "ReferenceBottleB_AlignmentGuide";
-                    reference.transform.localPosition = Vector3.zero;
-                    reference.transform.localRotation = Quaternion.identity;
-                    reference.transform.localScale = Vector3.one;
-                    registeredReferenceModel = reference.transform;
-                    referenceRenderers = reference.GetComponentsInChildren<Renderer>(true);
+                modelCoordinateAlignment.localPosition = calibration != null
+                    ? calibration.orbToModelLocalPosition : Vector3.zero;
+                modelCoordinateAlignment.localRotation = Quaternion.Euler(calibration != null
+                    ? calibration.orbToModelLocalEulerAngles : Vector3.zero);
+                modelCoordinateAlignment.localScale = calibration != null
+                    ? calibration.orbToModelLocalScale : Vector3.one;
+
+                // Blender exports B and C as one rigid hierarchy. Runtime code
+                // may move only TrackedBottleRoot; BottleCapC's local transform
+                // is authored here and is never rewritten by tracking code.
+                if (profile.registeredBottlePairPrefab != null)
+                {
+                    GameObject pair = Instantiate(
+                        profile.registeredBottlePairPrefab, modelCoordinateAlignment);
+                    pair.name = "BottleRepairRoot";
+                    pair.transform.localPosition = Vector3.zero;
+                    pair.transform.localRotation = Quaternion.identity;
+                    pair.transform.localScale = Vector3.one;
+                    registeredBottlePairRoot = pair.transform;
+                    registeredReferenceModel = FindDescendant(pair.transform, "DamagedBottleB");
+                    registeredRepairPart = FindDescendant(pair.transform, "BottleCapC");
+                    if (registeredReferenceModel == null || registeredRepairPart == null)
+                        throw new MissingReferenceException(
+                            "Registered B+C prefab must contain DamagedBottleB and BottleCapC.");
+
+                    if (registeredReferenceModel.parent != registeredBottlePairRoot)
+                        registeredReferenceModel.SetParent(registeredBottlePairRoot, false);
+                    if (registeredRepairPart.parent != registeredBottlePairRoot)
+                        registeredRepairPart.SetParent(registeredBottlePairRoot, false);
+
+                    referenceRenderers = registeredReferenceModel
+                        .GetComponentsInChildren<Renderer>(true);
                     foreach (Renderer renderer in referenceRenderers)
                     {
                         if (profile.initialGuideMaterial != null)
@@ -292,27 +317,20 @@ namespace Urp.ArDemo
                         renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                         renderer.receiveShadows = false;
                     }
-                    foreach (Collider collider in reference.GetComponentsInChildren<Collider>(true))
+                    foreach (Collider collider in registeredReferenceModel
+                                 .GetComponentsInChildren<Collider>(true))
                         collider.enabled = false;
-                }
-                if (profile.registeredRepairPrefab != null && repairParent != null)
-                {
-                    GameObject repair = Instantiate(profile.registeredRepairPrefab, repairParent);
-                    repair.name = "RegisteredBottleCap";
-                    repair.transform.localPosition = calibration != null ? calibration.capLocalPosition : Vector3.zero;
-                    repair.transform.localRotation = Quaternion.Euler(
-                        calibration != null ? calibration.capLocalEulerAngles : Vector3.zero);
-                    repair.transform.localScale = calibration != null ? calibration.capLocalScale : Vector3.one;
-                    ApplyMaterial(repair, profile.repairMaterial);
-                    registeredRepairPart = repair.transform;
-                    capRenderers = repair.GetComponentsInChildren<Renderer>(true);
+                    ApplyMaterial(registeredRepairPart.gameObject, profile.repairMaterial);
+                    capRenderers = registeredRepairPart.GetComponentsInChildren<Renderer>(true);
                     foreach (Renderer renderer in capRenderers)
                     {
-                        SetLayerRecursively(renderer.gameObject, repairParent.gameObject.layer);
+                        SetLayerRecursively(renderer.gameObject, modelCoordinateAlignment.gameObject.layer);
                         renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                         renderer.receiveShadows = false;
                         renderer.enabled = true;
                     }
+
+                    BuildAlignmentOutlineGuide(modelCoordinateAlignment);
                 }
                 // A depth-only proxy can erase the entire cap when its physical fit is
                 // not calibrated. Never enable a provisional occluder on the device.
@@ -338,6 +356,18 @@ namespace Urp.ArDemo
 
             BuildTrackers();
             ResetTracking();
+        }
+
+        private static Transform FindDescendant(Transform root, string name)
+        {
+            if (root == null) return null;
+            if (root.name == name) return root;
+            for (int index = 0; index < root.childCount; index++)
+            {
+                Transform found = FindDescendant(root.GetChild(index), name);
+                if (found != null) return found;
+            }
+            return null;
         }
 
         public void SetTrackingEnabled(bool enabled)
@@ -377,20 +407,14 @@ namespace Urp.ArDemo
                 UpdateStatus("当前对象尚不具备可用的独立跟踪与修复标定数据。");
                 return;
             }
-            if (registrationWorldLocked)
-            {
-                UpdateStatus("A→B 已完成世界锁定，当前仅显示修复模型 C；如需重新配准请先点“重置”。");
-                return;
-            }
-
             recognitionRunning = true;
             trackingState = TrackingState.Searching;
             ClearRegistrationLock();
             CaptureStartAlignmentPose();
-            SetReferenceHierarchyVisible(false);
+            SetReferenceHierarchyVisible(true);
             SetRepairHierarchyVisible(false);
             nextProcessTime = 0f;
-            UpdateStatus($"正在用真实瓶 A 的自然特征配准参考模型 B；配准成功后仅显示修复模型 C。");
+            UpdateStatus($"正在用真实瓶 A 的自然特征求数字无盖瓶 B 的完整三维位姿；当前显示半透明 B。");
         }
 
         public void ResetTracking()
@@ -413,13 +437,12 @@ namespace Urp.ArDemo
 
         public void SetRepairHierarchyVisible(bool visible)
         {
-            bool rootVisible = visible || alignmentGuideVisible || referenceModelVisible;
             if (trackedObjectPoseRoot != null)
-                trackedObjectPoseRoot.gameObject.SetActive(rootVisible);
-            if (repairPartRoot != null)
-                repairPartRoot.gameObject.SetActive(visible);
+                trackedObjectPoseRoot.gameObject.SetActive(true);
+            if (registeredBottlePairRoot != null)
+                registeredBottlePairRoot.gameObject.SetActive(true);
             if (registeredRepairPart != null)
-                registeredRepairPart.gameObject.SetActive(visible);
+                registeredRepairPart.gameObject.SetActive(true);
             if (capRenderers == null) return;
             foreach (Renderer renderer in capRenderers)
             {
@@ -432,14 +455,12 @@ namespace Urp.ArDemo
         {
             referenceModelVisible = visible;
             alignmentGuideVisible = false;
-            bool rootVisible = referenceModelVisible
-                || (registeredRepairPart != null && registeredRepairPart.gameObject.activeSelf);
             if (trackedObjectPoseRoot != null)
-                trackedObjectPoseRoot.gameObject.SetActive(rootVisible);
-            if (modelReferenceRoot != null)
-                modelReferenceRoot.gameObject.SetActive(referenceModelVisible);
+                trackedObjectPoseRoot.gameObject.SetActive(true);
+            if (registeredBottlePairRoot != null)
+                registeredBottlePairRoot.gameObject.SetActive(true);
             if (registeredReferenceModel != null)
-                registeredReferenceModel.gameObject.SetActive(referenceModelVisible);
+                registeredReferenceModel.gameObject.SetActive(true);
             if (alignmentOutlineRoot != null)
                 alignmentOutlineRoot.SetActive(false);
             if (referenceRenderers != null)
@@ -455,14 +476,12 @@ namespace Urp.ArDemo
         {
             alignmentGuideVisible = visible;
             referenceModelVisible = false;
-            bool repairVisible = registeredRepairPart != null
-                && registeredRepairPart.gameObject.activeSelf;
             if (trackedObjectPoseRoot != null)
-                trackedObjectPoseRoot.gameObject.SetActive(visible || repairVisible);
-            if (modelReferenceRoot != null)
-                modelReferenceRoot.gameObject.SetActive(visible);
+                trackedObjectPoseRoot.gameObject.SetActive(true);
+            if (registeredBottlePairRoot != null)
+                registeredBottlePairRoot.gameObject.SetActive(true);
             if (registeredReferenceModel != null)
-                registeredReferenceModel.gameObject.SetActive(false);
+                registeredReferenceModel.gameObject.SetActive(true);
             if (referenceRenderers != null)
             {
                 foreach (Renderer renderer in referenceRenderers)
@@ -630,9 +649,12 @@ namespace Urp.ArDemo
             recognitionRunning = false;
             ClearRegistrationLock();
             if (occlusionRoot != null) occlusionRoot.gameObject.SetActive(false);
-            trackedObjectPoseRoot.SetParent(arCamera.transform, false);
-            trackedObjectPoseRoot.localPosition = new Vector3(0f, 0.08f, 0.58f);
-            trackedObjectPoseRoot.localRotation = Quaternion.Euler(4f, 12f, 0f);
+            if (trackedObjectPoseRoot.parent != null)
+                trackedObjectPoseRoot.SetParent(null, true);
+            trackedObjectPoseRoot.position = arCamera.transform.TransformPoint(
+                new Vector3(0f, 0.08f, 0.58f));
+            trackedObjectPoseRoot.rotation = arCamera.transform.rotation
+                * Quaternion.Euler(4f, 12f, 0f);
             trackedObjectPoseRoot.localScale = Vector3.one
                 * (calibration != null ? calibration.metersPerModelUnit : 0.17f);
 #endif
@@ -742,9 +764,21 @@ namespace Urp.ArDemo
         private string BuildRepairDiagnostics()
         {
             StringBuilder text = new StringBuilder();
-            text.Append($"root={trackedObjectPoseRoot?.gameObject.activeSelf}, ");
-            text.Append($"repairRoot={repairPartRoot?.gameObject.activeSelf}, ");
-            text.Append($"cap={registeredRepairPart?.gameObject.activeSelf}, ");
+            text.Append($"TrackedBottleRoot(parent={trackedObjectPoseRoot?.parent?.name ?? "<world>"}, ");
+            text.Append($"worldPos={trackedObjectPoseRoot?.position}, worldRot={trackedObjectPoseRoot?.rotation.eulerAngles}, ");
+            text.Append($"scale={trackedObjectPoseRoot?.localScale}); ");
+            text.Append($"ModelCoordinateAlignment(localPos={modelCoordinateAlignment?.localPosition}, ");
+            text.Append($"localRot={modelCoordinateAlignment?.localRotation.eulerAngles}, scale={modelCoordinateAlignment?.localScale}); ");
+            text.Append($"DamagedBottleB(parent={registeredReferenceModel?.parent?.name}, active={registeredReferenceModel?.gameObject.activeInHierarchy}); ");
+            text.Append($"BottleCapC(parent={registeredRepairPart?.parent?.name}, activeSelf={registeredRepairPart?.gameObject.activeSelf}, ");
+            text.Append($"active={registeredRepairPart?.gameObject.activeInHierarchy}, localPos={registeredRepairPart?.localPosition}, ");
+            text.Append($"localRot={registeredRepairPart?.localRotation.eulerAngles}, localScale={registeredRepairPart?.localScale}, ");
+            text.Append($"worldPos={registeredRepairPart?.position}, worldRot={registeredRepairPart?.rotation.eulerAngles}, ");
+            text.Append($"underTrackedRoot={(registeredRepairPart != null && trackedObjectPoseRoot != null && registeredRepairPart.IsChildOf(trackedObjectPoseRoot))}, ");
+            text.Append($"underCamera={(registeredRepairPart != null && arCamera != null && registeredRepairPart.IsChildOf(arCamera.transform))}, ");
+            text.Append($"underCanvas={(registeredRepairPart != null && registeredRepairPart.GetComponentInParent<Canvas>() != null)}, ");
+            text.Append($"rectTransform={(registeredRepairPart != null && registeredRepairPart.GetComponent<RectTransform>() != null)}, ");
+            text.Append($"arAnchor={(registeredRepairPart != null && registeredRepairPart.GetComponentInParent<ARAnchor>() != null)}); ");
             text.Append($"cameraMask=0x{(arCamera != null ? arCamera.cullingMask : 0):X8}; ");
             if (capRenderers == null || capRenderers.Length == 0)
                 return text.Append("renderers=0").ToString();
@@ -758,7 +792,9 @@ namespace Urp.ArDemo
                 text.Append($"shader={renderer.sharedMaterial?.shader?.name ?? "null"}, ");
                 text.Append($"verts={(mesh != null ? mesh.vertexCount : 0)}, ");
                 text.Append($"tris={(mesh != null ? mesh.triangles.Length / 3 : 0)}, ");
-                text.Append($"scale={renderer.transform.lossyScale}] ");
+                Vector3 viewport = arCamera != null
+                    ? arCamera.WorldToViewportPoint(renderer.bounds.center) : Vector3.zero;
+                text.Append($"scale={renderer.transform.lossyScale}, bounds={renderer.bounds}, viewport={viewport}] ");
             }
             return text.ToString();
         }
@@ -855,7 +891,7 @@ namespace Urp.ArDemo
 
                 if (!hasResult)
                 {
-                    HideOverlay(false);
+                    HandleTrackingFailure();
                     UpdateStatus($"已识别 {activeProfile.displayName}，正在求解稳定姿态。");
                     return;
                 }
@@ -868,7 +904,7 @@ namespace Urp.ArDemo
                     trackingState = best.goodMatches < minGoodMatches
                         ? TrackingState.Candidate
                         : TrackingState.PoseValidating;
-                    HideOverlay(false);
+                    HandleTrackingFailure();
                     UpdateStatus(qualityReason);
                     return;
                 }
@@ -881,7 +917,7 @@ namespace Urp.ArDemo
                         out Vector3 targetPosition,
                         out Quaternion targetRotation))
                 {
-                    HideOverlay(false);
+                    HandleTrackingFailure();
                     UpdateStatus("对象位姿有效，但坐标转换结果无效。");
                     return;
                 }
@@ -890,12 +926,21 @@ namespace Urp.ArDemo
                         targetPosition, targetRotation, out string alignmentReason))
                 {
                     trackingState = TrackingState.PoseValidating;
-                    HideOverlay(false);
+                    HandleTrackingFailure();
                     UpdateStatus(alignmentReason);
                     return;
                 }
 
-                UpdateAnchorProjectionDiagnostic(best, targetPosition);
+                if (!TryValidateProjectionConsistency(
+                        best, targetPosition, out string projectionReason))
+                {
+                    trackingState = TrackingState.PoseValidating;
+                    registrationStableFrames = 0;
+                    SetReferenceHierarchyVisible(true);
+                    SetRepairHierarchyVisible(false);
+                    UpdateStatus(projectionReason);
+                    return;
+                }
                 best.translationJumpMeters = registrationStableFrames > 0
                     ? Vector3.Distance(lastRegistrationCandidatePosition, targetPosition)
                     : 0f;
@@ -903,39 +948,57 @@ namespace Urp.ArDemo
                     ? Quaternion.Angle(lastRegistrationCandidateRotation, targetRotation)
                     : 0f;
 
-                PreviewReferenceModelAtPose(targetPosition, targetRotation);
-                if (!TryAccumulateStableRegistration(
-                        targetPosition,
-                        targetRotation,
-                        out Vector3 lockedPosition,
-                        out Quaternion lockedRotation,
-                        out string registrationReason))
+                if (!registrationEstablished)
                 {
-                    trackingState = TrackingState.PoseValidating;
-                    UpdateStatus(registrationReason);
-                    return;
+                    PreviewReferenceModelAtPose(targetPosition, targetRotation);
+                    if (!TryAccumulateStableRegistration(
+                            targetPosition,
+                            targetRotation,
+                            out Vector3 stablePosition,
+                            out Quaternion stableRotation,
+                            out string registrationReason))
+                    {
+                        trackingState = TrackingState.PoseValidating;
+                        UpdateStatus(registrationReason);
+                        return;
+                    }
+
+                    EstablishRigidRegistration(stablePosition, stableRotation);
+                }
+                else
+                {
+                    float positionJump = Vector3.Distance(lastTargetPosition, targetPosition);
+                    float rotationJump = Quaternion.Angle(lastTargetRotation, targetRotation);
+                    if (positionJump > registrationPositionToleranceMeters * 2f
+                        || rotationJump > registrationRotationToleranceDegrees * 2f)
+                    {
+                        HandleTrackingFailure();
+                        UpdateStatus($"A 与 B 的当前位姿跳变过大，保留上一稳定姿态："
+                            + $"位置 {positionJump:F3}m，旋转 {rotationJump:F1}°。");
+                        return;
+                    }
+                    ApplyTrackedRootPose(targetPosition, targetRotation, true);
                 }
 
-                LockRegisteredPairInWorld(lockedPosition, lockedRotation);
+                lastValidPoseTime = Time.unscaledTime;
                 ApplyLightingConsistency(best.localLuminance);
 
                 if (!ValidateRepairVisibility(out string visibilityReason))
                 {
-                    UpdateStatus($"A→B 已完成并锁定世界位姿，但修复模型 C 不可见：{visibilityReason}");
+                    SetReferenceHierarchyVisible(true);
+                    SetRepairHierarchyVisible(false);
+                    UpdateStatus($"A 与 B 位姿有效，但瓶盖 C 未通过实际可见性检查：{visibilityReason}");
                     return;
                 }
 
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
                 UpdateStatus(
-                    $"A→B 配准稳定，B+C 已锁定到 AR 世界坐标；B 已隐藏，仅显示 C。"
+                    $"A 与 B 已稳定配准；仅关闭 B 的 Renderer，C 继续继承 B 的实时三维位姿。"
                     + $"内点 {best.poseInliers}，"
                     + $"比例 {best.inlierRatio:P0}，误差 {best.reprojectionError:F2}px；"
-                    + $"{lastProjectionDiagnostic}；"
-                    + $"标定 {(activeProfile.physicalScaleVerified ? "已验证" : "未验证")}。");
+                    + $"瓶口双链投影误差 {lastProjectionErrorPixels:F1}px。");
 #else
-                UpdateStatus(activeProfile.physicalScaleVerified
-                    ? "A→B 配准完成；参考模型 B 已隐藏，修复模型 C 已锁定在世界中。移动相机只会改变观察角度。"
-                    : "A→B 配准完成并已世界锁定，但物理尺寸与连接区域标定尚未验证。");
+                UpdateStatus("A 与 B 已稳定配准，已隐藏数字瓶身 B，仅显示随 B 刚性运动的瓶盖 C。");
 #endif
             }
             finally
@@ -1102,7 +1165,6 @@ namespace Urp.ArDemo
             startAlignmentRotation = trackedObjectPoseRoot.rotation;
             hasStartAlignmentPose = true;
             alignmentPriorConsumed = false;
-            trackedObjectPoseRoot.SetParent(null, true);
         }
 
         private bool PassesStartAlignmentPrior(
@@ -1155,57 +1217,90 @@ namespace Urp.ArDemo
             if (trackedObjectPoseRoot == null || calibration == null)
                 return;
 
-            trackedObjectPoseRoot.SetParent(null, true);
-            trackedObjectPoseRoot.position = position;
-            trackedObjectPoseRoot.rotation = rotation;
-            trackedObjectPoseRoot.localScale = Vector3.one * calibration.metersPerModelUnit;
+            ApplyTrackedRootPose(position, rotation, false);
             SetInitialAlignmentGuideVisible(false);
             SetRepairHierarchyVisible(false);
             SetReferenceHierarchyVisible(true);
         }
 
-        private void LockRegisteredPairInWorld(Vector3 position, Quaternion rotation)
+        private void EstablishRigidRegistration(Vector3 position, Quaternion rotation)
         {
             if (trackedObjectPoseRoot == null || calibration == null)
                 return;
 
-            // B and C share one Blender-authored canonical hierarchy. The A→B
-            // solve is used only to place that hierarchy once in AR world space.
-            // After this point ORB/PnP is stopped: moving the phone changes only
-            // the camera view of C and can no longer drag C around the screen.
-            trackedObjectPoseRoot.SetParent(null, true);
-            trackedObjectPoseRoot.position = position;
-            trackedObjectPoseRoot.rotation = rotation;
-            trackedObjectPoseRoot.localScale = Vector3.one * calibration.metersPerModelUnit;
-            registrationWorldLocked = true;
+            ApplyTrackedRootPose(position, rotation, false);
+            registrationEstablished = true;
             hasTrackedPose = true;
-            recognitionRunning = false;
+            recognitionRunning = true;
             alignmentPriorConsumed = true;
             trackingState = TrackingState.Tracking;
-            lastTargetPosition = position;
-            lastTargetRotation = rotation;
             SetInitialAlignmentGuideVisible(false);
             SetReferenceHierarchyVisible(false);
             SetRepairHierarchyVisible(repairVisibleRequested);
         }
 
+        private void ApplyTrackedRootPose(
+            Vector3 position, Quaternion rotation, bool smooth)
+        {
+            if (trackedObjectPoseRoot == null || calibration == null) return;
+            if (trackedObjectPoseRoot.parent != null)
+                throw new InvalidOperationException(
+                    "TrackedBottleRoot must be a world root, not a Camera or Canvas child.");
+
+            if (!hasSmoothedPose || !smooth)
+            {
+                smoothedRootPosition = position;
+                smoothedRootRotation = rotation;
+                hasSmoothedPose = true;
+            }
+            else
+            {
+                smoothedRootPosition = Vector3.Lerp(
+                    smoothedRootPosition, position, positionSmoothing);
+                smoothedRootRotation = Quaternion.Slerp(
+                    smoothedRootRotation, rotation, rotationSmoothing);
+            }
+
+            trackedObjectPoseRoot.position = smoothedRootPosition;
+            trackedObjectPoseRoot.rotation = smoothedRootRotation;
+            trackedObjectPoseRoot.localScale = Vector3.one * calibration.metersPerModelUnit;
+            lastTargetPosition = position;
+            lastTargetRotation = rotation;
+        }
+
         private void ClearRegistrationLock()
         {
-            registrationWorldLocked = false;
+            registrationEstablished = false;
             registrationStableFrames = 0;
             registrationAveragePosition = Vector3.zero;
             registrationAverageRotation = Quaternion.identity;
             lastRegistrationCandidatePosition = Vector3.zero;
             lastRegistrationCandidateRotation = Quaternion.identity;
             hasTrackedPose = false;
+            hasSmoothedPose = false;
+            lastValidPoseTime = float.NegativeInfinity;
+            lastProjectionErrorPixels = float.PositiveInfinity;
         }
 
-        private void UpdateAnchorProjectionDiagnostic(NativeOrbResult result, Vector3 worldPosition)
+        private bool TryValidateProjectionConsistency(
+            NativeOrbResult result, Vector3 worldPosition, out string reason)
         {
-            if (arCamera == null || result.anchorVisible == 0)
+            lastProjectionErrorPixels = float.PositiveInfinity;
+            if (arCamera == null)
             {
-                lastProjectionDiagnostic = "Native 二维瓶口投影无效（不参与世界位姿）";
-                return;
+                reason = "AR Camera 不可用，不能验证数字模型 B 的投影。";
+                lastProjectionDiagnostic = reason;
+                return false;
+            }
+            if (result.anchorVisible == 0
+                || !float.IsFinite(result.anchorDepth)
+                || result.anchorDepth <= 0f
+                || !float.IsFinite(result.anchorX01)
+                || !float.IsFinite(result.anchorY01))
+            {
+                reason = "数字模型投影无效：Native 瓶口投影缺失或深度不在相机前方。";
+                lastProjectionDiagnostic = reason;
+                return false;
             }
 
             Vector3 viewport = arCamera.WorldToViewportPoint(worldPosition);
@@ -1213,24 +1308,51 @@ namespace Urp.ArDemo
                 || !float.IsFinite(viewport.y)
                 || viewport.z <= 0f)
             {
-                lastProjectionDiagnostic = $"A 链 viewport 无效：{viewport}";
-                return;
+                reason = $"数字模型投影无效：WorldToViewportPoint={viewport}。";
+                lastProjectionDiagnostic = reason;
+                return false;
             }
 
             if (!TryConvertOrientedImageToViewport(
                     new Vector2(result.anchorX01, result.anchorY01), out Vector2 nativeAnchor))
             {
-                lastProjectionDiagnostic =
-                    $"A=({viewport.x:F3},{viewport.y:F3}); B displayMatrix unavailable";
-                return;
+                reason = "数字模型投影无效：相机 displayMatrix 尚不可用。";
+                lastProjectionDiagnostic = reason;
+                return false;
+            }
+            bool defaultZero = Mathf.Abs(nativeAnchor.x) < 0.0001f
+                && Mathf.Abs(nativeAnchor.y) < 0.0001f;
+            bool nativeInViewport = float.IsFinite(nativeAnchor.x)
+                && float.IsFinite(nativeAnchor.y)
+                && nativeAnchor.x >= 0f && nativeAnchor.x <= 1f
+                && nativeAnchor.y >= 0f && nativeAnchor.y <= 1f;
+            bool modelInViewport = viewport.x >= 0f && viewport.x <= 1f
+                && viewport.y >= 0f && viewport.y <= 1f;
+            if (defaultZero || !nativeInViewport || !modelInViewport)
+            {
+                reason = $"数字模型投影无效：观察投影=({nativeAnchor.x:F3},{nativeAnchor.y:F3})，"
+                    + $"模型投影=({viewport.x:F3},{viewport.y:F3},{viewport.z:F3})。";
+                lastProjectionDiagnostic = reason;
+                return false;
             }
             Vector2 unityAnchor = new Vector2(viewport.x, viewport.y);
             float dx = (nativeAnchor.x - unityAnchor.x) * Screen.width;
             float dy = (nativeAnchor.y - unityAnchor.y) * Screen.height;
             float pixels = Mathf.Sqrt(dx * dx + dy * dy);
+            lastProjectionErrorPixels = pixels;
             lastProjectionDiagnostic =
-                $"A=({unityAnchor.x:F3},{unityAnchor.y:F3}) "
-                + $"B=({nativeAnchor.x:F3},{nativeAnchor.y:F3}) Δ={pixels:F1}px";
+                $"观察=({nativeAnchor.x:F3},{nativeAnchor.y:F3}) "
+                + $"模型=({unityAnchor.x:F3},{unityAnchor.y:F3}) Δ={pixels:F1}px";
+            if (!float.IsFinite(pixels)
+                || pixels > maximumProjectionConsistencyErrorPixels)
+            {
+                reason = $"数字模型与真实瓶子没有对齐，拒绝当前位姿："
+                    + $"{lastProjectionDiagnostic}，阈值 {maximumProjectionConsistencyErrorPixels:F1}px。";
+                return false;
+            }
+
+            reason = string.Empty;
+            return true;
         }
 
         private void ShowInitialPose()
@@ -1250,9 +1372,10 @@ namespace Urp.ArDemo
             Vector3 rootPosition = initialMouthPositionInCamera
                 - previewRotation * (canonicalMouth * calibration.metersPerModelUnit);
 
-            trackedObjectPoseRoot.SetParent(arCamera.transform, false);
-            trackedObjectPoseRoot.localPosition = rootPosition;
-            trackedObjectPoseRoot.localRotation = previewRotation;
+            if (trackedObjectPoseRoot.parent != null)
+                trackedObjectPoseRoot.SetParent(null, true);
+            trackedObjectPoseRoot.position = arCamera.transform.TransformPoint(rootPosition);
+            trackedObjectPoseRoot.rotation = arCamera.transform.rotation * previewRotation;
             trackedObjectPoseRoot.localScale = Vector3.one * calibration.metersPerModelUnit;
             trackingState = TrackingState.Aligning;
             if (occlusionRoot != null) occlusionRoot.gameObject.SetActive(false);
@@ -1310,6 +1433,16 @@ namespace Urp.ArDemo
             if (arCamera == null)
             {
                 reason = "AR Camera 为空";
+                return false;
+            }
+            if (trackedObjectPoseRoot == null
+                || !registeredRepairPart.IsChildOf(trackedObjectPoseRoot)
+                || registeredRepairPart.IsChildOf(arCamera.transform)
+                || registeredRepairPart.GetComponentInParent<Canvas>() != null
+                || registeredRepairPart.GetComponent<RectTransform>() != null
+                || registeredRepairPart.GetComponentInParent<ARAnchor>() != null)
+            {
+                reason = "瓶盖层级错误，虚拟修复部件必须跟随数字瓶模型，不能跟随屏幕、相机或独立 ARAnchor";
                 return false;
             }
             if (capRenderers == null || capRenderers.Length == 0)
@@ -1402,24 +1535,39 @@ namespace Urp.ArDemo
 
         private void HideOverlay(bool force)
         {
-            if (!force && registrationWorldLocked)
+            if (!force)
             {
-                trackingState = TrackingState.Tracking;
+                HandleTrackingFailure();
+                return;
+            }
+
+            ClearRegistrationLock();
+            SetReferenceHierarchyVisible(false);
+            SetRepairHierarchyVisible(false);
+        }
+
+        private void HandleTrackingFailure()
+        {
+            trackingState = TrackingState.Lost;
+            if (registrationEstablished
+                && Time.unscaledTime - lastValidPoseTime <= temporaryLossHoldSeconds)
+            {
+                // Short loss: retain the complete rigid B+C pose. Only C stays
+                // visible; no child transform is changed and no screen lock is used.
                 SetReferenceHierarchyVisible(false);
                 SetRepairHierarchyVisible(repairVisibleRequested);
                 return;
             }
 
-            ClearRegistrationLock();
-            if (!force && modeEnabled && recognitionRunning)
+            if (registrationEstablished)
             {
-                trackingState = TrackingState.Lost;
-                SetReferenceHierarchyVisible(false);
-                SetRepairHierarchyVisible(false);
-                return;
+                registrationEstablished = false;
+                registrationStableFrames = 0;
+                hasTrackedPose = false;
             }
-
-            SetReferenceHierarchyVisible(false);
+            // Long loss: expose B at the last known pose for re-registration;
+            // do not delete the transform chain and do not show a guessed cap.
+            SetReferenceHierarchyVisible(true);
             SetRepairHierarchyVisible(false);
         }
 
@@ -1567,7 +1715,7 @@ namespace Urp.ArDemo
                 {
                     state = trackingState.ToString(),
                     hasTrackedPose = hasTrackedPose,
-                    registrationWorldLocked = registrationWorldLocked,
+                    rigidRegistrationEstablished = registrationEstablished,
                     registrationStableFrames = registrationStableFrames,
                     rootParent = trackedObjectPoseRoot != null && trackedObjectPoseRoot.parent != null
                         ? trackedObjectPoseRoot.parent.name : "<world>",
@@ -1618,7 +1766,7 @@ namespace Urp.ArDemo
         {
             public string state;
             public bool hasTrackedPose;
-            public bool registrationWorldLocked;
+            public bool rigidRegistrationEstablished;
             public int registrationStableFrames;
             public string rootParent;
             public Vector3 rootPosition;

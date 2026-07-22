@@ -7,7 +7,8 @@ Unity Android prototype for the cultural heritage digital restoration and AR pre
 - Three-dimensional resource viewer for the reconstructed damaged bottle and complete bottle.
 - Thesis section 5.2 Object Tracking flow: show a clean cyan outline registered
   to no-cap reference B, let the user frame real bottle A inside it, capture that
-  pose on Start, estimate B with adaptive ORB/PnP, then hide B and render only C.
+  pose on Start, estimate B with adaptive ORB/PnP, continuously update the rigid
+  B+C root, then disable only B's Renderers and render C.
 - Chinese navigation, compact tracking controls, safe-area title coverage and a
   collapsed Development diagnostics drawer for inspecting B, C and B+C registration.
 
@@ -27,4 +28,4 @@ The Android ORB/PnP implementation is the project-owned native plugin under `Nat
 - Unity version: 2022.3.62f2.
 - Unity menu: `URP AR/Setup Prototype Scene`.
 - Command-line method: `Urp.ArDemo.Editor.UrpArProjectSetup.BuildAndroidFromCommandLine`.
-- APK output: `Builds/Paper52ObjectTrackingAR.apk`.
+- APK output: `Builds/RigidBottleBCTrackingAR.apk`.

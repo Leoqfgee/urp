@@ -92,6 +92,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--source-texture", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--registration-output", type=Path, required=True)
+    parser.add_argument("--unity-fbx", type=Path, required=True)
     return parser.parse_args(argv)
 
 
@@ -337,6 +338,7 @@ def point_camera(camera: bpy.types.Object, target: tuple[float, float, float]) -
 
 def render_registration_scene(
     registration_output: Path,
+    unity_fbx: Path,
     reference: ObjData,
     mouth: ObjData,
     cap: ObjData,
@@ -352,17 +354,44 @@ def render_registration_scene(
         "BottleWhite": make_material("BottleWhite", (0.94, 0.94, 0.91, 1)),
         "BottleCapWhite": make_material("BottleCapWhite", (0.93, 0.93, 0.90, 1)),
     }
-    reference_object = create_blender_object("ReferenceBottleB_OriginalPhotogrammetry", reference, materials)
-    mouth_object = create_blender_object("ReferenceBottleB_RegisteredOpenMouth", mouth, materials)
-    cap_object = create_blender_object("RepairPartC_RegisteredBottleCap", cap, materials)
+    reference_object = create_blender_object("DamagedBottleB_PhotogrammetryBody", reference, materials)
+    mouth_object = create_blender_object("DamagedBottleB_OpenMouth", mouth, materials)
+    cap_object = create_blender_object("BottleCapC", cap, materials)
 
-    reference_root = bpy.data.objects.new("ReferenceBottleB_HiddenAtRuntime", None)
-    repair_root = bpy.data.objects.new("RepairPartRoot", None)
+    pair_root = bpy.data.objects.new("BottleRepairRoot", None)
+    reference_root = bpy.data.objects.new("DamagedBottleB", None)
+    bpy.context.collection.objects.link(pair_root)
     bpy.context.collection.objects.link(reference_root)
-    bpy.context.collection.objects.link(repair_root)
+    reference_root.parent = pair_root
+    cap_object.parent = pair_root
     reference_object.parent = reference_root
     mouth_object.parent = reference_root
-    cap_object.parent = repair_root
+
+    # B and C are authored in one canonical coordinate frame.  Their object
+    # transforms are deliberately identity; C's registration is baked into its
+    # mesh coordinates and must never be guessed or rewritten at runtime.
+    for obj in (pair_root, reference_root, reference_object, mouth_object, cap_object):
+        obj.location = (0.0, 0.0, 0.0)
+        obj.rotation_euler = (0.0, 0.0, 0.0)
+        obj.scale = (1.0, 1.0, 1.0)
+
+    unity_fbx.parent.mkdir(parents=True, exist_ok=True)
+    bpy.ops.object.select_all(action="DESELECT")
+    for obj in (pair_root, reference_root, reference_object, mouth_object, cap_object):
+        obj.select_set(True)
+    bpy.context.view_layer.objects.active = pair_root
+    bpy.ops.export_scene.fbx(
+        filepath=str(unity_fbx),
+        use_selection=True,
+        object_types={"EMPTY", "MESH"},
+        apply_unit_scale=True,
+        bake_space_transform=False,
+        axis_forward="-Z",
+        axis_up="Y",
+        add_leaf_bones=False,
+        path_mode="COPY",
+        embed_textures=True,
+    )
 
     ground_material = make_material("Ground", (0.08, 0.08, 0.08, 1))
     bpy.ops.mesh.primitive_plane_add(size=8, location=(0, 0, -1.205))
@@ -395,12 +424,19 @@ def render_registration_scene(
     scene.world.color = (0.035, 0.035, 0.035)
 
     registration_output.mkdir(parents=True, exist_ok=True)
-    scene.render.filepath = str(registration_output / "registered_b_plus_c_front.png")
-    bpy.ops.render.render(write_still=True)
-    camera.location = (1.7, -2.7, -0.45)
-    point_camera(camera, (0.0, 0.0, -0.57))
-    scene.render.filepath = str(registration_output / "registered_b_plus_c_oblique.png")
-    bpy.ops.render.render(write_still=True)
+    views = {
+        "front": (0.0, -3.1, -0.50),
+        "back": (0.0, 3.1, -0.50),
+        "left": (-3.1, 0.0, -0.50),
+        "right": (3.1, 0.0, -0.50),
+        "top": (0.0, -0.35, 2.8),
+        "oblique": (1.7, -2.7, -0.20),
+    }
+    for name, location in views.items():
+        camera.location = location
+        point_camera(camera, (0.0, 0.0, -0.57))
+        scene.render.filepath = str(registration_output / f"registered_b_plus_c_{name}.png")
+        bpy.ops.render.render(write_still=True)
     cap_object.hide_render = True
     camera.location = (0.0, -3.1, -0.50)
     point_camera(camera, (0.0, 0.0, -0.57))
@@ -436,14 +472,16 @@ def main() -> None:
     complete.append(damaged)
     complete.append(cap)
 
-    shutil.copy2(args.source_texture, args.output / "bottle_atlas.png")
+    output_texture = args.output / "bottle_atlas.png"
+    if args.source_texture.resolve() != output_texture.resolve():
+        shutil.copy2(args.source_texture, output_texture)
     write_materials(args.output / "bottle_clean.mtl")
     write_obj(damaged, args.output / "bottle_damaged_clean.obj", "ReferenceBottleB_NoCap")
     write_obj(complete, args.output / "bottle_complete_clean.obj", "ReferenceBottleB_WithRegisteredCapC")
     write_obj(cap, args.output / "bottle_cap_clean.obj", "RepairPartC_RegisteredBottleCap")
 
     report = {
-        "version": "coconut-photogrammetry-b-c-registration-v4",
+        "version": "coconut-photogrammetry-b-c-rigid-registration-v5",
         "source": {
             "blend": str(args.source_blend),
             "texture": str(args.source_texture),
@@ -473,21 +511,53 @@ def main() -> None:
             "bounds_model": bounds(cap),
         },
         "registration": {
+            "hierarchy": {
+                "root": "BottleRepairRoot",
+                "reference": "BottleRepairRoot/DamagedBottleB",
+                "repair": "BottleRepairRoot/BottleCapC",
+            },
             "local_position": [0.0, 0.0, 0.0],
             "local_euler_degrees": [0.0, 0.0, 0.0],
             "local_scale": [1.0, 1.0, 1.0],
+            "T_b_c": [
+                [1.0, 0.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0, 0.0],
+                [0.0, 0.0, 1.0, 0.0],
+                [0.0, 0.0, 0.0, 1.0],
+            ],
+            "T_orb_to_b": [
+                [1.0, 0.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0, 0.0],
+                [0.0, 0.0, 1.0, 0.0],
+                [0.0, 0.0, 0.0, 1.0],
+            ],
+            "mouth_contact_center_model": [0.0, 0.0, 0.0],
+            "mouth_axis_model": [0.0, 1.0, 0.0],
+            "cap_contact_center_model": [0.0, 0.0, 0.0],
+            "cap_axis_model": [0.0, 1.0, 0.0],
             "axis_angle_error_degrees": 0.0,
             "centre_error_m": 0.0,
             "size_ratio": 1.0,
-            "method": "Blender canonical registration: b mouth centre and c axis share one measured frame",
+            "method": "Blender rigid B+C registration; C transform is baked in the shared B canonical frame",
             "device_overlay_verified": False,
+        },
+        "unity_export": {
+            "fbx": str(args.unity_fbx),
+            "runtime_rule": "update TrackedBottleRoot only; never update BottleCapC transform",
         },
     }
     (args.output / "bottle_cap_registration_report.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
-    render_registration_scene(args.registration_output, reference, mouth, cap, args.source_texture)
+    render_registration_scene(
+        args.registration_output,
+        args.unity_fbx,
+        reference,
+        mouth,
+        cap,
+        args.source_texture,
+    )
     print(json.dumps({
         "reference_faces": len(reference.faces),
         "mouth_faces": len(mouth.faces),

@@ -1,8 +1,8 @@
 {
-  "version": "coconut-photogrammetry-b-c-registration-v4",
+  "version": "coconut-photogrammetry-b-c-rigid-registration-v5",
   "source": {
     "blend": "F:\\Au\\暑期任务\\bottle0720\\processed_20260721\\final_bottle\\bottle0720_extracted.blend",
-    "texture": "F:\\Au\\暑期任务\\bottle0720\\processed_20260721\\final_bottle\\texture_1001.png",
+    "texture": "F:\\Au\\urp-unity-ar\\Assets\\Models\\CleanBottleReconstruction\\bottle_atlas.png",
     "body_policy": "preserve approved photogrammetry body; remove only triangles touching the reconstructed cap region",
     "source_cap_cut_z": 1.25,
     "source_mouth_z": 1.34,
@@ -55,6 +55,11 @@
     }
   },
   "registration": {
+    "hierarchy": {
+      "root": "BottleRepairRoot",
+      "reference": "BottleRepairRoot/DamagedBottleB",
+      "repair": "BottleRepairRoot/BottleCapC"
+    },
     "local_position": [
       0.0,
       0.0,
@@ -70,10 +75,86 @@
       1.0,
       1.0
     ],
+    "T_b_c": [
+      [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        1.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "T_orb_to_b": [
+      [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        1.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "mouth_contact_center_model": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "mouth_axis_model": [
+      0.0,
+      1.0,
+      0.0
+    ],
+    "cap_contact_center_model": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "cap_axis_model": [
+      0.0,
+      1.0,
+      0.0
+    ],
     "axis_angle_error_degrees": 0.0,
     "centre_error_m": 0.0,
     "size_ratio": 1.0,
-    "method": "Blender canonical registration: b mouth centre and c axis share one measured frame",
+    "method": "Blender rigid B+C registration; C transform is baked in the shared B canonical frame",
     "device_overlay_verified": false
+  },
+  "unity_export": {
+    "fbx": "F:\\Au\\urp-unity-ar\\Assets\\Models\\CleanBottleReconstruction\\bottle_repair_registered.fbx",
+    "runtime_rule": "update TrackedBottleRoot only; never update BottleCapC transform"
   }
 }

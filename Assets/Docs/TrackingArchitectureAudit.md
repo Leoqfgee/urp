@@ -38,22 +38,21 @@ for Development diagnostics. No `ViewportPointToRay` path exists.
 Scene hierarchy is:
 
 ```text
-TrackedObjectPoseRoot
+TrackedBottleRoot
 `- ModelCoordinateAlignment
-   |- TrackingReferenceBRoot
-   |  |- ReferenceBottleB_AlignmentOutline (visible only before Start)
-   |  `- ReferenceBottleB_AlignmentGuide (raw B, diagnostics only)
-   |- RepairPartRoot
-   |  `- RegisteredBottleCap (runtime)
+   |- BottleRepairRoot (Blender-authored rigid pair)
+   |  |- DamagedBottleB
+   |  `- BottleCapC
+   |- ReferenceBottleB_AlignmentOutline (visible only before Start)
    |- OcclusionRoot
    |  `- RegisteredNeckOccluder (runtime, disabled by default)
    `- DebugRoot
 ```
 
-Before Start, reference model b is translucent and repair model c is hidden.
-Start captures the user's coarse b pose, hides both, and begins a-to-b tracking.
-After a valid pose, b remains hidden and `SetRepairHierarchyVisible()` explicitly
-activates c and every repair renderer.
+Before Start, the outline is visible and c is hidden. After Start, translucent b
+is visible while a-to-b tracking is validated. After 12 valid consecutive poses,
+only b's Renderers are disabled; b's Transform and the entire B+C hierarchy stay
+active. ORB/PnP continues updating `TrackedBottleRoot`, so c rigidly inherits b.
 
 ## Canonical model and registration
 
@@ -64,8 +63,9 @@ activates c and every repair renderer.
   reference model b's frame; b and cap c share that canonical frame.
 - Runtime loads `trackingReferenceDatabase`, solves the pose of b, and then
   moves c through their common parent. Cap c contributes no ORB descriptors.
-- The cap registration is baked into `bottle_cap_clean.obj`, so runtime local
-  position, rotation and scale are identity.
+- The cap registration is baked into `bottle_repair_registered.fbx`; `T_b_c`
+  is identity in the shared canonical frame. The offline ORB observations have
+  already been transformed into that frame, so `T_orb_to_b` is identity too.
 - Occlusion geometry remains disabled until a real-device visible cap is
   confirmed. The current cylinder is diagnostic/provisional, not final.
 

@@ -31,6 +31,8 @@ namespace Urp.ArDemo.Editor
             "Assets/Models/CleanBottleReconstruction/bottle_atlas.png";
         private const string BottleRepairPath =
             "Assets/Models/CleanBottleReconstruction/bottle_cap_clean.obj";
+        private const string BottleRegisteredPairPath =
+            "Assets/Models/CleanBottleReconstruction/bottle_repair_registered.fbx";
         private const string BottleOccluderPath =
             "Assets/Objects/CoconutBottle/Prefabs/BottleNeckOccluder.prefab";
         private const string OccluderShaderPath =
@@ -45,7 +47,7 @@ namespace Urp.ArDemo.Editor
             "Assets/Resources/AlignmentOutline.mat";
         private const string BottleGuideMaterialPath =
             "Assets/Materials/ReferenceBottleBAlignmentGuide.mat";
-        private const string AndroidApkPath = "Builds/Paper52ObjectTrackingAR.apk";
+        private const string AndroidApkPath = "Builds/RigidBottleBCTrackingAR.apk";
         private const string BottleReferenceOrbPath =
             "Assets/OrbModels/bottle_reference_b.bytes";
         private const string BottleCalibrationPath =
@@ -147,14 +149,14 @@ namespace Urp.ArDemo.Editor
 
         private static void ConfigureAndroidProject()
         {
-            PlayerSettings.productName = "论文式三维跟踪修复";
+            PlayerSettings.productName = "刚性瓶体配准修复";
             PlayerSettings.companyName = "qfgeeee";
-            PlayerSettings.bundleVersion = "4.1.0";
+            PlayerSettings.bundleVersion = "4.2.0";
             PlayerSettings.SetApplicationIdentifier(
                 BuildTargetGroup.Android, "com.qfgeeee.paper52objecttrackingar");
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
-            PlayerSettings.Android.bundleVersionCode = 410;
+            PlayerSettings.Android.bundleVersionCode = 420;
             PlayerSettings.SetScriptingBackend(
                 BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
@@ -261,7 +263,8 @@ namespace Urp.ArDemo.Editor
         {
             foreach (string path in new[]
                      {
-                         BottleDamagedPath, BottleCompletePath, BottleRepairPath, TissueModelPath
+                         BottleDamagedPath, BottleCompletePath, BottleRepairPath,
+                         BottleRegisteredPairPath, TissueModelPath
                      })
             {
                 RequireFile(path);
@@ -340,6 +343,8 @@ namespace Urp.ArDemo.Editor
                 AssetDatabase.LoadAssetAtPath<GameObject>(BottleCompletePath);
             bottle.trackingReferencePrefab =
                 AssetDatabase.LoadAssetAtPath<GameObject>(BottleDamagedPath);
+            bottle.registeredBottlePairPrefab =
+                AssetDatabase.LoadAssetAtPath<GameObject>(BottleRegisteredPairPath);
             bottle.trackingReferenceDatabase =
                 AssetDatabase.LoadAssetAtPath<TextAsset>(BottleReferenceOrbPath);
             bottle.registeredRepairPrefab =
@@ -360,8 +365,11 @@ namespace Urp.ArDemo.Editor
             bottleCalibration.expectedPhysicalNeckDiameter = 0.034f;
             bottleCalibration.expectedPhysicalCapDiameter = 0.039f;
             bottleCalibration.expectedPhysicalCapHeight = 0.010f;
-            // The registration is baked into bottle_cap_clean.obj. Runtime
-            // transform remains identity in the mouth-centred canonical frame.
+            bottleCalibration.orbToModelLocalPosition = Vector3.zero;
+            bottleCalibration.orbToModelLocalEulerAngles = Vector3.zero;
+            bottleCalibration.orbToModelLocalScale = Vector3.one;
+            // The rigid B+C registration is baked into bottle_repair_registered.fbx.
+            // BottleCapC stays at identity in the shared mouth-centred frame.
             bottleCalibration.capLocalPosition = Vector3.zero;
             bottleCalibration.capLocalEulerAngles = Vector3.zero;
             bottleCalibration.capLocalScale = Vector3.one;
@@ -382,9 +390,13 @@ namespace Urp.ArDemo.Editor
             bottle.trackingSettings.maximumReprojectionErrorPixels = 3.0f;
             bottle.trackingSettings.minimumCoverageX = 0.05f;
             bottle.trackingSettings.minimumCoverageY = 0.18f;
-            bottle.trackingSettings.registrationConfirmationFrames = 4;
+            bottle.trackingSettings.registrationConfirmationFrames = 12;
             bottle.trackingSettings.registrationPositionToleranceMeters = 0.025f;
             bottle.trackingSettings.registrationRotationToleranceDegrees = 8f;
+            bottle.trackingSettings.maximumProjectionConsistencyErrorPixels = 80f;
+            bottle.trackingSettings.temporaryLossHoldSeconds = 0.8f;
+            bottle.trackingSettings.positionSmoothing = 0.30f;
+            bottle.trackingSettings.rotationSmoothing = 0.25f;
             bottle.trackingSettings.initialAlignmentMaximumViewportError = 0.28f;
             bottle.trackingSettings.initialAlignmentMaximumUpAxisErrorDegrees = 55f;
             bottle.physicalScaleVerified =
@@ -452,6 +464,7 @@ namespace Urp.ArDemo.Editor
                 AssetDatabase.LoadAssetAtPath<GameObject>(TissueModelPath);
             tissue.completeViewerPrefab = null;
             tissue.trackingReferencePrefab = null;
+            tissue.registeredBottlePairPrefab = null;
             tissue.trackingReferenceDatabase = null;
             tissue.registeredRepairPrefab = null;
             tissue.registeredOccluderPrefab = null;
@@ -506,20 +519,16 @@ namespace Urp.ArDemo.Editor
             origin.Camera = arCamera;
             CreateRepairLighting(cameraObject.transform);
 
-            GameObject trackedRoot = new GameObject("TrackedObjectPoseRoot");
+            GameObject trackedRoot = new GameObject("TrackedBottleRoot");
             GameObject alignment = new GameObject("ModelCoordinateAlignment");
             alignment.transform.SetParent(trackedRoot.transform, false);
-            GameObject referenceRoot = new GameObject("TrackingReferenceBRoot");
-            referenceRoot.transform.SetParent(alignment.transform, false);
-            GameObject repairRoot = new GameObject("RepairPartRoot");
-            repairRoot.transform.SetParent(alignment.transform, false);
             GameObject occlusionRoot = new GameObject("OcclusionRoot");
             occlusionRoot.transform.SetParent(alignment.transform, false);
             occlusionRoot.SetActive(false);
             GameObject debugRoot = new GameObject("DebugRoot");
             debugRoot.transform.SetParent(alignment.transform, false);
             debugRoot.SetActive(false);
-            trackedRoot.SetActive(false);
+            trackedRoot.SetActive(true);
 
             GameObject application = new GameObject("URP Application");
             application.AddComponent<BuildIdentityRuntime>();
@@ -530,8 +539,6 @@ namespace Urp.ArDemo.Editor
             AssignReference(tracker, "arCamera", arCamera);
             AssignReference(tracker, "trackedObjectPoseRoot", trackedRoot.transform);
             AssignReference(tracker, "modelCoordinateAlignment", alignment.transform);
-            AssignReference(tracker, "modelReferenceRoot", referenceRoot.transform);
-            AssignReference(tracker, "repairPartRoot", repairRoot.transform);
             AssignReference(tracker, "occlusionRoot", occlusionRoot.transform);
             AssignReference(tracker, "debugRoot", debugRoot.transform);
             AssignVector3(tracker, "initialMouthPositionInCamera", new Vector3(0f, 0.16f, 0.42f));

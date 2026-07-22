@@ -30,6 +30,7 @@ MonoBehaviour:
   viewerMaterial: {fileID: 2100000, guid: 75013f2e0e5dec2488dd3d43aa862ab0, type: 2}
   defaultViewerEuler: {x: 0, y: 0, z: 0}
   viewerMargin: 0.18
+  registeredBottlePairPrefab: {fileID: 919132149155446097, guid: eac474930e7d80a4b991332fe2e4c197, type: 3}
   trackingReferencePrefab: {fileID: 919132149155446097, guid: 135d2e42e39914d4cb494ce04d1fc847, type: 3}
   trackingReferenceDatabase: {fileID: 4900000, guid: d03d8d9ae31558b45a904aab6d4b738c, type: 3}
   registeredRepairPrefab: {fileID: 919132149155446097, guid: 86aafdaf466719845b222346b23edfff, type: 3}
@@ -43,9 +44,13 @@ MonoBehaviour:
     maximumReprojectionErrorPixels: 3
     minimumCoverageX: 0.05
     minimumCoverageY: 0.18
-    registrationConfirmationFrames: 4
+    registrationConfirmationFrames: 12
     registrationPositionToleranceMeters: 0.025
     registrationRotationToleranceDegrees: 8
+    maximumProjectionConsistencyErrorPixels: 80
+    temporaryLossHoldSeconds: 0.8
+    positionSmoothing: 0.3
+    rotationSmoothing: 0.25
     initialAlignmentMaximumViewportError: 0.28
     initialAlignmentMaximumUpAxisErrorDegrees: 55
   repairMaterial: {fileID: 2100000, guid: 8d303b9a66ee40a43af998249f1e1795, type: 2}
