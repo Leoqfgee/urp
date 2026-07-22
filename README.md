@@ -5,14 +5,18 @@ Unity Android prototype for the cultural heritage digital restoration and AR pre
 ## Implemented application flow
 
 - Three-dimensional resource viewer for the reconstructed damaged bottle and complete bottle.
-- ORB three-dimensional tracking mode with a merged 5,000-point feature database, PnP pose estimation, reprojection validation, display-coordinate correction, temporal smoothing, bottle-neck occlusion, and local luminance adaptation.
-- Chinese navigation and working controls for start, reset, before/after comparison, rotate, zoom, and project information.
+- Thesis section 5.2 Object Tracking flow: show translucent no-cap reference
+  model B, let the user coarsely align real bottle A and B, capture that pose on
+  Start, estimate B with ORB/PnP, then hide B and render only repair cap C.
+- Chinese navigation, compact tracking controls, safe-area title coverage and a
+  collapsed Development diagnostics drawer for inspecting B, C and B+C registration.
 
 ## Tracking data
 
 - Actual object: cap-missing coconut drink bottle.
-- Repair part: processed Meshroom bottle-cap reconstruction.
-- ORB 3D databases: `Assets/OrbModels/`.
+- Tracking reference: no-cap photogrammetry model B.
+- Repair part: Blender-registered bottle-cap model C; C is excluded from feature matching.
+- ORB 3D database: `Assets/OrbModels/bottle_reference_b.bytes`.
 - Bottle calibration: mouth-centred canonical frame, 34 mm mouth diameter,
   39 mm cap diameter and 10 mm cap height.
 
@@ -23,4 +27,4 @@ The Android ORB/PnP implementation is the project-owned native plugin under `Nat
 - Unity version: 2022.3.62f2.
 - Unity menu: `URP AR/Setup Prototype Scene`.
 - Command-line method: `Urp.ArDemo.Editor.UrpArProjectSetup.BuildAndroidFromCommandLine`.
-- APK output: `Builds/CanonicalBottleRepairAR.apk`.
+- APK output: `Builds/Paper52ObjectTrackingAR.apk`.

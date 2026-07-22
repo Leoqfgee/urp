@@ -5,6 +5,7 @@ using System.Reflection;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 using UnityEngine.UI;
 using UnityEngine.XR.ARFoundation;
@@ -248,12 +249,20 @@ namespace Urp.ArDemo.Editor
                     && bottle.repairMaterial.HasProperty("_Cull")
                     && Mathf.Approximately(bottle.repairMaterial.GetFloat("_Cull"), 0f),
                 "Bottle cap material lacks fill light or two-sided rendering.");
+            Require(bottle.initialGuideMaterial != null
+                    && bottle.initialGuideMaterial.shader != null
+                    && bottle.initialGuideMaterial.shader.name == "Universal Render Pipeline/Lit"
+                    && bottle.initialGuideMaterial.renderQueue >= (int)RenderQueue.Transparent
+                    && bottle.initialGuideMaterial.GetColor("_BaseColor").a < 0.5f,
+                "Reference model B does not use the translucent initial-alignment guide material.");
             Require(bottle.trackingSettings.lostPoseGraceSeconds >= 2f
                     && bottle.trackingSettings.minimumGoodMatches == 14
                     && bottle.trackingSettings.minimumPoseInliers == 10
                     && bottle.trackingSettings.minimumCoverageX <= 0.06f
                     && bottle.trackingSettings.maximumPositionJumpMeters <= 0.06f
-                    && bottle.trackingSettings.maximumRotationJumpDegrees <= 18f,
+                    && bottle.trackingSettings.maximumRotationJumpDegrees <= 18f
+                    && bottle.trackingSettings.initialAlignmentMaximumPositionErrorMeters <= 0.30f
+                    && bottle.trackingSettings.initialAlignmentMaximumRotationErrorDegrees <= 85f,
                 "Bottle tracking continuity settings do not protect the world anchor.");
 
             string[] runtimeFiles = Directory.GetFiles("Assets", "*", SearchOption.AllDirectories)
@@ -323,11 +332,11 @@ namespace Urp.ArDemo.Editor
         private static void ValidateGeneratedScene()
         {
             EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
-            Require(PlayerSettings.productName == "瓶模配准修复 AR"
+            Require(PlayerSettings.productName == "论文式三维跟踪修复"
                     && PlayerSettings.GetApplicationIdentifier(BuildTargetGroup.Android)
-                        == "com.qfgeeee.referencebrepairar"
-                    && PlayerSettings.bundleVersion == "3.0.0"
-                    && PlayerSettings.Android.bundleVersionCode == 300,
+                        == "com.qfgeeee.paper52objecttrackingar"
+                    && PlayerSettings.bundleVersion == "4.0.0"
+                    && PlayerSettings.Android.bundleVersionCode == 400,
                 "Android app identity reverted to the legacy application.");
             RestorationObjectCatalog catalog =
                 AssetDatabase.LoadAssetAtPath<RestorationObjectCatalog>(CatalogPath);
@@ -340,7 +349,7 @@ namespace Urp.ArDemo.Editor
             Transform occlusionRoot = FindRequired("OcclusionRoot");
             Transform debugRoot = FindRequired("DebugRoot");
             Require(referenceRoot.parent == alignment && referenceRoot.gameObject.activeSelf,
-                "Hidden reference model root must share the canonical alignment frame.");
+                "Reference model B root must share the canonical alignment frame.");
             OrbImageTrackingController tracker =
                 UnityEngine.Object.FindObjectOfType<OrbImageTrackingController>(true);
             Require(tracker != null, "ORB tracking controller is missing.");
@@ -404,8 +413,19 @@ namespace Urp.ArDemo.Editor
                 "BuildInterface", BindingFlags.Instance | BindingFlags.NonPublic);
             build?.Invoke(app, null);
             Transform ui = FindRequired("URP Application UI");
+            CanvasScaler scaler = ui.GetComponent<CanvasScaler>();
+            Require(scaler != null
+                    && scaler.referenceResolution == new Vector2(1080f, 2400f)
+                    && Mathf.Approximately(scaler.matchWidthOrHeight, 0.5f),
+                "Canvas scaling has reverted to the oversized legacy phone proportions.");
             Require(FindChild(ui, "FullScreenBackground") != null,
                 "Full-screen background is missing.");
+            RectTransform topCover = FindChild(ui, "TrackingTopSystemBarCover") as RectTransform;
+            RectTransform bottomCover = FindChild(ui, "TrackingBottomSystemBarCover") as RectTransform;
+            Require(topCover != null && bottomCover != null
+                    && topCover.anchorMin.y <= 0.8951f && topCover.anchorMax.y == 1f
+                    && bottomCover.anchorMin.y == 0f && bottomCover.anchorMax.y >= 0.0249f,
+                "Tracking UI does not cover the unsafe top/bottom system-bar regions.");
             Transform safeArea = FindChild(ui, "SafeArea");
             Require(safeArea != null, "SafeArea is missing.");
             Require(FindChild(ui, "ModalLayer") != null, "ModalLayer is missing.");
@@ -415,6 +435,20 @@ namespace Urp.ArDemo.Editor
                          "ResourcePageContent", "TrackingPageContent"
                      })
                 Require(FindChild(safeArea, page) != null, $"Page is missing: {page}");
+            Transform developmentPanel = FindChild(ui, "DevelopmentDebugPanel");
+            Require(developmentPanel != null && !developmentPanel.gameObject.activeSelf,
+                "Development diagnostics must be collapsed by default.");
+            Transform trackingPage = FindChild(safeArea, "TrackingPageContent");
+            RectTransform trackingHeader = FindChild(trackingPage, "Header") as RectTransform;
+            Require(trackingHeader != null && trackingHeader.anchorMin.y >= 0.919f,
+                "Tracking title bar is too tall or leaves an unsafe camera strip above it.");
+            string[] diagnosticLabels =
+            {
+                "查看 B+C 注册Button", "仅显示参考 BButton", "仅显示修复 CButton",
+                "保存诊断帧Button", "返回论文流程Button"
+            };
+            Require(diagnosticLabels.All(label => FindChild(developmentPanel, label) != null),
+                "Development panel still exposes legacy cap/occluder diagnostics.");
             RawImage viewport = UnityEngine.Object.FindObjectsOfType<RawImage>(true)
                 .FirstOrDefault(item => item.name == "ModelViewport");
             Require(viewport != null && viewport.GetComponent<ModelViewportInputHandler>() != null,

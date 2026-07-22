@@ -41,6 +41,8 @@ MonoBehaviour:
     lostPoseGraceSeconds: 0.45
     maximumPositionJumpMeters: 0.16
     maximumRotationJumpDegrees: 32
+    initialAlignmentMaximumPositionErrorMeters: 0.3
+    initialAlignmentMaximumRotationErrorDegrees: 85
   repairMaterial: {fileID: 0}
   initialGuideMaterial: {fileID: 0}
   physicalScaleVerified: 0

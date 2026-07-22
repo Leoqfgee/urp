@@ -21,7 +21,6 @@ namespace Urp.ArDemo
                 return;
             }
 
-            orbTracker.SetRepairVisible(true);
             orbTracker.StartRecognition();
         }
 
@@ -33,7 +32,6 @@ namespace Urp.ArDemo
                 return;
             }
 
-            orbTracker.SetRepairVisible(true);
             orbTracker.ResetTracking();
         }
 

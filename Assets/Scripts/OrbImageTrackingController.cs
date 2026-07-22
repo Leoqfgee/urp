@@ -17,6 +17,7 @@ namespace Urp.ArDemo
     {
         public enum TrackingState
         {
+            Aligning,
             Searching,
             Candidate,
             PoseValidating,
@@ -103,6 +104,13 @@ namespace Urp.ArDemo
         private bool hasDisplayMatrix;
         private readonly List<NativeDebugPoint> lastDebugPoints = new List<NativeDebugPoint>();
         private bool showNativeDebugOverlay = true;
+        private bool alignmentGuideVisible;
+        private bool hasStartAlignmentPose;
+        private bool alignmentPriorConsumed;
+        private Vector3 startAlignmentPosition;
+        private Quaternion startAlignmentRotation;
+        private float initialAlignmentMaximumPositionErrorMeters = 0.30f;
+        private float initialAlignmentMaximumRotationErrorDegrees = 85f;
 
         public bool HasTrackedPose => hasTrackedPose;
         public TrackingState State => trackingState;
@@ -187,6 +195,10 @@ namespace Urp.ArDemo
                     profile.trackingSettings.maximumPositionJumpMeters;
                 maximumRotationJumpDegrees =
                     profile.trackingSettings.maximumRotationJumpDegrees;
+                initialAlignmentMaximumPositionErrorMeters =
+                    profile.trackingSettings.initialAlignmentMaximumPositionErrorMeters;
+                initialAlignmentMaximumRotationErrorDegrees =
+                    profile.trackingSettings.initialAlignmentMaximumRotationErrorDegrees;
             }
             foreach (NativeOrbTracker tracker in trackers)
             {
@@ -225,12 +237,12 @@ namespace Urp.ArDemo
             if (profile != null)
             {
                 // b is the no-cap photogrammetry model registered with c in Blender.
-                // It defines the natural-feature object frame but must never be drawn
-                // over the real bottle a in tracking mode.
+                // Paper section 5.2 requires b to be visible only for the initial
+                // user alignment. Start hides b; successful tracking renders only c.
                 if (profile.trackingReferencePrefab != null && referenceParent != null)
                 {
                     GameObject reference = Instantiate(profile.trackingReferencePrefab, referenceParent);
-                    reference.name = "ReferenceBottleB_Hidden";
+                    reference.name = "ReferenceBottleB_AlignmentGuide";
                     reference.transform.localPosition = Vector3.zero;
                     reference.transform.localRotation = Quaternion.identity;
                     reference.transform.localScale = Vector3.one;
@@ -238,7 +250,15 @@ namespace Urp.ArDemo
                     referenceRenderers = reference.GetComponentsInChildren<Renderer>(true);
                     foreach (Renderer renderer in referenceRenderers)
                     {
-                        renderer.enabled = false;
+                        if (profile.initialGuideMaterial != null)
+                        {
+                            Material[] guideMaterials = new Material[
+                                Mathf.Max(1, renderer.sharedMaterials.Length)];
+                            for (int slot = 0; slot < guideMaterials.Length; slot++)
+                                guideMaterials[slot] = profile.initialGuideMaterial;
+                            renderer.sharedMaterials = guideMaterials;
+                        }
+                        renderer.enabled = true;
                         renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                         renderer.receiveShadows = false;
                     }
@@ -311,7 +331,7 @@ namespace Urp.ArDemo
                 }
                 ShowInitialPose();
                 UpdateStatus(
-                    $"移动手机，使参考修复部件与 {activeProfile.missingPartName} 大致重合，然后点击“开始”。");
+                    $"移动手机，使半透明参考模型 B 与真实 {activeProfile.displayName} 大致重合，然后点击“开始”。");
             }
             else
             {
@@ -330,9 +350,11 @@ namespace Urp.ArDemo
 
             recognitionRunning = true;
             trackingState = TrackingState.Searching;
-            SetRepairHierarchyVisible(true);
+            CaptureStartAlignmentPose();
+            SetReferenceHierarchyVisible(false);
+            SetRepairHierarchyVisible(false);
             nextProcessTime = 0f;
-            UpdateStatus($"正在识别 {activeProfile.displayName}，请保持主体特征清晰可见。");
+            UpdateStatus($"正在用真实瓶 A 的自然特征配准参考模型 B；配准成功后仅显示修复模型 C。");
         }
 
         public void ResetTracking()
@@ -346,8 +368,10 @@ namespace Urp.ArDemo
             pendingRelocationRotation = Quaternion.identity;
             lastPoseApplyTime = -1f;
             lastValidPoseTime = -10f;
+            hasStartAlignmentPose = false;
+            alignmentPriorConsumed = false;
             ShowInitialPose();
-            UpdateStatus("已恢复初始参考位置，请重新粗对齐后点击“开始”。");
+            UpdateStatus("已恢复参考模型 B，请移动手机完成粗对齐，然后点击“开始”。");
         }
 
         public void SetRepairVisible(bool visible)
@@ -358,13 +382,13 @@ namespace Urp.ArDemo
 
         public void SetRepairHierarchyVisible(bool visible)
         {
+            bool rootVisible = visible || alignmentGuideVisible;
             if (trackedObjectPoseRoot != null)
-                trackedObjectPoseRoot.gameObject.SetActive(visible);
+                trackedObjectPoseRoot.gameObject.SetActive(rootVisible);
             if (repairPartRoot != null)
                 repairPartRoot.gameObject.SetActive(visible);
             if (registeredRepairPart != null)
                 registeredRepairPart.gameObject.SetActive(visible);
-            EnsureReferenceModelHidden();
             if (capRenderers == null) return;
             foreach (Renderer renderer in capRenderers)
             {
@@ -373,50 +397,48 @@ namespace Urp.ArDemo
             }
         }
 
-        private void EnsureReferenceModelHidden()
+        public void SetReferenceHierarchyVisible(bool visible)
         {
+            alignmentGuideVisible = visible;
+            bool rootVisible = visible
+                || (registeredRepairPart != null && registeredRepairPart.gameObject.activeSelf);
+            if (trackedObjectPoseRoot != null)
+                trackedObjectPoseRoot.gameObject.SetActive(rootVisible);
             if (modelReferenceRoot != null)
-                modelReferenceRoot.gameObject.SetActive(true);
+                modelReferenceRoot.gameObject.SetActive(visible);
             if (registeredReferenceModel != null)
-                registeredReferenceModel.gameObject.SetActive(true);
+                registeredReferenceModel.gameObject.SetActive(visible);
             if (referenceRenderers == null) return;
             foreach (Renderer renderer in referenceRenderers)
             {
-                if (renderer != null) renderer.enabled = false;
+                if (renderer != null) renderer.enabled = visible;
             }
         }
 
-        public void ForceRepairInFrontOfCamera()
+        public void ShowRegisteredPairDiagnostic()
         {
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
-            if (arCamera == null || trackedObjectPoseRoot == null || registeredRepairPart == null)
+            if (arCamera == null || trackedObjectPoseRoot == null
+                || registeredReferenceModel == null || registeredRepairPart == null)
             {
-                UpdateStatus("强制渲染失败：AR Camera、位姿根节点或瓶盖模型未加载。");
+                UpdateStatus("B+C 注册检查失败：相机、参考模型 B 或修复模型 C 未加载。");
                 return;
             }
 
-            ExitForceRepairDebug(false);
-            forceRepairDebug = true;
-            recognitionRunning = false;
-            hasTrackedPose = false;
-            if (occlusionRoot != null) occlusionRoot.gameObject.SetActive(false);
-            trackedObjectPoseRoot.SetParent(arCamera.transform, false);
-            trackedObjectPoseRoot.localPosition = new Vector3(0f, 0f, 0.45f);
-            trackedObjectPoseRoot.localRotation = Quaternion.Euler(8f, 20f, 0f);
-            trackedObjectPoseRoot.localScale = Vector3.one
-                * (calibration != null ? calibration.metersPerModelUnit : 0.17f);
+            PrepareRegisteredPairDiagnosticPose();
+            SetReferenceHierarchyVisible(true);
             SetRepairHierarchyVisible(true);
             ApplyForceDebugMaterial();
             EnsureDebugBoundsLine();
             if (debugRoot != null) debugRoot.gameObject.SetActive(true);
             UpdateDebugBounds();
             string diagnostics = BuildRepairDiagnostics();
-            Debug.Log($"[ForceRepair] {diagnostics}");
+            Debug.Log($"[RegisteredPair B+C] {diagnostics}");
             UpdateStatus(IsRepairActuallyRenderable
-                ? "强制渲染：洋红瓶盖位于相机前方 0.45 m；该模式与 ORB/PnP 无关。"
-                : $"强制渲染失败：{diagnostics}");
+                ? "注册检查：半透明无盖瓶模型 B 与洋红修复模型 C 以 Blender 固定关系共同显示；该模式不运行 ORB/PnP。"
+                : $"B+C 注册检查失败：{diagnostics}");
 #else
-            UpdateStatus("强制渲染仅在 Development Build 中可用。");
+            UpdateStatus("B+C 注册检查仅在 Development Build 中可用。");
 #endif
         }
 
@@ -428,28 +450,49 @@ namespace Urp.ArDemo
         public void DebugShowRepairOnly()
         {
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
+            PrepareRegisteredPairDiagnosticPose();
+            SetReferenceHierarchyVisible(false);
             SetRepairHierarchyVisible(true);
             if (occlusionRoot != null) occlusionRoot.gameObject.SetActive(false);
-            UpdateStatus("当前 PnP 位姿：仅显示瓶盖；该按钮只切换可见性，不会移动错误位姿。");
+            ApplyForceDebugMaterial();
+            UpdateStatus("诊断视图：只显示修复模型 C，用于确认模型、材质、Layer 与 Camera 可见性。");
 #endif
         }
 
-        public void DebugShowOccluderOnly()
+        public void DebugShowReferenceOnly()
         {
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
+            PrepareRegisteredPairDiagnosticPose();
+            RestoreRepairMaterials();
             SetRepairHierarchyVisible(false);
-            if (trackedObjectPoseRoot != null) trackedObjectPoseRoot.gameObject.SetActive(true);
-            if (occlusionRoot != null) occlusionRoot.gameObject.SetActive(true);
-            UpdateStatus("当前 PnP 位姿：仅显示遮挡体；该按钮不会移动错误位姿。");
+            SetReferenceHierarchyVisible(true);
+            if (occlusionRoot != null) occlusionRoot.gameObject.SetActive(false);
+            UpdateStatus("诊断视图：只显示无盖参考模型 B；运行时正式跟踪成功后会隐藏 B。");
 #endif
         }
 
-        public void DebugShowRepairAndOccluder()
+        public void ExitDiagnosticsToPaperFlow()
+        {
+            ExitForceRepairDebug(false);
+            ResetTracking();
+        }
+
+        private void PrepareRegisteredPairDiagnosticPose()
         {
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
-            SetRepairHierarchyVisible(true);
-            if (occlusionRoot != null) occlusionRoot.gameObject.SetActive(true);
-            UpdateStatus("当前 PnP 位姿：瓶盖与遮挡体同时启用；该按钮不会移动错误位姿。");
+            if (forceRepairDebug)
+            {
+                RestoreRepairMaterials();
+            }
+            forceRepairDebug = true;
+            recognitionRunning = false;
+            hasTrackedPose = false;
+            if (occlusionRoot != null) occlusionRoot.gameObject.SetActive(false);
+            trackedObjectPoseRoot.SetParent(arCamera.transform, false);
+            trackedObjectPoseRoot.localPosition = new Vector3(0f, 0.08f, 0.58f);
+            trackedObjectPoseRoot.localRotation = Quaternion.Euler(4f, 12f, 0f);
+            trackedObjectPoseRoot.localScale = Vector3.one
+                * (calibration != null ? calibration.metersPerModelUnit : 0.17f);
 #endif
         }
 
@@ -701,6 +744,15 @@ namespace Urp.ArDemo
                     return;
                 }
 
+                if (!PassesStartAlignmentPrior(
+                        targetPosition, targetRotation, out string alignmentReason))
+                {
+                    trackingState = TrackingState.PoseValidating;
+                    HideOverlay(false);
+                    UpdateStatus(alignmentReason);
+                    return;
+                }
+
                 UpdateAnchorProjectionDiagnostic(best, targetPosition);
                 best.translationJumpMeters = hasTrackedPose
                     ? Vector3.Distance(lastTargetPosition, targetPosition)
@@ -723,8 +775,10 @@ namespace Urp.ArDemo
                 }
 
                 ApplyPose(targetPosition, targetRotation);
+                alignmentPriorConsumed = true;
                 trackingState = TrackingState.Tracking;
                 ApplyLightingConsistency(best.localLuminance);
+                SetReferenceHierarchyVisible(false);
                 SetRepairHierarchyVisible(repairVisibleRequested);
                 lastValidPoseTime = Time.unscaledTime;
 
@@ -867,6 +921,46 @@ namespace Urp.ArDemo
             return true;
         }
 
+        private void CaptureStartAlignmentPose()
+        {
+            if (trackedObjectPoseRoot == null)
+            {
+                hasStartAlignmentPose = false;
+                return;
+            }
+
+            startAlignmentPosition = trackedObjectPoseRoot.position;
+            startAlignmentRotation = trackedObjectPoseRoot.rotation;
+            hasStartAlignmentPose = true;
+            alignmentPriorConsumed = false;
+            trackedObjectPoseRoot.SetParent(null, true);
+        }
+
+        private bool PassesStartAlignmentPrior(
+            Vector3 position, Quaternion rotation, out string reason)
+        {
+            if (!hasStartAlignmentPose || alignmentPriorConsumed)
+            {
+                reason = string.Empty;
+                return true;
+            }
+
+            float positionError = Vector3.Distance(startAlignmentPosition, position);
+            float rotationError = Quaternion.Angle(startAlignmentRotation, rotation);
+            if (positionError <= initialAlignmentMaximumPositionErrorMeters
+                && rotationError <= initialAlignmentMaximumRotationErrorDegrees)
+            {
+                reason = string.Empty;
+                return true;
+            }
+
+            reason = $"已匹配到瓶身特征，但 PnP 位姿与开始前参考模型 B 的粗对齐差异过大："
+                + $"位置 {positionError:F2} m / {initialAlignmentMaximumPositionErrorMeters:F2} m，"
+                + $"旋转 {rotationError:F0}° / {initialAlignmentMaximumRotationErrorDegrees:F0}°。"
+                + "请点“重置”，重新用 B 对齐实物 A。";
+            return false;
+        }
+
         private void ApplyPose(Vector3 position, Quaternion rotation)
         {
             if (arCamera == null || trackedObjectPoseRoot == null)
@@ -971,7 +1065,10 @@ namespace Urp.ArDemo
             trackedObjectPoseRoot.localPosition = rootPosition;
             trackedObjectPoseRoot.localRotation = previewRotation;
             trackedObjectPoseRoot.localScale = Vector3.one * calibration.metersPerModelUnit;
-            SetRepairHierarchyVisible(repairVisibleRequested);
+            trackingState = TrackingState.Aligning;
+            if (occlusionRoot != null) occlusionRoot.gameObject.SetActive(false);
+            SetRepairHierarchyVisible(false);
+            SetReferenceHierarchyVisible(true);
         }
 
         private bool ValidateRepairVisibility(out string reason)
@@ -1119,6 +1216,8 @@ namespace Urp.ArDemo
             {
                 FreezeTrackedPoseInWorld();
                 trackingState = TrackingState.TemporarilyLost;
+                SetReferenceHierarchyVisible(false);
+                SetRepairHierarchyVisible(repairVisibleRequested);
                 return;
             }
 
@@ -1126,10 +1225,12 @@ namespace Urp.ArDemo
             if (!force && modeEnabled && recognitionRunning)
             {
                 trackingState = TrackingState.Lost;
-                ShowInitialPose();
+                SetReferenceHierarchyVisible(false);
+                SetRepairHierarchyVisible(false);
                 return;
             }
 
+            SetReferenceHierarchyVisible(false);
             SetRepairHierarchyVisible(false);
         }
 

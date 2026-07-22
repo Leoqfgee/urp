@@ -4,18 +4,20 @@ The tracking path is explicit and contains no direct `a -> c` registration.
 
 1. `b_c_registered_canonical.blend` registers the no-cap photogrammetry model
    **b** and measured repair cap **c** to one mouth-centred canonical frame.
-2. `bottle_reference_b.bytes` contains natural-feature observations of the real
-   no-cap bottle **a**, expressed in that same **b** canonical frame.
-3. Runtime ORB matching and solvePnP estimate the pose of hidden reference **b**.
-4. `TrackedObjectPoseRoot/ModelCoordinateAlignment/TrackingReferenceBRoot`
-   contains **b**, but every renderer under it is forced off.
-5. `RepairPartRoot` is a sibling in the same registered frame. It contains only
-   **c**, so the solved **b** pose moves **c** without drawing **b**.
+2. On entering Object Tracking, **b** is shown with a translucent guide material.
+   The user moves the phone until real bottle **a** and **b** approximately overlap,
+   matching the initialization described in thesis section 5.2.
+3. Start captures that coarse **b** pose, hides both **b** and **c**, and begins
+   matching natural features from **a** against `bottle_reference_b.bytes`.
+4. ORB 2D-3D matching and solvePnP estimate the pose of **b**. The first accepted
+   pose must remain consistent with the user's coarse initialization.
+5. After a valid pose, `TrackingReferenceBRoot` stays hidden and
+   `RepairPartRoot` renders only **c**. **c** contributes no descriptors.
 
 The legacy `RestorationObjectProfile.orbModelDatabase` field is deliberately
 left null. Runtime loads `trackingReferenceDatabase` and instantiates
 `trackingReferencePrefab`; this prevents a future scene rebuild from silently
-restoring the former direct-repair wiring.
+restoring direct `a -> c` placement.
 
 The rough photogrammetry surface of b supplies correspondences for one robust
 global similarity transform. That transform maps the higher-quality SfM 3D

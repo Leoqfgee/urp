@@ -40,7 +40,7 @@ Scene hierarchy is:
 TrackedObjectPoseRoot
 `- ModelCoordinateAlignment
    |- TrackingReferenceBRoot
-   |  `- ReferenceBottleB_Hidden (runtime, all renderers disabled)
+   |  `- ReferenceBottleB_AlignmentGuide (visible only before Start)
    |- RepairPartRoot
    |  `- RegisteredBottleCap (runtime)
    |- OcclusionRoot
@@ -48,9 +48,10 @@ TrackedObjectPoseRoot
    `- DebugRoot
 ```
 
-`SetRepairHierarchyVisible()` explicitly restores the root, repair root, cap
-child and each renderer. A parent reactivation can no longer leave a cap child
-with `activeSelf=false`.
+Before Start, reference model b is translucent and repair model c is hidden.
+Start captures the user's coarse b pose, hides both, and begins a-to-b tracking.
+After a valid pose, b remains hidden and `SetRepairHierarchyVisible()` explicitly
+activates c and every repair renderer.
 
 ## Canonical model and registration
 

@@ -39,7 +39,9 @@ namespace Urp.ArDemo.Editor
             "Assets/Shaders/ForceMagentaDebug.shader";
         private const string ForceMagentaMaterialPath =
             "Assets/Resources/ForceMagentaDebug.mat";
-        private const string AndroidApkPath = "Builds/BottleReferenceBRepairAR.apk";
+        private const string BottleGuideMaterialPath =
+            "Assets/Materials/ReferenceBottleBAlignmentGuide.mat";
+        private const string AndroidApkPath = "Builds/Paper52ObjectTrackingAR.apk";
         private const string BottleReferenceOrbPath =
             "Assets/OrbModels/bottle_reference_b.bytes";
         private const string BottleCalibrationPath =
@@ -141,14 +143,14 @@ namespace Urp.ArDemo.Editor
 
         private static void ConfigureAndroidProject()
         {
-            PlayerSettings.productName = "瓶模配准修复 AR";
+            PlayerSettings.productName = "论文式三维跟踪修复";
             PlayerSettings.companyName = "qfgeeee";
-            PlayerSettings.bundleVersion = "3.0.0";
+            PlayerSettings.bundleVersion = "4.0.0";
             PlayerSettings.SetApplicationIdentifier(
-                BuildTargetGroup.Android, "com.qfgeeee.referencebrepairar");
+                BuildTargetGroup.Android, "com.qfgeeee.paper52objecttrackingar");
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
-            PlayerSettings.Android.bundleVersionCode = 300;
+            PlayerSettings.Android.bundleVersionCode = 400;
             PlayerSettings.SetScriptingBackend(
                 BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
@@ -301,6 +303,8 @@ namespace Urp.ArDemo.Editor
                 "Assets/Objects/Tissue/Materials/TissueViewerLit.mat", TissueTexturePath, 0.16f);
             Material repairMaterial = CreateLitMaterial(
                 "Assets/Materials/RegisteredBottleCap.mat", null, 0.34f);
+            Material guideMaterial = CreateTrackingGuideMaterial(
+                BottleGuideMaterialPath, BottleTexturePath);
             if (repairMaterial.HasProperty("_Cull"))
                 repairMaterial.SetFloat("_Cull", 0f);
             repairMaterial.doubleSidedGI = true;
@@ -319,9 +323,9 @@ namespace Urp.ArDemo.Editor
                 + "并在 Blender 中补齐瓶口坐标基准。该模型仍保留源扫描的粗糙与缺损，不再用圆柱替换瓶身。"
                 + "瓶盖 c 按外径 39 mm、高 10 mm 建模并与 34 mm 瓶口同轴注册。";
             bottle.trackingDescription =
-                "真实瓶 a 与无盖参考模型 b 通过瓶身自然特征和 ORB 2D—3D/PnP 配准。"
-                + "b 与瓶盖 c 已在 Blender 中共享瓶口 canonical 坐标系；运行时 b 的 Renderer 永久关闭，"
-                + "只显示随共同位姿根节点移动的 c。遮挡体在实机配准通过前保持关闭。";
+                "依照论文 5.2 Object Tracking 流程：进入页面先显示半透明无盖参考模型 B，"
+                + "移动手机使真实瓶 A 与 B 大致对齐，点击开始后再使用瓶身自然特征完成 A→B 配准。"
+                + "B 与瓶盖 C 已在 Blender 中固定注册；跟踪成功后隐藏 B，只渲染补全部分 C。";
             bottle.missingPartName = "瓶盖";
             bottle.thumbnail = AssetDatabase.LoadAssetAtPath<Texture2D>(
                 "Assets/Textures/Targets/DamagedBottleOrbViews/orb_view_01.jpg");
@@ -364,7 +368,7 @@ namespace Urp.ArDemo.Editor
             bottle.calibration = bottleCalibration;
             bottle.viewerMaterial = bottleMaterial;
             bottle.repairMaterial = repairMaterial;
-            bottle.initialGuideMaterial = repairMaterial;
+            bottle.initialGuideMaterial = guideMaterial;
             bottle.defaultViewerEuler = Vector3.zero;
             bottle.viewerMargin = 0.18f;
             bottle.trackingSettings.lostPoseGraceSeconds = 2.5f;
@@ -376,6 +380,8 @@ namespace Urp.ArDemo.Editor
             bottle.trackingSettings.minimumCoverageY = 0.20f;
             bottle.trackingSettings.maximumPositionJumpMeters = 0.06f;
             bottle.trackingSettings.maximumRotationJumpDegrees = 18f;
+            bottle.trackingSettings.initialAlignmentMaximumPositionErrorMeters = 0.30f;
+            bottle.trackingSettings.initialAlignmentMaximumRotationErrorDegrees = 85f;
             bottle.physicalScaleVerified =
                 bottle.calibration != null && bottle.calibration.physicalScaleVerified;
             bottle.physicalMeasurements = new[]
@@ -626,6 +632,37 @@ namespace Urp.ArDemo.Editor
             if (!string.IsNullOrEmpty(texturePath))
                 material.SetTexture("_BaseMap",
                     AssetDatabase.LoadAssetAtPath<Texture2D>(texturePath));
+            EditorUtility.SetDirty(material);
+            return material;
+        }
+
+        private static Material CreateTrackingGuideMaterial(string path, string texturePath)
+        {
+            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+            if (shader == null)
+                throw new InvalidOperationException("Universal Render Pipeline/Lit shader is missing.");
+            Material material = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (material == null)
+            {
+                material = new Material(shader);
+                AssetDatabase.CreateAsset(material, path);
+            }
+
+            material.shader = shader;
+            material.name = "ReferenceBottleBAlignmentGuide";
+            material.SetTexture("_BaseMap", AssetDatabase.LoadAssetAtPath<Texture2D>(texturePath));
+            material.SetColor("_BaseColor", new Color(0.36f, 0.82f, 1f, 0.34f));
+            material.SetFloat("_Surface", 1f);
+            material.SetFloat("_Blend", 0f);
+            material.SetFloat("_SrcBlend", (float)BlendMode.SrcAlpha);
+            material.SetFloat("_DstBlend", (float)BlendMode.OneMinusSrcAlpha);
+            material.SetFloat("_ZWrite", 0f);
+            material.SetFloat("_Cull", (float)CullMode.Off);
+            material.SetOverrideTag("RenderType", "Transparent");
+            material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            material.DisableKeyword("_ALPHATEST_ON");
+            material.renderQueue = (int)RenderQueue.Transparent;
+            material.SetShaderPassEnabled("ShadowCaster", false);
             EditorUtility.SetDirty(material);
             return material;
         }

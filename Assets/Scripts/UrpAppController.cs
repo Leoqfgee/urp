@@ -30,6 +30,9 @@ namespace Urp.ArDemo
         private Transform safeArea;
         private Transform modalLayer;
         private GameObject fullScreenBackground;
+        private GameObject trackingTopChrome;
+        private GameObject trackingBottomChrome;
+        private GameObject developmentDebugPanel;
         private Text resourceStatus;
         private Text selectionInstruction;
         private Text trackingStatus;
@@ -95,13 +98,19 @@ namespace Urp.ArDemo
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             CanvasScaler scaler = canvasObject.AddComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1080f, 1920f);
+            scaler.referenceResolution = new Vector2(1080f, 2400f);
             scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
-            scaler.matchWidthOrHeight = 0f;
+            scaler.matchWidthOrHeight = 0.5f;
             canvasObject.AddComponent<GraphicRaycaster>();
 
             fullScreenBackground = CreatePanel(canvas.transform, "FullScreenBackground", Surface,
                 Vector2.zero, Vector2.one, false);
+            trackingTopChrome = CreatePanel(canvas.transform, "TrackingTopSystemBarCover",
+                new Color32(250, 252, 255, 255), new Vector2(0f, 0.895f), Vector2.one, false);
+            trackingBottomChrome = CreatePanel(canvas.transform, "TrackingBottomSystemBarCover",
+                new Color32(9, 16, 25, 235), Vector2.zero, new Vector2(1f, 0.025f), false);
+            trackingTopChrome.SetActive(false);
+            trackingBottomChrome.SetActive(false);
 
             GameObject safeAreaObject = new GameObject("SafeArea");
             safeAreaObject.transform.SetParent(canvas.transform, false);
@@ -281,12 +290,12 @@ namespace Urp.ArDemo
         private GameObject BuildTrackingPage()
         {
             GameObject page = CreatePage("TrackingPageContent");
-            CreateHeader(page.transform, "三维跟踪模式", () => ShowPage(Page.Selection));
+            CreateHeader(page.transform, "三维物体跟踪", () => ShowPage(Page.Selection));
             trackingSubtitle = CreateText(page.transform, string.Empty, 20, Color.white,
-                new Vector2(0.28f, 0.855f), new Vector2(0.92f, 0.90f), TextAnchor.MiddleRight);
-            trackingStatus = CreateStatusBar(page.transform, "请选择对象。", 0.79f);
+                new Vector2(0.52f, 0.872f), new Vector2(0.94f, 0.915f), TextAnchor.MiddleRight);
+            trackingStatus = CreateStatusBar(page.transform, "请选择对象。", 0.805f);
             GameObject controls = CreatePanel(page.transform, "TrackingControls", Color.clear,
-                new Vector2(0.035f, 0.34f), new Vector2(0.24f, 0.75f), false);
+                new Vector2(0.025f, 0.405f), new Vector2(0.205f, 0.735f), false);
             string[] labels = { "开始", "重置", "文字介绍", "返回" };
             Action[] actions =
             {
@@ -299,38 +308,55 @@ namespace Urp.ArDemo
             {
                 float top = 0.98f - i * 0.25f;
                 CreateButton(controls.transform, labels[i],
-                    new Vector2(0.02f, top - 0.20f), new Vector2(0.98f, top),
-                    actions[i], Card, Ink, labels[i].Length > 2 ? 22 : 27);
+                    new Vector2(0.02f, top - 0.18f), new Vector2(0.98f, top),
+                    actions[i], new Color32(255, 255, 255, 235), Ink,
+                    labels[i].Length > 2 ? 19 : 24);
             }
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
-            GameObject debugPanel = CreatePanel(page.transform, "DevelopmentDebugPanel",
-                new Color32(12, 22, 32, 205), new Vector2(0.70f, 0.015f),
-                new Vector2(0.98f, 0.325f), true);
+            CreateButton(page.transform, "诊断",
+                new Vector2(0.825f, 0.035f), new Vector2(0.965f, 0.077f),
+                ToggleDevelopmentDebugPanel, new Color32(25, 43, 67, 220), Color.white, 17);
+            developmentDebugPanel = CreatePanel(page.transform, "DevelopmentDebugPanel",
+                new Color32(12, 22, 32, 232), new Vector2(0.56f, 0.085f),
+                new Vector2(0.97f, 0.43f), true);
             string[] debugLabels =
             {
-                "强制前方洋红瓶盖", "当前位姿·仅瓶盖", "当前位姿·仅遮挡", "当前位姿·瓶盖+遮挡", "保存失败数据", "恢复正常跟踪"
+                "查看 B+C 注册", "仅显示参考 B", "仅显示修复 C", "保存诊断帧", "返回论文流程"
             };
             Action[] debugActions =
             {
-                orbTracker != null ? orbTracker.ForceRepairInFrontOfCamera : (Action)null,
+                orbTracker != null ? orbTracker.ShowRegisteredPairDiagnostic : (Action)null,
+                orbTracker != null ? orbTracker.DebugShowReferenceOnly : (Action)null,
                 orbTracker != null ? orbTracker.DebugShowRepairOnly : (Action)null,
-                orbTracker != null ? orbTracker.DebugShowOccluderOnly : (Action)null,
-                orbTracker != null ? orbTracker.DebugShowRepairAndOccluder : (Action)null,
                 orbTracker != null ? orbTracker.SaveTrackingFailureFrame : (Action)null,
-                orbTracker != null ? orbTracker.ExitForceRepairDebug : (Action)null
+                ReturnToPaperTrackingFlow
             };
             for (int i = 0; i < debugLabels.Length; i++)
             {
-                float top = 0.98f - i * 0.105f;
-                CreateButton(debugPanel.transform, debugLabels[i],
-                    new Vector2(0.05f, top - 0.085f), new Vector2(0.95f, top),
-                    debugActions[i], new Color32(44, 58, 78, 255), Color.white, 17);
+                float top = 0.97f - i * 0.14f;
+                CreateButton(developmentDebugPanel.transform, debugLabels[i],
+                    new Vector2(0.055f, top - 0.105f), new Vector2(0.945f, top),
+                    debugActions[i], new Color32(40, 61, 88, 255), Color.white, 16);
             }
-            CreateText(debugPanel.transform, BuildIdentity.Current.ShortText, 13,
-                new Color32(190, 220, 255, 255), new Vector2(0.04f, 0.02f),
-                new Vector2(0.96f, 0.29f), TextAnchor.LowerLeft);
+            CreateText(developmentDebugPanel.transform,
+                $"论文流程：A 特征 → B 位姿 → 仅显示 C\n{BuildIdentity.Current.ShortText}", 11,
+                new Color32(180, 210, 245, 255), new Vector2(0.045f, 0.015f),
+                new Vector2(0.955f, 0.255f), TextAnchor.LowerLeft);
+            developmentDebugPanel.SetActive(false);
 #endif
             return page;
+        }
+
+        private void ToggleDevelopmentDebugPanel()
+        {
+            if (developmentDebugPanel != null)
+                developmentDebugPanel.SetActive(!developmentDebugPanel.activeSelf);
+        }
+
+        private void ReturnToPaperTrackingFlow()
+        {
+            orbTracker?.ExitDiagnosticsToPaperFlow();
+            if (developmentDebugPanel != null) developmentDebugPanel.SetActive(false);
         }
 
         private GameObject BuildInfoModal()
@@ -398,6 +424,10 @@ namespace Urp.ArDemo
             bool resource = page == Page.Resource;
             bool tracking = page == Page.Tracking;
             fullScreenBackground.SetActive(!tracking);
+            trackingTopChrome?.SetActive(tracking);
+            trackingBottomChrome?.SetActive(tracking);
+            if (!tracking && developmentDebugPanel != null)
+                developmentDebugPanel.SetActive(false);
             ConfigureArMode(tracking);
             modelViewer?.SetViewerEnabled(resource);
             orbTracker?.SetTrackingEnabled(tracking);
@@ -515,10 +545,10 @@ namespace Urp.ArDemo
         private void CreateHeader(Transform parent, string title, Action backAction)
         {
             GameObject header = CreatePanel(parent, "Header", new Color32(250, 252, 255, 252),
-                new Vector2(0f, 0.90f), new Vector2(1f, 1f), true);
+                new Vector2(0f, 0.92f), new Vector2(1f, 1f), true);
             CreateButton(header.transform, "‹", new Vector2(0.01f, 0f), new Vector2(0.14f, 1f),
-                backAction, new Color(1f, 1f, 1f, 0.001f), Ink, 58);
-            CreateText(header.transform, title, 36, Ink,
+                backAction, new Color(1f, 1f, 1f, 0.001f), Ink, 50);
+            CreateText(header.transform, title, 32, Ink,
                 new Vector2(0.14f, 0.08f), new Vector2(0.94f, 0.92f), TextAnchor.MiddleCenter);
         }
 
