@@ -149,12 +149,12 @@ namespace Urp.ArDemo.Editor
         {
             PlayerSettings.productName = "论文式三维跟踪修复";
             PlayerSettings.companyName = "qfgeeee";
-            PlayerSettings.bundleVersion = "4.0.3";
+            PlayerSettings.bundleVersion = "4.1.0";
             PlayerSettings.SetApplicationIdentifier(
                 BuildTargetGroup.Android, "com.qfgeeee.paper52objecttrackingar");
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
-            PlayerSettings.Android.bundleVersionCode = 403;
+            PlayerSettings.Android.bundleVersionCode = 410;
             PlayerSettings.SetScriptingBackend(
                 BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
@@ -376,15 +376,15 @@ namespace Urp.ArDemo.Editor
             bottle.initialGuideMaterial = guideMaterial;
             bottle.defaultViewerEuler = Vector3.zero;
             bottle.viewerMargin = 0.18f;
-            bottle.trackingSettings.lostPoseGraceSeconds = 2.5f;
             bottle.trackingSettings.minimumGoodMatches = 9;
             bottle.trackingSettings.minimumPoseInliers = 6;
             bottle.trackingSettings.minimumInlierRatio = 0.50f;
             bottle.trackingSettings.maximumReprojectionErrorPixels = 3.0f;
             bottle.trackingSettings.minimumCoverageX = 0.05f;
             bottle.trackingSettings.minimumCoverageY = 0.18f;
-            bottle.trackingSettings.maximumPositionJumpMeters = 0.06f;
-            bottle.trackingSettings.maximumRotationJumpDegrees = 18f;
+            bottle.trackingSettings.registrationConfirmationFrames = 4;
+            bottle.trackingSettings.registrationPositionToleranceMeters = 0.025f;
+            bottle.trackingSettings.registrationRotationToleranceDegrees = 8f;
             bottle.trackingSettings.initialAlignmentMaximumViewportError = 0.28f;
             bottle.trackingSettings.initialAlignmentMaximumUpAxisErrorDegrees = 55f;
             bottle.physicalScaleVerified =

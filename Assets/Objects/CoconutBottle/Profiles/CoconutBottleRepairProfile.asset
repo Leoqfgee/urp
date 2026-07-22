@@ -43,9 +43,9 @@ MonoBehaviour:
     maximumReprojectionErrorPixels: 3
     minimumCoverageX: 0.05
     minimumCoverageY: 0.18
-    lostPoseGraceSeconds: 2.5
-    maximumPositionJumpMeters: 0.06
-    maximumRotationJumpDegrees: 18
+    registrationConfirmationFrames: 4
+    registrationPositionToleranceMeters: 0.025
+    registrationRotationToleranceDegrees: 8
     initialAlignmentMaximumViewportError: 0.28
     initialAlignmentMaximumUpAxisErrorDegrees: 55
   repairMaterial: {fileID: 2100000, guid: 8d303b9a66ee40a43af998249f1e1795, type: 2}

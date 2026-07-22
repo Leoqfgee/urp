@@ -24,7 +24,7 @@ namespace Urp.ArDemo.Editor
             UrpArProjectSetup.SetupPrototypeScene();
             UrpArProjectSetup.SetupPrototypeScene();
             ValidatePoseConversion();
-            ValidateCameraSpacePoseApplication();
+            ValidateOneShotWorldLock();
             ValidateAssets();
             ValidateGeneratedScene();
             Debug.Log("URP_AR_VALIDATION_OK");
@@ -118,17 +118,24 @@ namespace Urp.ArDemo.Editor
                 $"Synthetic {label} produced an invalid or rear-camera pose.");
         }
 
-        private static void ValidateCameraSpacePoseApplication()
+        private static void ValidateOneShotWorldLock()
         {
-            GameObject cameraObject = new GameObject("Camera-space Pose Validation Camera");
+            GameObject cameraObject = new GameObject("World-lock Validation Camera");
             cameraObject.transform.SetPositionAndRotation(
                 new Vector3(1.2f, -0.4f, 2.1f), Quaternion.Euler(8f, 37f, -3f));
             Camera camera = cameraObject.AddComponent<Camera>();
             camera.nearClipPlane = 0.03f;
             GameObject rootObject = new GameObject("TrackedObjectPoseRoot Validation");
+            rootObject.transform.SetParent(camera.transform, false);
+            GameObject alignmentObject = new GameObject("ModelCoordinateAlignment Validation");
+            alignmentObject.transform.SetParent(rootObject.transform, false);
+            GameObject referenceRoot = new GameObject("TrackingReferenceBRoot Validation");
+            referenceRoot.transform.SetParent(alignmentObject.transform, false);
+            GameObject repairRoot = new GameObject("RepairPartRoot Validation");
+            repairRoot.transform.SetParent(alignmentObject.transform, false);
             GameObject cap = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             cap.name = "RegisteredBottleCap Validation";
-            cap.transform.SetParent(rootObject.transform, false);
+            cap.transform.SetParent(repairRoot.transform, false);
             cap.transform.localScale = new Vector3(0.23f, 0.06f, 0.23f);
             GameObject controllerObject = new GameObject("ORB Controller Validation");
             OrbImageTrackingController controller =
@@ -137,29 +144,45 @@ namespace Urp.ArDemo.Editor
             calibration.metersPerModelUnit = 0.17f;
             SetPrivateField(controller, "arCamera", camera);
             SetPrivateField(controller, "trackedObjectPoseRoot", rootObject.transform);
+            SetPrivateField(controller, "modelCoordinateAlignment", alignmentObject.transform);
+            SetPrivateField(controller, "modelReferenceRoot", referenceRoot.transform);
+            SetPrivateField(controller, "repairPartRoot", repairRoot.transform);
+            SetPrivateField(controller, "registeredRepairPart", cap.transform);
+            SetPrivateField(controller, "capRenderers", cap.GetComponentsInChildren<Renderer>());
             SetPrivateField(controller, "calibration", calibration);
 
             Vector3 expectedCameraPosition = new Vector3(0.04f, 0.08f, 0.42f);
             Quaternion expectedCameraRotation = Quaternion.Euler(12f, 24f, 2f);
             Vector3 worldPosition = camera.transform.TransformPoint(expectedCameraPosition);
             Quaternion worldRotation = camera.transform.rotation * expectedCameraRotation;
-            MethodInfo applyPose = typeof(OrbImageTrackingController).GetMethod(
-                "ApplyPose", BindingFlags.Instance | BindingFlags.NonPublic);
-            Require(applyPose != null, "Camera-space ApplyPose method is missing.");
-            applyPose.Invoke(controller, new object[] { worldPosition, worldRotation });
+            MethodInfo lockPose = typeof(OrbImageTrackingController).GetMethod(
+                "LockRegisteredPairInWorld", BindingFlags.Instance | BindingFlags.NonPublic);
+            Require(lockPose != null, "One-shot world-lock method is missing.");
+            lockPose.Invoke(controller, new object[] { worldPosition, worldRotation });
 
-            Require(rootObject.transform.parent == camera.transform,
-                "Tracked root was not kept in the AR Camera coordinate space.");
-            Require(Vector3.Distance(rootObject.transform.localPosition, expectedCameraPosition)
+            Require(rootObject.transform.parent == null,
+                "Registered B+C root is still parented to the AR Camera after registration.");
+            Require(Vector3.Distance(rootObject.transform.position, worldPosition)
                     < 0.0001f,
-                $"Camera-space pose position changed sign: {rootObject.transform.localPosition}.");
-            Require(Quaternion.Angle(rootObject.transform.localRotation, expectedCameraRotation)
+                $"World-locked B+C position changed: {rootObject.transform.position}.");
+            Require(Quaternion.Angle(rootObject.transform.rotation, worldRotation)
                     < 0.01f,
-                "Camera-space pose rotation changed unexpectedly.");
-            float boundsZ = camera.transform.InverseTransformPoint(
-                cap.GetComponent<Renderer>().bounds.center).z;
-            Require(boundsZ > camera.nearClipPlane,
-                $"Registered cap bounds moved behind the camera: z={boundsZ:F3}.");
+                "World-locked B+C rotation changed unexpectedly.");
+            Require(controller.IsRegistrationWorldLocked && controller.HasTrackedPose,
+                "Controller did not enter the completed A-to-B world-lock state.");
+            Require(!referenceRoot.activeSelf && repairRoot.activeSelf && cap.activeInHierarchy,
+                "World lock did not hide B and leave only repair model C visible.");
+
+            Vector3 lockedPosition = rootObject.transform.position;
+            Quaternion lockedRotation = rootObject.transform.rotation;
+            Vector3 viewBefore = camera.transform.InverseTransformPoint(lockedPosition);
+            camera.transform.position += new Vector3(0.12f, 0.03f, -0.04f);
+            Vector3 viewAfter = camera.transform.InverseTransformPoint(lockedPosition);
+            Require(Vector3.Distance(rootObject.transform.position, lockedPosition) < 0.0001f
+                    && Quaternion.Angle(rootObject.transform.rotation, lockedRotation) < 0.01f,
+                "Moving the AR Camera dragged the world-locked repair model C.");
+            Require(Vector3.Distance(viewBefore, viewAfter) > 0.05f,
+                "Moving the AR Camera did not change the view of world-locked model C.");
 
             UnityEngine.Object.DestroyImmediate(calibration);
             UnityEngine.Object.DestroyImmediate(controllerObject);
@@ -255,17 +278,26 @@ namespace Urp.ArDemo.Editor
                     && bottle.initialGuideMaterial.renderQueue >= (int)RenderQueue.Transparent
                     && bottle.initialGuideMaterial.GetColor("_BaseColor").a < 0.5f,
                 "Reference model B does not use the translucent initial-alignment guide material.");
-            Require(bottle.trackingSettings.lostPoseGraceSeconds >= 2f
-                    && bottle.trackingSettings.minimumGoodMatches == 9
+            Require(bottle.trackingSettings.minimumGoodMatches == 9
                     && bottle.trackingSettings.minimumPoseInliers == 6
                     && bottle.trackingSettings.minimumInlierRatio >= 0.50f
                     && bottle.trackingSettings.maximumReprojectionErrorPixels <= 3.0f
                     && bottle.trackingSettings.minimumCoverageX <= 0.05f
-                    && bottle.trackingSettings.maximumPositionJumpMeters <= 0.06f
-                    && bottle.trackingSettings.maximumRotationJumpDegrees <= 18f
+                    && bottle.trackingSettings.registrationConfirmationFrames >= 4
+                    && bottle.trackingSettings.registrationPositionToleranceMeters <= 0.025f
+                    && bottle.trackingSettings.registrationRotationToleranceDegrees <= 8f
                     && bottle.trackingSettings.initialAlignmentMaximumViewportError <= 0.28f
                     && bottle.trackingSettings.initialAlignmentMaximumUpAxisErrorDegrees <= 55f,
-                "Bottle tracking continuity settings do not protect the world anchor.");
+                "Bottle A-to-B registration settings do not protect the one-shot world lock.");
+
+            string trackingControllerSource = File.ReadAllText(
+                "Assets/Scripts/OrbImageTrackingController.cs");
+            Require(trackingControllerSource.Contains("LockRegisteredPairInWorld")
+                    && trackingControllerSource.Contains("registrationWorldLocked = true")
+                    && trackingControllerSource.Contains("recognitionRunning = false")
+                    && trackingControllerSource.Contains("trackedObjectPoseRoot.SetParent(null, true)")
+                    && !trackingControllerSource.Contains("private void ApplyPose("),
+                "Runtime still contains the old camera-parented per-frame repair pose path.");
 
             string[] runtimeFiles = Directory.GetFiles("Assets", "*", SearchOption.AllDirectories)
                 .Where(path => path.EndsWith(".cs") || path.EndsWith(".asset")
@@ -337,8 +369,8 @@ namespace Urp.ArDemo.Editor
             Require(PlayerSettings.productName == "论文式三维跟踪修复"
                     && PlayerSettings.GetApplicationIdentifier(BuildTargetGroup.Android)
                         == "com.qfgeeee.paper52objecttrackingar"
-                    && PlayerSettings.bundleVersion == "4.0.3"
-                    && PlayerSettings.Android.bundleVersionCode == 403,
+                    && PlayerSettings.bundleVersion == "4.1.0"
+                    && PlayerSettings.Android.bundleVersionCode == 410,
                 "Android app identity reverted to the legacy application.");
             RestorationObjectCatalog catalog =
                 AssetDatabase.LoadAssetAtPath<RestorationObjectCatalog>(CatalogPath);
@@ -458,11 +490,11 @@ namespace Urp.ArDemo.Editor
                 "Tracking title bar is too tall or leaves an unsafe camera strip above it.");
             string[] diagnosticLabels =
             {
-                "查看 B+C 注册Button", "仅显示参考 BButton", "仅显示修复 CButton",
-                "保存诊断帧Button", "返回论文流程Button"
+                "检查 B+C 固定关系Button", "仅显示参考 BButton", "仅显示修复 CButton",
+                "保存诊断帧Button", "返回 A→B 配准Button"
             };
             Require(diagnosticLabels.All(label => FindChild(developmentPanel, label) != null),
-                "Development panel still exposes legacy cap/occluder diagnostics.");
+                "Development panel is not aligned with the A-to-B one-shot world-lock flow.");
             RawImage viewport = UnityEngine.Object.FindObjectsOfType<RawImage>(true)
                 .FirstOrDefault(item => item.name == "ModelViewport");
             Require(viewport != null && viewport.GetComponent<ModelViewportInputHandler>() != null,

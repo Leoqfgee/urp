@@ -22,9 +22,9 @@ namespace Urp.ArDemo
         public float maximumReprojectionErrorPixels = 3.0f;
         public float minimumCoverageX = 0.05f;
         public float minimumCoverageY = 0.18f;
-        public float lostPoseGraceSeconds = 2.5f;
-        public float maximumPositionJumpMeters = 0.06f;
-        public float maximumRotationJumpDegrees = 18f;
+        public int registrationConfirmationFrames = 4;
+        public float registrationPositionToleranceMeters = 0.025f;
+        public float registrationRotationToleranceDegrees = 8f;
         public float initialAlignmentMaximumViewportError = 0.28f;
         public float initialAlignmentMaximumUpAxisErrorDegrees = 55f;
     }

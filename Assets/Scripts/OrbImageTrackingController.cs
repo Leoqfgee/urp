@@ -22,7 +22,6 @@ namespace Urp.ArDemo
             Candidate,
             PoseValidating,
             Tracking,
-            TemporarilyLost,
             Lost
         }
         [Header("AR input")]
@@ -51,15 +50,11 @@ namespace Urp.ArDemo
 
         [Header("Timing and continuity")]
         [SerializeField] private float relocationIntervalSeconds = 0.14f;
-        [SerializeField] private float trackingIntervalSeconds = 0.09f;
-        [SerializeField] private float lostPoseGraceSeconds = 0.45f;
-        [SerializeField] private float maximumPositionJumpMeters = 0.16f;
-        [SerializeField] private float maximumRotationJumpDegrees = 32f;
-        [SerializeField] private int relocationConfirmationFrames = 4;
-        [SerializeField] private float positionResponse = 6f;
-        [SerializeField] private float rotationResponse = 7f;
-        [SerializeField] private float positionDeadZoneMeters = 0.0025f;
-        [SerializeField] private float rotationDeadZoneDegrees = 1.5f;
+
+        [Header("A to B registration lock")]
+        [SerializeField] private int registrationConfirmationFrames = 4;
+        [SerializeField] private float registrationPositionToleranceMeters = 0.025f;
+        [SerializeField] private float registrationRotationToleranceDegrees = 8f;
 
         [Header("Initial paper-style alignment")]
         [SerializeField] private Vector3 initialMouthPositionInCamera = new Vector3(0f, 0.16f, 0.42f);
@@ -72,16 +67,17 @@ namespace Urp.ArDemo
         private bool modeEnabled;
         private bool recognitionRunning;
         private bool hasTrackedPose;
+        private bool registrationWorldLocked;
+        private int registrationStableFrames;
+        private Vector3 registrationAveragePosition;
+        private Quaternion registrationAverageRotation = Quaternion.identity;
+        private Vector3 lastRegistrationCandidatePosition;
+        private Quaternion lastRegistrationCandidateRotation = Quaternion.identity;
         private bool repairVisibleRequested = true;
         private float nextProcessTime;
-        private float lastValidPoseTime = -10f;
         private float smoothedLuminance = 0.75f;
         private Vector3 lastTargetPosition;
         private Quaternion lastTargetRotation;
-        private int rejectedJumpFrames;
-        private Vector3 pendingRelocationPosition;
-        private Quaternion pendingRelocationRotation;
-        private float lastPoseApplyTime = -1f;
         private Transform registeredReferenceModel;
         private Renderer[] referenceRenderers;
         private GameObject alignmentOutlineRoot;
@@ -116,6 +112,7 @@ namespace Urp.ArDemo
         private float initialAlignmentMaximumUpAxisErrorDegrees = 55f;
 
         public bool HasTrackedPose => hasTrackedPose;
+        public bool IsRegistrationWorldLocked => registrationWorldLocked;
         public TrackingState State => trackingState;
         public bool IsRepairActuallyRenderable =>
             ValidateRepairRenderable(out _);
@@ -207,11 +204,12 @@ namespace Urp.ArDemo
                     profile.trackingSettings.maximumReprojectionErrorPixels;
                 minimumCoverageX = profile.trackingSettings.minimumCoverageX;
                 minimumCoverageY = profile.trackingSettings.minimumCoverageY;
-                lostPoseGraceSeconds = profile.trackingSettings.lostPoseGraceSeconds;
-                maximumPositionJumpMeters =
-                    profile.trackingSettings.maximumPositionJumpMeters;
-                maximumRotationJumpDegrees =
-                    profile.trackingSettings.maximumRotationJumpDegrees;
+                registrationConfirmationFrames =
+                    profile.trackingSettings.registrationConfirmationFrames;
+                registrationPositionToleranceMeters =
+                    profile.trackingSettings.registrationPositionToleranceMeters;
+                registrationRotationToleranceDegrees =
+                    profile.trackingSettings.registrationRotationToleranceDegrees;
                 initialAlignmentMaximumViewportError =
                     profile.trackingSettings.initialAlignmentMaximumViewportError;
                 initialAlignmentMaximumUpAxisErrorDegrees =
@@ -379,9 +377,15 @@ namespace Urp.ArDemo
                 UpdateStatus("当前对象尚不具备可用的独立跟踪与修复标定数据。");
                 return;
             }
+            if (registrationWorldLocked)
+            {
+                UpdateStatus("A→B 已完成世界锁定，当前仅显示修复模型 C；如需重新配准请先点“重置”。");
+                return;
+            }
 
             recognitionRunning = true;
             trackingState = TrackingState.Searching;
+            ClearRegistrationLock();
             CaptureStartAlignmentPose();
             SetReferenceHierarchyVisible(false);
             SetRepairHierarchyVisible(false);
@@ -394,12 +398,7 @@ namespace Urp.ArDemo
             ExitForceRepairDebug(false);
             recognitionRunning = false;
             trackingState = TrackingState.Searching;
-            hasTrackedPose = false;
-            rejectedJumpFrames = 0;
-            pendingRelocationPosition = Vector3.zero;
-            pendingRelocationRotation = Quaternion.identity;
-            lastPoseApplyTime = -1f;
-            lastValidPoseTime = -10f;
+            ClearRegistrationLock();
             hasStartAlignmentPose = false;
             alignmentPriorConsumed = false;
             ShowInitialPose();
@@ -629,7 +628,7 @@ namespace Urp.ArDemo
             }
             forceRepairDebug = true;
             recognitionRunning = false;
-            hasTrackedPose = false;
+            ClearRegistrationLock();
             if (occlusionRoot != null) occlusionRoot.gameObject.SetActive(false);
             trackedObjectPoseRoot.SetParent(arCamera.transform, false);
             trackedObjectPoseRoot.localPosition = new Vector3(0f, 0.08f, 0.58f);
@@ -808,8 +807,7 @@ namespace Urp.ArDemo
 
         private void ProcessCameraFrame()
         {
-            nextProcessTime = Time.unscaledTime
-                + (hasTrackedPose ? trackingIntervalSeconds : relocationIntervalSeconds);
+            nextProcessTime = Time.unscaledTime + relocationIntervalSeconds;
             if (cameraManager == null
                 || arCamera == null
                 || trackedObjectPoseRoot == null
@@ -898,51 +896,46 @@ namespace Urp.ArDemo
                 }
 
                 UpdateAnchorProjectionDiagnostic(best, targetPosition);
-                best.translationJumpMeters = hasTrackedPose
-                    ? Vector3.Distance(lastTargetPosition, targetPosition)
+                best.translationJumpMeters = registrationStableFrames > 0
+                    ? Vector3.Distance(lastRegistrationCandidatePosition, targetPosition)
                     : 0f;
-                best.rotationJumpDegrees = hasTrackedPose
-                    ? Quaternion.Angle(lastTargetRotation, targetRotation)
+                best.rotationJumpDegrees = registrationStableFrames > 0
+                    ? Quaternion.Angle(lastRegistrationCandidateRotation, targetRotation)
                     : 0f;
 
-                if (!PassesPoseContinuity(targetPosition, targetRotation))
+                PreviewReferenceModelAtPose(targetPosition, targetRotation);
+                if (!TryAccumulateStableRegistration(
+                        targetPosition,
+                        targetRotation,
+                        out Vector3 lockedPosition,
+                        out Quaternion lockedRotation,
+                        out string registrationReason))
                 {
-                    trackingState = hasTrackedPose
-                        ? TrackingState.TemporarilyLost
-                        : TrackingState.PoseValidating;
-                    if (trackedObjectPoseRoot != null && hasTrackedPose)
-                    {
-                        SetRepairHierarchyVisible(repairVisibleRequested);
-                    }
-                    UpdateStatus("检测到异常位姿跳变，正在等待稳定结果。");
+                    trackingState = TrackingState.PoseValidating;
+                    UpdateStatus(registrationReason);
                     return;
                 }
 
-                ApplyPose(targetPosition, targetRotation);
-                alignmentPriorConsumed = true;
-                trackingState = TrackingState.Tracking;
+                LockRegisteredPairInWorld(lockedPosition, lockedRotation);
                 ApplyLightingConsistency(best.localLuminance);
-                SetReferenceHierarchyVisible(false);
-                SetRepairHierarchyVisible(repairVisibleRequested);
-                lastValidPoseTime = Time.unscaledTime;
 
                 if (!ValidateRepairVisibility(out string visibilityReason))
                 {
-                    UpdateStatus($"对象位姿有效，正在验证修复部件位置：{visibilityReason}");
+                    UpdateStatus($"A→B 已完成并锁定世界位姿，但修复模型 C 不可见：{visibilityReason}");
                     return;
                 }
 
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
                 UpdateStatus(
-                    $"跟踪稳定，瓶盖 Renderer 已提交相机（等待真机像素确认）："
-                    + $"{activeProfile.objectId}，内点 {best.poseInliers}，"
+                    $"A→B 配准稳定，B+C 已锁定到 AR 世界坐标；B 已隐藏，仅显示 C。"
+                    + $"内点 {best.poseInliers}，"
                     + $"比例 {best.inlierRatio:P0}，误差 {best.reprojectionError:F2}px；"
                     + $"{lastProjectionDiagnostic}；"
                     + $"标定 {(activeProfile.physicalScaleVerified ? "已验证" : "未验证")}。");
 #else
                 UpdateStatus(activeProfile.physicalScaleVerified
-                    ? "跟踪稳定，修复部件 Renderer 已进入有效视野；请以真机可见瓶盖确认完成。"
-                    : "修复部件已进入视野，但物理尺寸与连接区域标定尚未验证。");
+                    ? "A→B 配准完成；参考模型 B 已隐藏，修复模型 C 已锁定在世界中。移动相机只会改变观察角度。"
+                    : "A→B 配准完成并已世界锁定，但物理尺寸与连接区域标定尚未验证。");
 #endif
             }
             finally
@@ -1030,49 +1023,70 @@ namespace Urp.ArDemo
             return true;
         }
 
-        private bool PassesPoseContinuity(Vector3 position, Quaternion rotation)
+        private bool TryAccumulateStableRegistration(
+            Vector3 position,
+            Quaternion rotation,
+            out Vector3 lockedPosition,
+            out Quaternion lockedRotation,
+            out string reason)
         {
-            if (!hasTrackedPose)
+            int requiredFrames = Mathf.Max(2, registrationConfirmationFrames);
+            if (registrationStableFrames == 0)
             {
-                rejectedJumpFrames = 0;
-                return true;
-            }
-
-            float positionJump = Vector3.Distance(lastTargetPosition, position);
-            float rotationJump = Quaternion.Angle(lastTargetRotation, rotation);
-            if (positionJump <= maximumPositionJumpMeters
-                && rotationJump <= maximumRotationJumpDegrees)
-            {
-                rejectedJumpFrames = 0;
-                return true;
-            }
-
-            bool agreesWithPending = rejectedJumpFrames > 0
-                && Vector3.Distance(pendingRelocationPosition, position)
-                    <= maximumPositionJumpMeters * 0.35f
-                && Quaternion.Angle(pendingRelocationRotation, rotation)
-                    <= maximumRotationJumpDegrees * 0.35f;
-            if (!agreesWithPending)
-            {
-                pendingRelocationPosition = position;
-                pendingRelocationRotation = rotation;
-                rejectedJumpFrames = 1;
+                registrationStableFrames = 1;
+                registrationAveragePosition = position;
+                registrationAverageRotation = rotation;
+                lastRegistrationCandidatePosition = position;
+                lastRegistrationCandidateRotation = rotation;
+                lastTargetPosition = position;
+                lastTargetRotation = rotation;
+                lockedPosition = position;
+                lockedRotation = rotation;
+                reason = $"已用真实瓶 A 的自然特征求得参考模型 B 位姿，正在确认稳定性 1/{requiredFrames}；"
+                    + "此阶段显示 B，尚不显示 C。";
                 return false;
             }
 
-            float weight = 1f / (rejectedJumpFrames + 1f);
-            pendingRelocationPosition = Vector3.Lerp(
-                pendingRelocationPosition, position, weight);
-            pendingRelocationRotation = Quaternion.Slerp(
-                pendingRelocationRotation, rotation, weight);
-            rejectedJumpFrames++;
-            if (rejectedJumpFrames < Mathf.Max(2, relocationConfirmationFrames))
+            float positionJump = Vector3.Distance(lastRegistrationCandidatePosition, position);
+            float rotationJump = Quaternion.Angle(lastRegistrationCandidateRotation, rotation);
+            if (positionJump > registrationPositionToleranceMeters
+                || rotationJump > registrationRotationToleranceDegrees)
             {
+                registrationStableFrames = 1;
+                registrationAveragePosition = position;
+                registrationAverageRotation = rotation;
+                lastRegistrationCandidatePosition = position;
+                lastRegistrationCandidateRotation = rotation;
+                lastTargetPosition = position;
+                lastTargetRotation = rotation;
+                lockedPosition = position;
+                lockedRotation = rotation;
+                reason = $"A→B 候选位姿发生跳变，稳定计数已重置：位置 {positionJump:F3}m/"
+                    + $"{registrationPositionToleranceMeters:F3}m，旋转 {rotationJump:F1}°/"
+                    + $"{registrationRotationToleranceDegrees:F1}°。";
                 return false;
             }
 
-            hasTrackedPose = false;
-            rejectedJumpFrames = 0;
+            registrationStableFrames++;
+            float weight = 1f / registrationStableFrames;
+            registrationAveragePosition = Vector3.Lerp(
+                registrationAveragePosition, position, weight);
+            registrationAverageRotation = Quaternion.Slerp(
+                registrationAverageRotation, rotation, weight);
+            lastRegistrationCandidatePosition = position;
+            lastRegistrationCandidateRotation = rotation;
+            lastTargetPosition = position;
+            lastTargetRotation = rotation;
+            lockedPosition = registrationAveragePosition;
+            lockedRotation = registrationAverageRotation;
+            if (registrationStableFrames < requiredFrames)
+            {
+                reason = $"A→B 位姿稳定，正在确认 {registrationStableFrames}/{requiredFrames}；"
+                    + "参考模型 B 与实物 A 叠加验证中，修复模型 C 仍隐藏。";
+                return false;
+            }
+
+            reason = string.Empty;
             return true;
         }
 
@@ -1136,54 +1150,54 @@ namespace Urp.ArDemo
             return false;
         }
 
-        private void ApplyPose(Vector3 position, Quaternion rotation)
+        private void PreviewReferenceModelAtPose(Vector3 position, Quaternion rotation)
         {
-            if (arCamera == null || trackedObjectPoseRoot == null)
+            if (trackedObjectPoseRoot == null || calibration == null)
                 return;
 
-            float now = Time.unscaledTime;
-            float deltaTime = lastPoseApplyTime < 0f
-                ? trackingIntervalSeconds
-                : Mathf.Max(0.001f, now - lastPoseApplyTime);
-            lastPoseApplyTime = now;
-            Vector3 cameraPosition = arCamera.transform.InverseTransformPoint(position);
-            Quaternion cameraRotation = Quaternion.Inverse(arCamera.transform.rotation) * rotation;
-            if (!hasTrackedPose)
-            {
-                trackedObjectPoseRoot.SetParent(arCamera.transform, false);
-                trackedObjectPoseRoot.localPosition = cameraPosition;
-                trackedObjectPoseRoot.localRotation = cameraRotation;
-                trackedObjectPoseRoot.localScale = Vector3.one * calibration.metersPerModelUnit;
-                hasTrackedPose = true;
-            }
-            else
-            {
-                if (trackedObjectPoseRoot.parent != arCamera.transform)
-                    trackedObjectPoseRoot.SetParent(arCamera.transform, true);
-                if (Vector3.Distance(trackedObjectPoseRoot.localPosition, cameraPosition)
-                    <= positionDeadZoneMeters)
-                {
-                    cameraPosition = trackedObjectPoseRoot.localPosition;
-                }
-                if (Quaternion.Angle(trackedObjectPoseRoot.localRotation, cameraRotation)
-                    <= rotationDeadZoneDegrees)
-                {
-                    cameraRotation = trackedObjectPoseRoot.localRotation;
-                }
-                float positionAlpha = 1f - Mathf.Exp(-positionResponse * deltaTime);
-                float rotationAlpha = 1f - Mathf.Exp(-rotationResponse * deltaTime);
-                trackedObjectPoseRoot.localPosition = Vector3.Lerp(
-                    trackedObjectPoseRoot.localPosition,
-                    cameraPosition,
-                    positionAlpha);
-                trackedObjectPoseRoot.localRotation = Quaternion.Slerp(
-                    trackedObjectPoseRoot.localRotation,
-                    cameraRotation,
-                    rotationAlpha);
-            }
+            trackedObjectPoseRoot.SetParent(null, true);
+            trackedObjectPoseRoot.position = position;
+            trackedObjectPoseRoot.rotation = rotation;
+            trackedObjectPoseRoot.localScale = Vector3.one * calibration.metersPerModelUnit;
+            SetInitialAlignmentGuideVisible(false);
+            SetRepairHierarchyVisible(false);
+            SetReferenceHierarchyVisible(true);
+        }
 
+        private void LockRegisteredPairInWorld(Vector3 position, Quaternion rotation)
+        {
+            if (trackedObjectPoseRoot == null || calibration == null)
+                return;
+
+            // B and C share one Blender-authored canonical hierarchy. The A→B
+            // solve is used only to place that hierarchy once in AR world space.
+            // After this point ORB/PnP is stopped: moving the phone changes only
+            // the camera view of C and can no longer drag C around the screen.
+            trackedObjectPoseRoot.SetParent(null, true);
+            trackedObjectPoseRoot.position = position;
+            trackedObjectPoseRoot.rotation = rotation;
+            trackedObjectPoseRoot.localScale = Vector3.one * calibration.metersPerModelUnit;
+            registrationWorldLocked = true;
+            hasTrackedPose = true;
+            recognitionRunning = false;
+            alignmentPriorConsumed = true;
+            trackingState = TrackingState.Tracking;
             lastTargetPosition = position;
             lastTargetRotation = rotation;
+            SetInitialAlignmentGuideVisible(false);
+            SetReferenceHierarchyVisible(false);
+            SetRepairHierarchyVisible(repairVisibleRequested);
+        }
+
+        private void ClearRegistrationLock()
+        {
+            registrationWorldLocked = false;
+            registrationStableFrames = 0;
+            registrationAveragePosition = Vector3.zero;
+            registrationAverageRotation = Quaternion.identity;
+            lastRegistrationCandidatePosition = Vector3.zero;
+            lastRegistrationCandidateRotation = Quaternion.identity;
+            hasTrackedPose = false;
         }
 
         private void UpdateAnchorProjectionDiagnostic(NativeOrbResult result, Vector3 worldPosition)
@@ -1226,7 +1240,7 @@ namespace Urp.ArDemo
                 return;
             }
 
-            hasTrackedPose = false;
+            ClearRegistrationLock();
             Quaternion frame = Quaternion.LookRotation(
                 calibration.ForwardInModel,
                 calibration.UpInModel);
@@ -1388,16 +1402,15 @@ namespace Urp.ArDemo
 
         private void HideOverlay(bool force)
         {
-            if (!force && hasTrackedPose && Time.unscaledTime - lastValidPoseTime <= lostPoseGraceSeconds)
+            if (!force && registrationWorldLocked)
             {
-                FreezeTrackedPoseInWorld();
-                trackingState = TrackingState.TemporarilyLost;
+                trackingState = TrackingState.Tracking;
                 SetReferenceHierarchyVisible(false);
                 SetRepairHierarchyVisible(repairVisibleRequested);
                 return;
             }
 
-            hasTrackedPose = false;
+            ClearRegistrationLock();
             if (!force && modeEnabled && recognitionRunning)
             {
                 trackingState = TrackingState.Lost;
@@ -1408,12 +1421,6 @@ namespace Urp.ArDemo
 
             SetReferenceHierarchyVisible(false);
             SetRepairHierarchyVisible(false);
-        }
-
-        private void FreezeTrackedPoseInWorld()
-        {
-            if (trackedObjectPoseRoot != null && trackedObjectPoseRoot.parent == arCamera?.transform)
-                trackedObjectPoseRoot.SetParent(null, true);
         }
 
         private static bool IsBetter(NativeOrbResult current, NativeOrbResult best)
@@ -1560,6 +1567,10 @@ namespace Urp.ArDemo
                 {
                     state = trackingState.ToString(),
                     hasTrackedPose = hasTrackedPose,
+                    registrationWorldLocked = registrationWorldLocked,
+                    registrationStableFrames = registrationStableFrames,
+                    rootParent = trackedObjectPoseRoot != null && trackedObjectPoseRoot.parent != null
+                        ? trackedObjectPoseRoot.parent.name : "<world>",
                     rootPosition = trackedObjectPoseRoot != null
                         ? trackedObjectPoseRoot.position : Vector3.zero,
                     rootRotation = trackedObjectPoseRoot != null
@@ -1607,6 +1618,9 @@ namespace Urp.ArDemo
         {
             public string state;
             public bool hasTrackedPose;
+            public bool registrationWorldLocked;
+            public int registrationStableFrames;
+            public string rootParent;
             public Vector3 rootPosition;
             public Quaternion rootRotation;
             public string projectionDiagnostic;

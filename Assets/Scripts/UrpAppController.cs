@@ -340,7 +340,7 @@ namespace Urp.ArDemo
                 new Vector2(0.97f, 0.43f), true);
             string[] debugLabels =
             {
-                "查看 B+C 注册", "仅显示参考 B", "仅显示修复 C", "保存诊断帧", "返回论文流程"
+                "检查 B+C 固定关系", "仅显示参考 B", "仅显示修复 C", "保存诊断帧", "返回 A→B 配准"
             };
             Action[] debugActions =
             {
@@ -358,7 +358,7 @@ namespace Urp.ArDemo
                     debugActions[i], new Color32(40, 61, 88, 255), Color.white, 16);
             }
             CreateText(developmentDebugPanel.transform,
-                $"论文流程：A 特征 → B 位姿 → 仅显示 C\n{BuildIdentity.Current.ShortText}", 11,
+                $"流程：A 特征 → B 稳定位姿 → 锁定世界锚点 → 隐藏 B → 仅显示 C\n{BuildIdentity.Current.ShortText}", 11,
                 new Color32(180, 210, 245, 255), new Vector2(0.045f, 0.015f),
                 new Vector2(0.955f, 0.255f), TextAnchor.LowerLeft);
             developmentDebugPanel.SetActive(false);
