@@ -251,10 +251,11 @@ namespace Urp.ArDemo
             tapTarget.gameObject.name = profile.objectId + " Card Tap Target";
             tapTarget.transition = Selectable.Transition.ColorTint;
             ColorBlock colors = tapTarget.colors;
-            colors.normalColor = Color.white;
-            colors.highlightedColor = new Color(0.94f, 0.97f, 1f, 1f);
-            colors.pressedColor = new Color(0.82f, 0.90f, 1f, 1f);
+            colors.normalColor = new Color(1f, 1f, 1f, 0.001f);
+            colors.highlightedColor = new Color(0.75f, 0.88f, 1f, 0.06f);
+            colors.pressedColor = new Color(0.35f, 0.65f, 1f, 0.14f);
             colors.selectedColor = colors.highlightedColor;
+            colors.disabledColor = Color.clear;
             colors.colorMultiplier = 1f;
             tapTarget.colors = colors;
         }
