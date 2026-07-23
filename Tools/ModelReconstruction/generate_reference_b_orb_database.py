@@ -21,7 +21,7 @@ import numpy as np
 
 
 MAGIC = b"URP3DM1\0"
-VERSION = "coconut-reference-b-rendered-v1"
+VERSION = "bottle-full-aligned-v2-reference-b-rendered-v1"
 
 
 def parse_args() -> argparse.Namespace:
@@ -35,7 +35,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--blend",
         type=Path,
-        default=Path(r"F:\Au\暑期任务\bottle0720\processed_20260721\b_c_registration\b_c_registered_canonical.blend"),
+        default=Path(
+            r"F:\Meshroom_work\bottle_full_clean_v2\split_models"
+            r"\bottle_full_aligned_v2.blend"
+        ),
     )
     parser.add_argument(
         "--work",
@@ -45,7 +48,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output",
         type=Path,
-        default=root / "Tools" / "TrackingReferenceB" / "bottle_reference_b_synthetic_experimental.bytes",
+        default=root / "Assets" / "OrbModels" / "bottle_reference_b.bytes",
     )
     parser.add_argument("--max-records", type=int, default=8000)
     parser.add_argument("--rerender", action="store_true")
@@ -227,7 +230,11 @@ def main() -> None:
     points = np.asarray([record["point"] for record in records])
     manifest = {
         "version": VERSION,
-        "logic": "camera image of real bottle a matches natural features rendered from no-cap model b; solvePnP estimates b; registered child c alone is rendered",
+        "logic": (
+            "real damaged bottle A is matched only against natural features of "
+            "the new no-cap model B; solvePnP estimates the full B pose; rigid "
+            "sibling C is excluded from matching and only inherits that pose"
+        ),
         "database": str(args.output.relative_to(root)),
         "database_sha256": sha256(args.output),
         "records": len(records),
@@ -240,6 +247,7 @@ def main() -> None:
         "reference_objects": metadata["reference_objects"],
         "repair_c_excluded_from_matching": True,
         "meters_per_model_unit": 0.17,
+        "device_overlay_verified": False,
         "generator": str(Path(__file__).relative_to(root)),
     }
     manifest_path = args.output.with_name(args.output.stem + "_manifest.json")

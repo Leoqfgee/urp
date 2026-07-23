@@ -1,0 +1,87 @@
+{
+  "version": "bottle-full-aligned-v2-canonical",
+  "runtimeHierarchy": {
+    "root": "BottleRepairRoot",
+    "referenceB": "DamagedBottleB",
+    "repairC": "BottleCapC"
+  },
+  "sourceSharedTransform": {
+    "mouthCenter": [
+      -0.23158305883407593,
+      5.276992321014404,
+      -0.5871703028678894
+    ],
+    "uniformScale": 1.5063672985640146,
+    "canonicalBodyHeightUnits": 1.2,
+    "metersPerModelUnit": 0.17,
+    "canonicalBodyHeightMeters": 0.20400000000000001
+  },
+  "referenceB": {
+    "vertices": 64749,
+    "polygons": 92918,
+    "boundsMin": [
+      -0.2839941084384918,
+      -1.1999998092651367,
+      -0.26533401012420654
+    ],
+    "boundsMax": [
+      0.2144784927368164,
+      0.0,
+      0.22504454851150513
+    ],
+    "localPosition": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "localRotationRadians": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "localScale": [
+      1.0,
+      1.0,
+      1.0
+    ]
+  },
+  "repairC": {
+    "vertices": 8658,
+    "polygons": 10518,
+    "boundsMin": [
+      -0.14172586798667908,
+      -0.016536235809326172,
+      -0.17904138565063477
+    ],
+    "boundsMax": [
+      0.09315907955169678,
+      0.12777471542358398,
+      0.08839499950408936
+    ],
+    "localPosition": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "localRotationRadians": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "localScale": [
+      1.0,
+      1.0,
+      1.0
+    ]
+  },
+  "seam": {
+    "capMinimumYMinusBodyMaximumY": -0.016536235809326172,
+    "interpretation": "small negative means the scan surfaces overlap slightly at the split seam"
+  },
+  "relationshipStorage": [
+    "F:\\Meshroom_work\\bottle_full_clean_v2\\split_models\\bottle_full_aligned_v2.blend",
+    "F:\\Meshroom_work\\bottle_full_clean_v2\\split_models\\bottle_full_aligned_v2.fbx"
+  ],
+  "rigidRelationshipPreserved": true,
+  "deviceOverlayVerified": false
+}

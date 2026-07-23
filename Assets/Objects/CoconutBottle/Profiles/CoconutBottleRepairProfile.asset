@@ -12,49 +12,46 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7155bfc119d520b4f8912cd4f4e7b4eb, type: 3}
   m_Name: CoconutBottleRepairProfile
   m_EditorClassIdentifier: 
-  objectId: coconut_bottle
-  displayName: "\u74F6\u76D6\u7F3A\u5931\u996E\u6599\u74F6"
-  shortDescription: "\u74F6\u8EAB\u4FDD\u7559\u74F6\u53E3\u4E0E\u87BA\u7EB9\u7ED3\u6784\uFF0C\u7F3A\u5931\u90E8\u5206\u4E3A\u74F6\u76D6\u3002"
-  viewerDescription: "\u6B8B\u7F3A\u6A21\u578B b \u4FDD\u7559\u7528\u6237\u6307\u5B9A\u7684\u539F\u59CB\u6444\u5F71\u6D4B\u91CF\u74F6\u8EAB\uFF0C\u53EA\u5207\u9664\u9519\u8BEF\u91CD\u5EFA\u7684\u65E7\u74F6\u76D6\uFF0C\u5E76\u5728
-    Blender \u4E2D\u8865\u9F50\u74F6\u53E3\u5750\u6807\u57FA\u51C6\u3002\u8BE5\u6A21\u578B\u4ECD\u4FDD\u7559\u6E90\u626B\u63CF\u7684\u7C97\u7CD9\u4E0E\u7F3A\u635F\uFF0C\u4E0D\u518D\u7528\u5706\u67F1\u66FF\u6362\u74F6\u8EAB\u3002\u74F6\u76D6
-    c \u6309\u5916\u5F84 39 mm\u3001\u9AD8 10 mm \u5EFA\u6A21\u5E76\u4E0E 34 mm \u74F6\u53E3\u540C\u8F74\u6CE8\u518C\u3002"
-  trackingDescription: "\u4F9D\u7167\u8BBA\u6587 5.2 Object Tracking \u6D41\u7A0B\uFF1A\u8FDB\u5165\u9875\u9762\u5148\u663E\u793A\u65E0\u76D6\u53C2\u8003\u6A21\u578B
-    B \u7684\u9752\u8272\u74F6\u4F53\u8F6E\u5ED3\uFF0C\u79FB\u52A8\u624B\u673A\u4F7F\u771F\u5B9E\u74F6
-    A \u4E0E B \u5927\u81F4\u5BF9\u9F50\uFF0C\u70B9\u51FB\u5F00\u59CB\u540E\u518D\u4F7F\u7528\u74F6\u8EAB\u81EA\u7136\u7279\u5F81\u5B8C\u6210
-    A\u2192B \u914D\u51C6\u3002B \u4E0E\u74F6\u76D6 C \u5DF2\u5728 Blender \u4E2D\u56FA\u5B9A\u6CE8\u518C\uFF1B\u8DDF\u8E2A\u6210\u529F\u540E\u9690\u85CF
-    B\uFF0C\u53EA\u6E32\u67D3\u8865\u5168\u90E8\u5206 C\u3002"
-  missingPartName: "\u74F6\u76D6"
-  thumbnail: {fileID: 2800000, guid: 62119f813a9b47540b1907fc978053c1, type: 3}
-  damagedViewerPrefab: {fileID: 919132149155446097, guid: 135d2e42e39914d4cb494ce04d1fc847, type: 3}
-  completeViewerPrefab: {fileID: 919132149155446097, guid: 50401545b44f8ec48b857bcc70f81942, type: 3}
-  viewerMaterial: {fileID: 2100000, guid: 75013f2e0e5dec2488dd3d43aa862ab0, type: 2}
+  objectId: bottle_full_aligned_v2
+  displayName: "\u65B0\u91CD\u5EFA\u65E0\u76D6\u996E\u6599\u74F6\u4E0E\u74F6\u76D6"
+  shortDescription: "\u65B0\u7167\u7247\u91CD\u5EFA\u5E76\u5728 Blender \u4E2D\u521A\u6027\u62FC\u63A5\u7684\u6B8B\u7F3A\u74F6\u8EAB
+    B \u4E0E\u8865\u5168\u74F6\u76D6 C\u3002"
+  viewerDescription: "BottleFullAlignedV2 \u4E2D\uFF0CDamagedBottleB \u662F\u65E0\u76D6\u74F6\u8EAB
+    B\uFF0CBottleCapC \u662F\u540C\u4E00\u6444\u5F71\u6D4B\u91CF\u6A21\u578B\u5207\u5206\u51FA\u7684\u74F6\u76D6
+    C\u3002\u4E24\u8005\u4EE5\u56FA\u5B9A\u540C\u7EA7\u5B50\u5BF9\u8C61\u4FDD\u5B58\u5728
+    BottleRepairRoot \u4E0B\u3002"
+  trackingDescription: "App \u53EA\u4F7F\u7528\u771F\u5B9E\u6B8B\u7F3A\u7269\u4F53
+    A \u4E0E\u6570\u5B57\u6B8B\u7F3A\u6A21\u578B B \u7684\u81EA\u7136\u7279\u5F81\u6C42\u5B8C\u6574
+    PnP \u4F4D\u59FF\u3002\u5148\u663E\u793A\u534A\u900F\u660E B \u9A8C\u8BC1\u8986\u76D6\uFF1B\u786E\u8BA4\u540E\u53EA\u5173\u95ED
+    B \u7684 Renderer \u5E76\u663E\u793A C\u3002C \u4E0D\u5355\u72EC\u5B9A\u4F4D\uFF0C\u4E5F\u4E0D\u4F7F\u7528\u5C4F\u5E55\u5750\u6807\u3001\u76F8\u673A\u524D\u56FA\u5B9A\u4F4D\u7F6E\u6216
+    ARAnchor\u3002"
+  missingPartName: "\u74F6\u76D6 C"
+  thumbnail: {fileID: 2800000, guid: 70a83d4f40433854ba58459b45fe6eb6, type: 3}
+  damagedViewerPrefab: {fileID: 919132149155446097, guid: 927dfa0ba1fe2304a841089a0e61e2c6, type: 3}
+  completeViewerPrefab: {fileID: 919132149155446097, guid: 927dfa0ba1fe2304a841089a0e61e2c6, type: 3}
+  viewerMaterial: {fileID: 0}
   defaultViewerEuler: {x: 0, y: 0, z: 0}
   viewerMargin: 0.18
-  registeredBottlePairPrefab: {fileID: 919132149155446097, guid: eac474930e7d80a4b991332fe2e4c197, type: 3}
-  trackingReferencePrefab: {fileID: 919132149155446097, guid: 135d2e42e39914d4cb494ce04d1fc847, type: 3}
+  registeredBottlePairPrefab: {fileID: 919132149155446097, guid: 927dfa0ba1fe2304a841089a0e61e2c6, type: 3}
+  trackingReferencePrefab: {fileID: 919132149155446097, guid: 927dfa0ba1fe2304a841089a0e61e2c6, type: 3}
   trackingReferenceDatabase: {fileID: 4900000, guid: d03d8d9ae31558b45a904aab6d4b738c, type: 3}
-  registeredRepairPrefab: {fileID: 919132149155446097, guid: 86aafdaf466719845b222346b23edfff, type: 3}
-  registeredOccluderPrefab: {fileID: 8364115023804034572, guid: 9187cc8ee52e2594ca9d9ae6313feb1e, type: 3}
-  orbModelDatabase: {fileID: 0}
   calibration: {fileID: 11400000, guid: e7d3920b1d5f71b47b94a88c936e56bc, type: 2}
   trackingSettings:
     minimumGoodMatches: 9
     minimumPoseInliers: 6
     minimumInlierRatio: 0.5
     maximumReprojectionErrorPixels: 3
+    maximumReprojectionMaxPixels: 8
     minimumCoverageX: 0.05
     minimumCoverageY: 0.18
     registrationConfirmationFrames: 12
     registrationPositionToleranceMeters: 0.025
     registrationRotationToleranceDegrees: 8
-    maximumProjectionConsistencyErrorPixels: 80
-    temporaryLossHoldSeconds: 0.8
+    temporaryLossHoldSeconds: 0.35
     positionSmoothing: 0.3
     rotationSmoothing: 0.25
-    initialAlignmentMaximumViewportError: 0.28
-    initialAlignmentMaximumUpAxisErrorDegrees: 55
-  repairMaterial: {fileID: 2100000, guid: 8d303b9a66ee40a43af998249f1e1795, type: 2}
-  initialGuideMaterial: {fileID: 2100000, guid: da59f20bcfae90941b9b18c9ef65263b, type: 2}
+  repairMaterial: {fileID: 0}
+  referenceValidationMaterial: {fileID: 2100000, guid: 7f983ed026a4380429e825c6b49307c8, type: 2}
   physicalScaleVerified: 1
   physicalMeasurements:
   - label: "\u74F6\u53E3\u87BA\u7EB9\u6700\u5916\u4FA7\u76F4\u5F84"

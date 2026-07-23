@@ -28,27 +28,22 @@ MonoBehaviour:
   registeredBottlePairPrefab: {fileID: 0}
   trackingReferencePrefab: {fileID: 0}
   trackingReferenceDatabase: {fileID: 0}
-  registeredRepairPrefab: {fileID: 0}
-  registeredOccluderPrefab: {fileID: 0}
-  orbModelDatabase: {fileID: 0}
   calibration: {fileID: 11400000, guid: 0e0f947f5eb4f2d48b14c0da7afb59a2, type: 2}
   trackingSettings:
     minimumGoodMatches: 24
     minimumPoseInliers: 20
     minimumInlierRatio: 0.5
     maximumReprojectionErrorPixels: 2.5
+    maximumReprojectionMaxPixels: 8
     minimumCoverageX: 0.12
     minimumCoverageY: 0.2
     registrationConfirmationFrames: 4
     registrationPositionToleranceMeters: 0.025
     registrationRotationToleranceDegrees: 8
-    maximumProjectionConsistencyErrorPixels: 80
     temporaryLossHoldSeconds: 0.8
     positionSmoothing: 0.3
     rotationSmoothing: 0.25
-    initialAlignmentMaximumViewportError: 0.28
-    initialAlignmentMaximumUpAxisErrorDegrees: 55
   repairMaterial: {fileID: 0}
-  initialGuideMaterial: {fileID: 0}
+  referenceValidationMaterial: {fileID: 0}
   physicalScaleVerified: 0
   physicalMeasurements: []

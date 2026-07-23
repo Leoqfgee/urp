@@ -20,17 +20,15 @@ namespace Urp.ArDemo
         public int minimumPoseInliers = 6;
         public float minimumInlierRatio = 0.50f;
         public float maximumReprojectionErrorPixels = 3.0f;
+        public float maximumReprojectionMaxPixels = 8.0f;
         public float minimumCoverageX = 0.05f;
         public float minimumCoverageY = 0.18f;
         public int registrationConfirmationFrames = 12;
         public float registrationPositionToleranceMeters = 0.025f;
         public float registrationRotationToleranceDegrees = 8f;
-        public float maximumProjectionConsistencyErrorPixels = 80f;
         public float temporaryLossHoldSeconds = 0.8f;
         [Range(0.01f, 1f)] public float positionSmoothing = 0.30f;
         [Range(0.01f, 1f)] public float rotationSmoothing = 0.25f;
-        public float initialAlignmentMaximumViewportError = 0.28f;
-        public float initialAlignmentMaximumUpAxisErrorDegrees = 55f;
     }
 
     [CreateAssetMenu(menuName = "URP AR/Restoration Object Profile")]
@@ -55,18 +53,14 @@ namespace Urp.ArDemo
         [Header("Tracking and repair")]
         [Tooltip("Blender-authored rigid hierarchy BottleRepairRoot/DamagedBottleB + BottleCapC.")]
         public GameObject registeredBottlePairPrefab;
-        [Tooltip("Hidden no-cap model b whose canonical frame is solved from real bottle a.")]
+        [Tooltip("The same new B asset used for inspection and tracking.")]
         public GameObject trackingReferencePrefab;
-        [Tooltip("Natural-feature observations registered into model b's canonical frame.")]
+        [Tooltip("Natural features generated from B only; C is excluded.")]
         public TextAsset trackingReferenceDatabase;
-        public GameObject registeredRepairPrefab;
-        public GameObject registeredOccluderPrefab;
-        [HideInInspector]
-        public TextAsset orbModelDatabase;
         public RepairCalibrationProfile calibration;
         public TrackingSettings trackingSettings = new TrackingSettings();
         public Material repairMaterial;
-        public Material initialGuideMaterial;
+        public Material referenceValidationMaterial;
 
         [Header("Physical scale")]
         public bool physicalScaleVerified;

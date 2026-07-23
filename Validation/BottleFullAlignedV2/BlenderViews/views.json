@@ -1,0 +1,97 @@
+{
+  "version": "bottle-full-aligned-v2-qa",
+  "hierarchy": "BottleRepairRoot/DamagedBottleB + BottleCapC",
+  "bodyLocalMatrix": [
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0
+  ],
+  "capLocalMatrix": [
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0
+  ],
+  "views": [
+    {
+      "view": "front",
+      "image": "front.png",
+      "cameraLocation": [
+        0.0,
+        -0.47999998927116394,
+        2.3499999046325684
+      ]
+    },
+    {
+      "view": "back",
+      "image": "back.png",
+      "cameraLocation": [
+        0.0,
+        -0.47999998927116394,
+        -2.3499999046325684
+      ]
+    },
+    {
+      "view": "left",
+      "image": "left.png",
+      "cameraLocation": [
+        -2.3499999046325684,
+        -0.47999998927116394,
+        0.0
+      ]
+    },
+    {
+      "view": "right",
+      "image": "right.png",
+      "cameraLocation": [
+        2.3499999046325684,
+        -0.47999998927116394,
+        0.0
+      ]
+    },
+    {
+      "view": "top",
+      "image": "top.png",
+      "cameraLocation": [
+        0.0,
+        2.049999952316284,
+        0.3499999940395355
+      ]
+    },
+    {
+      "view": "oblique",
+      "image": "oblique.png",
+      "cameraLocation": [
+        1.5499999523162842,
+        0.3499999940395355,
+        1.75
+      ]
+    }
+  ],
+  "deviceOverlayVerified": false
+}

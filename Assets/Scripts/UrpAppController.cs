@@ -2,9 +2,9 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 using UnityEngine.XR.ARFoundation;
-using Urp.ArDemo.Generated;
 #if UNITY_ANDROID && !UNITY_EDITOR
 using UnityEngine.Android;
 #endif
@@ -32,7 +32,6 @@ namespace Urp.ArDemo
         private GameObject fullScreenBackground;
         private GameObject trackingTopChrome;
         private GameObject trackingBottomChrome;
-        private GameObject developmentDebugPanel;
         private Text resourceStatus;
         private Text selectionInstruction;
         private Text trackingStatus;
@@ -64,7 +63,8 @@ namespace Urp.ArDemo
 
         private void Update()
         {
-            if (!Input.GetKeyDown(KeyCode.Escape))
+            if (Keyboard.current == null
+                || !Keyboard.current.escapeKey.wasPressedThisFrame)
             {
                 return;
             }
@@ -314,68 +314,29 @@ namespace Urp.ArDemo
                 new Vector2(0.52f, 0.872f), new Vector2(0.94f, 0.915f), TextAnchor.MiddleRight);
             trackingStatus = CreateStatusBar(page.transform, "请选择对象。", 0.805f);
             GameObject controls = CreatePanel(page.transform, "TrackingControls", Color.clear,
-                new Vector2(0.025f, 0.405f), new Vector2(0.205f, 0.735f), false);
-            string[] labels = { "开始", "重置", "文字介绍", "返回" };
+                new Vector2(0.025f, 0.305f), new Vector2(0.225f, 0.755f), false);
+            string[] labels =
+            {
+                "开始", "重置", "查看 B 覆盖", "显示修复 C", "文字介绍", "返回"
+            };
             Action[] actions =
             {
                 repairController != null ? repairController.StartRecognition : (Action)null,
                 repairController != null ? repairController.ResetRecognition : (Action)null,
+                orbTracker != null ? orbTracker.ShowReferenceValidation : (Action)null,
+                orbTracker != null ? orbTracker.ConfirmReferenceAlignment : (Action)null,
                 ShowInformation,
                 () => ShowPage(Page.Selection)
             };
             for (int i = 0; i < labels.Length; i++)
             {
-                float top = 0.98f - i * 0.25f;
+                float top = 0.99f - i * 0.165f;
                 CreateButton(controls.transform, labels[i],
-                    new Vector2(0.02f, top - 0.18f), new Vector2(0.98f, top),
+                    new Vector2(0.02f, top - 0.125f), new Vector2(0.98f, top),
                     actions[i], new Color32(255, 255, 255, 235), Ink,
                     labels[i].Length > 2 ? 19 : 24);
             }
-#if DEVELOPMENT_BUILD || UNITY_EDITOR
-            CreateButton(page.transform, "诊断",
-                new Vector2(0.825f, 0.035f), new Vector2(0.965f, 0.077f),
-                ToggleDevelopmentDebugPanel, new Color32(25, 43, 67, 220), Color.white, 17);
-            developmentDebugPanel = CreatePanel(page.transform, "DevelopmentDebugPanel",
-                new Color32(12, 22, 32, 232), new Vector2(0.56f, 0.085f),
-                new Vector2(0.97f, 0.43f), true);
-            string[] debugLabels =
-            {
-                "静态检查 B+C", "半透明 B 对准模式", "仅显示固定 C", "保存失败数据", "重置 A↔B 配准"
-            };
-            Action[] debugActions =
-            {
-                orbTracker != null ? orbTracker.ShowRegisteredPairDiagnostic : (Action)null,
-                orbTracker != null ? orbTracker.DebugShowReferenceOnly : (Action)null,
-                orbTracker != null ? orbTracker.DebugShowRepairOnly : (Action)null,
-                orbTracker != null ? orbTracker.SaveTrackingFailureFrame : (Action)null,
-                ReturnToPaperTrackingFlow
-            };
-            for (int i = 0; i < debugLabels.Length; i++)
-            {
-                float top = 0.97f - i * 0.14f;
-                CreateButton(developmentDebugPanel.transform, debugLabels[i],
-                    new Vector2(0.055f, top - 0.105f), new Vector2(0.945f, top),
-                    debugActions[i], new Color32(40, 61, 88, 255), Color.white, 16);
-            }
-            CreateText(developmentDebugPanel.transform,
-                $"流程：A 特征 → B 完整 PnP 位姿 → 持续更新 B+C 根 → 只关闭 B Renderer\n{BuildIdentity.Current.ShortText}", 11,
-                new Color32(180, 210, 245, 255), new Vector2(0.045f, 0.015f),
-                new Vector2(0.955f, 0.255f), TextAnchor.LowerLeft);
-            developmentDebugPanel.SetActive(false);
-#endif
             return page;
-        }
-
-        private void ToggleDevelopmentDebugPanel()
-        {
-            if (developmentDebugPanel != null)
-                developmentDebugPanel.SetActive(!developmentDebugPanel.activeSelf);
-        }
-
-        private void ReturnToPaperTrackingFlow()
-        {
-            orbTracker?.ExitDiagnosticsToPaperFlow();
-            if (developmentDebugPanel != null) developmentDebugPanel.SetActive(false);
         }
 
         private GameObject BuildInfoModal()
@@ -482,8 +443,6 @@ namespace Urp.ArDemo
             fullScreenBackground.SetActive(!tracking);
             trackingTopChrome?.SetActive(tracking);
             trackingBottomChrome?.SetActive(tracking);
-            if (!tracking && developmentDebugPanel != null)
-                developmentDebugPanel.SetActive(false);
             ConfigureArMode(tracking);
             modelViewer?.SetViewerEnabled(resource);
             orbTracker?.SetTrackingEnabled(tracking);

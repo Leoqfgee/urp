@@ -1,20 +1,22 @@
-# URP AR Prototype
+# URP AR production scope
 
-This Unity project is the mobile AR prototype for the URP cultural heritage digital restoration system.
+The formal bottle restoration asset is BottleFullAlignedV2. Its Blender and FBX
+hierarchy is:
 
-Current scope:
+```text
+BottleRepairRoot
+├── DamagedBottleB
+└── BottleCapC
+```
 
-- Unity 2022.3 LTS Android project.
-- AR Foundation and ARCore package setup.
-- Prototype scene at `Assets/Scenes/UrpARPrototype.unity`.
-- Imported reconstructed OBJ artifact at `Assets/Models/ReconstructedArtifact/real.obj`.
-- Virtual restoration part overlay for cup/lid style demos.
-- ORB tracking integration placeholder. The real ORB path will be connected after choosing an OpenCV integration route.
+Runtime solves only A→B. `TrackedBottleRoot` receives every accepted PnP
+translation and rotation; B and C remain under one rigid object-coordinate
+hierarchy. Stage two enables B Renderers with a translucent amber validation
+material. Stage three disables only B Renderers and enables C Renderers.
 
-Near-term workflow:
+The project generator must never recreate the removed cyan outline, manual box,
+screen-space placement, display-matrix pose correction, old registered FBX, or
+old preview scenes.
 
-1. Capture 360-degree object photos and reconstruct with Meshroom.
-2. Import the reconstructed artifact body and the restoration part into `Assets/Models`.
-3. Replace `Virtual Repair Part` with the final repair model.
-4. Add ORB feature extraction and pose estimation.
-5. Build to Android and test on a physical phone.
+See `BottleFullAlignedV2Pipeline.md` for the asset contract and truthful
+real-device validation boundary.

@@ -23,31 +23,14 @@ namespace Urp.ArDemo.Editor
     {
         private const string ScenePath = "Assets/Scenes/UrpARPrototype.unity";
         private const string FontPath = "Assets/Fonts/NotoSansSC-Regular.otf";
-        private const string BottleDamagedPath =
-            "Assets/Models/CleanBottleReconstruction/bottle_damaged_clean.obj";
-        private const string BottleCompletePath =
-            "Assets/Models/CleanBottleReconstruction/bottle_complete_clean.obj";
-        private const string BottleTexturePath =
-            "Assets/Models/CleanBottleReconstruction/bottle_atlas.png";
-        private const string BottleRepairPath =
-            "Assets/Models/CleanBottleReconstruction/bottle_cap_clean.obj";
         private const string BottleRegisteredPairPath =
-            "Assets/Models/CleanBottleReconstruction/bottle_repair_registered.fbx";
-        private const string BottleOccluderPath =
-            "Assets/Objects/CoconutBottle/Prefabs/BottleNeckOccluder.prefab";
-        private const string OccluderShaderPath =
-            "Assets/Shaders/DepthOnlyOccluder.shader";
-        private const string ForceMagentaShaderPath =
-            "Assets/Shaders/ForceMagentaDebug.shader";
-        private const string ForceMagentaMaterialPath =
-            "Assets/Resources/ForceMagentaDebug.mat";
-        private const string AlignmentOutlineShaderPath =
-            "Assets/Shaders/AlignmentOutline.shader";
-        private const string AlignmentOutlineMaterialPath =
-            "Assets/Resources/AlignmentOutline.mat";
-        private const string BottleGuideMaterialPath =
-            "Assets/Materials/ReferenceBottleBAlignmentGuide.mat";
-        private const string AndroidApkPath = "Builds/RigidBottleBCTrackingAR.apk";
+            "Assets/Models/CleanBottleReconstruction/BottleFullAlignedV2/"
+            + "bottle_full_aligned_v2.fbx";
+        private const string BottleThumbnailPath =
+            "Assets/Textures/Targets/bottle_full_aligned_v2.png";
+        private const string BottleValidationMaterialPath =
+            "Assets/Materials/ReferenceBottleBValidation.mat";
+        private const string AndroidApkPath = "Builds/BottleFullAlignedV2AR.apk";
         private const string BottleReferenceOrbPath =
             "Assets/OrbModels/bottle_reference_b.bytes";
         private const string BottleCalibrationPath =
@@ -89,7 +72,7 @@ namespace Urp.ArDemo.Editor
             AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
             CleanStaleSimulationTempAssets();
             Directory.CreateDirectory("Builds");
-            DeleteLegacyApks();
+            DeletePreviousTargetApk();
             BuildReport report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
             {
                 scenes = new[] { ScenePath },
@@ -107,14 +90,12 @@ namespace Urp.ArDemo.Editor
             Debug.Log($"[BuildIdentity] APK SHA256: {BuildIdentityGenerator.Sha256(AndroidApkPath)}");
         }
 
-        private static void DeleteLegacyApks()
+        private static void DeletePreviousTargetApk()
         {
-            string buildsPath = Path.GetFullPath("Builds");
-            if (!Directory.Exists(buildsPath)) return;
-            foreach (string apk in Directory.GetFiles(
-                         buildsPath, "*.apk", SearchOption.TopDirectoryOnly))
+            string apk = Path.GetFullPath(AndroidApkPath);
+            if (File.Exists(apk))
             {
-                Debug.Log($"Deleting legacy APK: {apk}");
+                Debug.Log($"Deleting previous target APK: {apk}");
                 File.Delete(apk);
             }
         }
@@ -263,7 +244,6 @@ namespace Urp.ArDemo.Editor
         {
             foreach (string path in new[]
                      {
-                         BottleDamagedPath, BottleCompletePath, BottleRepairPath,
                          BottleRegisteredPairPath, TissueModelPath
                      })
             {
@@ -276,12 +256,16 @@ namespace Urp.ArDemo.Editor
                     importer.importCameras = false;
                     importer.importLights = false;
                     importer.isReadable = true;
-                    importer.materialImportMode = ModelImporterMaterialImportMode.None;
+                    importer.preserveHierarchy = path == BottleRegisteredPairPath;
+                    importer.materialImportMode =
+                        path == BottleRegisteredPairPath
+                            ? ModelImporterMaterialImportMode.ImportStandard
+                            : ModelImporterMaterialImportMode.None;
                     importer.SaveAndReimport();
                 }
             }
 
-            ConfigureTexture(BottleTexturePath, 2048);
+            ConfigureTexture(BottleThumbnailPath, 1024);
             ConfigureTexture(TissueTexturePath, 2048);
             ConfigureTexture(TissueThumbnailPath, 1024);
         }
@@ -303,58 +287,40 @@ namespace Urp.ArDemo.Editor
 
         private static RestorationObjectCatalog CreateProfiles()
         {
-            CreateForceMagentaDebugMaterial();
-            CreateAlignmentOutlineMaterial();
-            Material bottleMaterial = CreateLitMaterial(
-                "Assets/Materials/BottleViewerLit.mat", BottleTexturePath, 0.20f);
             Material tissueMaterial = CreateLitMaterial(
                 "Assets/Objects/Tissue/Materials/TissueViewerLit.mat", TissueTexturePath, 0.16f);
-            Material repairMaterial = CreateLitMaterial(
-                "Assets/Materials/RegisteredBottleCap.mat", null, 0.34f);
-            Material guideMaterial = CreateTrackingGuideMaterial(
-                BottleGuideMaterialPath, BottleTexturePath);
-            if (repairMaterial.HasProperty("_Cull"))
-                repairMaterial.SetFloat("_Cull", 0f);
-            repairMaterial.doubleSidedGI = true;
-            repairMaterial.EnableKeyword("_EMISSION");
-            repairMaterial.SetColor("_EmissionColor", new Color(0.16f, 0.16f, 0.15f, 1f));
-            EditorUtility.SetDirty(repairMaterial);
-            GameObject bottleOccluder = CreateBottleNeckOccluder();
+            Material validationMaterial = CreateReferenceValidationMaterial(
+                BottleValidationMaterialPath);
+            GameObject bottlePair =
+                AssetDatabase.LoadAssetAtPath<GameObject>(BottleRegisteredPairPath);
+            if (bottlePair == null)
+                throw new MissingReferenceException("BottleFullAlignedV2 FBX import failed.");
 
             RestorationObjectProfile bottle = LoadOrCreate<RestorationObjectProfile>(
                 BottleProfilePath);
-            bottle.objectId = "coconut_bottle";
-            bottle.displayName = "瓶盖缺失饮料瓶";
-            bottle.shortDescription = "瓶身保留瓶口与螺纹结构，缺失部分为瓶盖。";
+            bottle.objectId = "bottle_full_aligned_v2";
+            bottle.displayName = "新重建无盖饮料瓶与瓶盖";
+            bottle.shortDescription =
+                "新照片重建并在 Blender 中刚性拼接的残缺瓶身 B 与补全瓶盖 C。";
             bottle.viewerDescription =
-                "残缺模型 b 保留用户指定的原始摄影测量瓶身，只切除错误重建的旧瓶盖，"
-                + "并在 Blender 中补齐瓶口坐标基准。该模型仍保留源扫描的粗糙与缺损，不再用圆柱替换瓶身。"
-                + "瓶盖 c 按外径 39 mm、高 10 mm 建模并与 34 mm 瓶口同轴注册。";
+                "BottleFullAlignedV2 中，DamagedBottleB 是无盖瓶身 B，"
+                + "BottleCapC 是同一摄影测量模型切分出的瓶盖 C。"
+                + "两者以固定同级子对象保存在 BottleRepairRoot 下。";
             bottle.trackingDescription =
-                "依照论文 5.2 Object Tracking 流程：进入页面先显示无盖参考模型 B 的青色瓶体轮廓，"
-                + "移动手机使真实瓶 A 与 B 大致对齐，点击开始后再使用瓶身自然特征完成 A→B 配准。"
-                + "B 与瓶盖 C 已在 Blender 中固定注册；跟踪成功后隐藏 B，只渲染补全部分 C。";
-            bottle.missingPartName = "瓶盖";
-            bottle.thumbnail = AssetDatabase.LoadAssetAtPath<Texture2D>(
-                "Assets/Textures/Targets/DamagedBottleOrbViews/orb_view_01.jpg");
-            bottle.damagedViewerPrefab =
-                AssetDatabase.LoadAssetAtPath<GameObject>(BottleDamagedPath);
-            bottle.completeViewerPrefab =
-                AssetDatabase.LoadAssetAtPath<GameObject>(BottleCompletePath);
-            bottle.trackingReferencePrefab =
-                AssetDatabase.LoadAssetAtPath<GameObject>(BottleDamagedPath);
-            bottle.registeredBottlePairPrefab =
-                AssetDatabase.LoadAssetAtPath<GameObject>(BottleRegisteredPairPath);
+                "App 只使用真实残缺物体 A 与数字残缺模型 B 的自然特征求完整 PnP 位姿。"
+                + "先显示半透明 B 验证覆盖；确认后只关闭 B 的 Renderer 并显示 C。"
+                + "C 不单独定位，也不使用屏幕坐标、相机前固定位置或 ARAnchor。";
+            bottle.missingPartName = "瓶盖 C";
+            bottle.thumbnail =
+                AssetDatabase.LoadAssetAtPath<Texture2D>(BottleThumbnailPath);
+            bottle.damagedViewerPrefab = bottlePair;
+            bottle.completeViewerPrefab = bottlePair;
+            bottle.trackingReferencePrefab = bottlePair;
+            bottle.registeredBottlePairPrefab = bottlePair;
             bottle.trackingReferenceDatabase =
                 AssetDatabase.LoadAssetAtPath<TextAsset>(BottleReferenceOrbPath);
-            bottle.registeredRepairPrefab =
-                AssetDatabase.LoadAssetAtPath<GameObject>(BottleRepairPath);
-            bottle.registeredOccluderPrefab = bottleOccluder;
-            // Legacy direct-repair field is deliberately empty. Tracking must
-            // go through the explicit hidden model-b reference pair above.
-            bottle.orbModelDatabase = null;
             RepairCalibrationProfile bottleCalibration =
-                AssetDatabase.LoadAssetAtPath<RepairCalibrationProfile>(BottleCalibrationPath);
+                LoadOrCreate<RepairCalibrationProfile>(BottleCalibrationPath);
             bottleCalibration.objectOriginInModel = Vector3.zero;
             bottleCalibration.mouthCenterInModel = Vector3.zero;
             bottleCalibration.mouthRightInModel = new Vector3(0.1f, 0f, 0f);
@@ -368,37 +334,26 @@ namespace Urp.ArDemo.Editor
             bottleCalibration.orbToModelLocalPosition = Vector3.zero;
             bottleCalibration.orbToModelLocalEulerAngles = Vector3.zero;
             bottleCalibration.orbToModelLocalScale = Vector3.one;
-            // The rigid B+C registration is baked into bottle_repair_registered.fbx.
-            // BottleCapC stays at identity in the shared mouth-centred frame.
-            bottleCalibration.capLocalPosition = Vector3.zero;
-            bottleCalibration.capLocalEulerAngles = Vector3.zero;
-            bottleCalibration.capLocalScale = Vector3.one;
-            bottleCalibration.occluderVerified = false;
-            bottleCalibration.occluderLocalPosition = Vector3.zero;
-            bottleCalibration.occluderLocalEulerAngles = Vector3.zero;
-            bottleCalibration.occluderLocalScale = Vector3.one;
             EditorUtility.SetDirty(bottleCalibration);
             bottle.calibration = bottleCalibration;
-            bottle.viewerMaterial = bottleMaterial;
-            bottle.repairMaterial = repairMaterial;
-            bottle.initialGuideMaterial = guideMaterial;
+            bottle.viewerMaterial = null;
+            bottle.repairMaterial = null;
+            bottle.referenceValidationMaterial = validationMaterial;
             bottle.defaultViewerEuler = Vector3.zero;
             bottle.viewerMargin = 0.18f;
             bottle.trackingSettings.minimumGoodMatches = 9;
             bottle.trackingSettings.minimumPoseInliers = 6;
             bottle.trackingSettings.minimumInlierRatio = 0.50f;
             bottle.trackingSettings.maximumReprojectionErrorPixels = 3.0f;
+            bottle.trackingSettings.maximumReprojectionMaxPixels = 8.0f;
             bottle.trackingSettings.minimumCoverageX = 0.05f;
             bottle.trackingSettings.minimumCoverageY = 0.18f;
             bottle.trackingSettings.registrationConfirmationFrames = 12;
             bottle.trackingSettings.registrationPositionToleranceMeters = 0.025f;
             bottle.trackingSettings.registrationRotationToleranceDegrees = 8f;
-            bottle.trackingSettings.maximumProjectionConsistencyErrorPixels = 80f;
-            bottle.trackingSettings.temporaryLossHoldSeconds = 0.8f;
+            bottle.trackingSettings.temporaryLossHoldSeconds = 0.35f;
             bottle.trackingSettings.positionSmoothing = 0.30f;
             bottle.trackingSettings.rotationSmoothing = 0.25f;
-            bottle.trackingSettings.initialAlignmentMaximumViewportError = 0.28f;
-            bottle.trackingSettings.initialAlignmentMaximumUpAxisErrorDegrees = 55f;
             bottle.physicalScaleVerified =
                 bottle.calibration != null && bottle.calibration.physicalScaleVerified;
             bottle.physicalMeasurements = new[]
@@ -443,7 +398,6 @@ namespace Urp.ArDemo.Editor
             tissueCalibration.expectedPhysicalNeckDiameter = 0f;
             tissueCalibration.expectedPhysicalCapDiameter = 0f;
             tissueCalibration.expectedPhysicalCapHeight = 0f;
-            tissueCalibration.occluderVerified = false;
             EditorUtility.SetDirty(tissueCalibration);
 
             RestorationObjectProfile tissue = LoadOrCreate<RestorationObjectProfile>(
@@ -466,13 +420,10 @@ namespace Urp.ArDemo.Editor
             tissue.trackingReferencePrefab = null;
             tissue.registeredBottlePairPrefab = null;
             tissue.trackingReferenceDatabase = null;
-            tissue.registeredRepairPrefab = null;
-            tissue.registeredOccluderPrefab = null;
-            tissue.orbModelDatabase = null;
             tissue.calibration = tissueCalibration;
             tissue.viewerMaterial = tissueMaterial;
             tissue.repairMaterial = null;
-            tissue.initialGuideMaterial = null;
+            tissue.referenceValidationMaterial = null;
             tissue.defaultViewerEuler = new Vector3(-90f, 0f, 0f);
             tissue.viewerMargin = 0.20f;
             tissue.physicalScaleVerified = false;
@@ -541,8 +492,6 @@ namespace Urp.ArDemo.Editor
             AssignReference(tracker, "modelCoordinateAlignment", alignment.transform);
             AssignReference(tracker, "occlusionRoot", occlusionRoot.transform);
             AssignReference(tracker, "debugRoot", debugRoot.transform);
-            AssignVector3(tracker, "initialMouthPositionInCamera", new Vector3(0f, 0.16f, 0.42f));
-            AssignVector3(tracker, "initialObjectEulerInCamera", new Vector3(0f, 180f, 0f));
             AssignReference(overlay, "orbTracker", tracker);
 
             ModelViewerController viewer = CreateModelViewer(arCamera);
@@ -650,7 +599,7 @@ namespace Urp.ArDemo.Editor
             return material;
         }
 
-        private static Material CreateTrackingGuideMaterial(string path, string texturePath)
+        private static Material CreateReferenceValidationMaterial(string path)
         {
             Shader shader = Shader.Find("Universal Render Pipeline/Lit");
             if (shader == null)
@@ -663,9 +612,9 @@ namespace Urp.ArDemo.Editor
             }
 
             material.shader = shader;
-            material.name = "ReferenceBottleBAlignmentGuide";
-            material.SetTexture("_BaseMap", AssetDatabase.LoadAssetAtPath<Texture2D>(texturePath));
-            material.SetColor("_BaseColor", new Color(0.36f, 0.82f, 1f, 0.34f));
+            material.name = "ReferenceBottleBValidation";
+            material.SetTexture("_BaseMap", null);
+            material.SetColor("_BaseColor", new Color(1.0f, 0.58f, 0.12f, 0.32f));
             material.SetFloat("_Surface", 1f);
             material.SetFloat("_Blend", 0f);
             material.SetFloat("_SrcBlend", (float)BlendMode.SrcAlpha);
@@ -679,79 +628,6 @@ namespace Urp.ArDemo.Editor
             material.SetShaderPassEnabled("ShadowCaster", false);
             EditorUtility.SetDirty(material);
             return material;
-        }
-
-        private static void CreateForceMagentaDebugMaterial()
-        {
-            AssetDatabase.ImportAsset(ForceMagentaShaderPath, ImportAssetOptions.ForceUpdate);
-            Shader shader = AssetDatabase.LoadAssetAtPath<Shader>(ForceMagentaShaderPath);
-            if (shader == null || shader.name != "Hidden/URP/ForceMagentaDebug")
-                throw new InvalidOperationException("Hard-coded force-magenta shader is missing.");
-            Material material = AssetDatabase.LoadAssetAtPath<Material>(ForceMagentaMaterialPath);
-            if (material == null)
-            {
-                material = new Material(shader);
-                AssetDatabase.CreateAsset(material, ForceMagentaMaterialPath);
-            }
-            material.shader = shader;
-            material.renderQueue = (int)RenderQueue.Geometry;
-            EditorUtility.SetDirty(material);
-        }
-
-        private static void CreateAlignmentOutlineMaterial()
-        {
-            AssetDatabase.ImportAsset(
-                AlignmentOutlineShaderPath, ImportAssetOptions.ForceUpdate);
-            Shader shader = AssetDatabase.LoadAssetAtPath<Shader>(
-                AlignmentOutlineShaderPath);
-            if (shader == null || shader.name != "Hidden/URP/AlignmentOutline")
-                throw new InvalidOperationException(
-                    "Packaged alignment-outline shader is missing.");
-            Material material = AssetDatabase.LoadAssetAtPath<Material>(
-                AlignmentOutlineMaterialPath);
-            if (material == null)
-            {
-                material = new Material(shader);
-                AssetDatabase.CreateAsset(material, AlignmentOutlineMaterialPath);
-            }
-            material.shader = shader;
-            material.name = "AlignmentOutline";
-            material.SetColor("_BaseColor", new Color(0.08f, 0.95f, 1f, 0.95f));
-            material.renderQueue = (int)RenderQueue.Transparent;
-            EditorUtility.SetDirty(material);
-        }
-
-        private static GameObject CreateBottleNeckOccluder()
-        {
-            Shader shader = AssetDatabase.LoadAssetAtPath<Shader>(OccluderShaderPath);
-            if (shader == null)
-                throw new InvalidOperationException("Depth-only occluder shader is missing.");
-            const string materialPath = "Assets/Materials/BottleNeckOccluder.mat";
-            Material material = AssetDatabase.LoadAssetAtPath<Material>(materialPath);
-            if (material == null)
-            {
-                material = new Material(shader);
-                AssetDatabase.CreateAsset(material, materialPath);
-            }
-            material.shader = shader;
-            material.renderQueue = 1990;
-            EditorUtility.SetDirty(material);
-
-            GameObject root = new GameObject("BottleNeckOccluder");
-            GameObject cylinder = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            cylinder.name = "MeasuredNeckDepth";
-            cylinder.transform.SetParent(root.transform, false);
-            cylinder.transform.localPosition = new Vector3(0f, -0.09f, 0f);
-            cylinder.transform.localScale = new Vector3(0.2f, 0.11f, 0.2f);
-            Collider collider = cylinder.GetComponent<Collider>();
-            if (collider != null) UnityEngine.Object.DestroyImmediate(collider);
-            MeshRenderer renderer = cylinder.GetComponent<MeshRenderer>();
-            renderer.sharedMaterial = material;
-            renderer.shadowCastingMode = ShadowCastingMode.Off;
-            renderer.receiveShadows = false;
-            PrefabUtility.SaveAsPrefabAsset(root, BottleOccluderPath);
-            UnityEngine.Object.DestroyImmediate(root);
-            return AssetDatabase.LoadAssetAtPath<GameObject>(BottleOccluderPath);
         }
 
         private static T LoadOrCreate<T>(string path) where T : ScriptableObject
@@ -789,15 +665,5 @@ namespace Urp.ArDemo.Editor
             serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 
-        private static void AssignVector3(
-            UnityEngine.Object target, string propertyName, Vector3 value)
-        {
-            SerializedObject serialized = new SerializedObject(target);
-            SerializedProperty property = serialized.FindProperty(propertyName);
-            if (property == null)
-                throw new MissingFieldException(target.GetType().Name, propertyName);
-            property.vector3Value = value;
-            serialized.ApplyModifiedPropertiesWithoutUndo();
-        }
     }
 }

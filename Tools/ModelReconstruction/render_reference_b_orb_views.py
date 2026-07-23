@@ -20,9 +20,9 @@ from mathutils import Vector
 from mathutils.bvhtree import BVHTree
 
 
-REFERENCE_PREFIX = "ReferenceBottleB_"
-CAP_PREFIX = "RepairPartC_"
-TARGET = Vector((0.0, 0.0, -0.58))
+REFERENCE_NAME = "DamagedBottleB"
+CAP_NAME = "BottleCapC"
+TARGET = Vector((0.0, -0.58, 0.0))
 
 
 def parse_args() -> argparse.Namespace:
@@ -37,16 +37,15 @@ def parse_args() -> argparse.Namespace:
 
 
 def reference_objects() -> list[bpy.types.Object]:
-    result = [
-        obj for obj in bpy.context.scene.objects
-        if obj.type == "MESH" and obj.name.startswith(REFERENCE_PREFIX)
-    ]
-    if len(result) < 2:
-        raise RuntimeError(
-            "Expected the registered photogrammetry body and open-mouth meshes "
-            f"with prefix {REFERENCE_PREFIX!r}; found {[obj.name for obj in result]}"
-        )
-    return result
+    body = bpy.data.objects.get(REFERENCE_NAME)
+    cap = bpy.data.objects.get(CAP_NAME)
+    if body is None or body.type != "MESH":
+        raise RuntimeError(f"Expected one mesh named {REFERENCE_NAME!r}")
+    if cap is None or cap.type != "MESH":
+        raise RuntimeError(f"Expected one mesh named {CAP_NAME!r}")
+    if body.parent is None or cap.parent != body.parent:
+        raise RuntimeError("DamagedBottleB and BottleCapC must share BottleRepairRoot")
+    return [body]
 
 
 def isolate_reference_b(objects: list[bpy.types.Object]) -> None:
@@ -55,7 +54,7 @@ def isolate_reference_b(objects: list[bpy.types.Object]) -> None:
         visible = obj in keep
         obj.hide_render = not visible
         obj.hide_set(not visible)
-    if any(obj.name.startswith(CAP_PREFIX) and not obj.hide_render for obj in bpy.context.scene.objects):
+    if any(obj.name == CAP_NAME and not obj.hide_render for obj in bpy.context.scene.objects):
         raise RuntimeError("Repair cap c must not be visible while generating b features")
 
 
@@ -67,11 +66,11 @@ def camera_location(azimuth_degrees: float, elevation_degrees: float, distance: 
     azimuth = math.radians(azimuth_degrees)
     elevation = math.radians(elevation_degrees)
     horizontal = distance * math.cos(elevation)
-    # azimuth 0 is the labelled front: Blender -Y == canonical +Z.
+    # Canonical coordinates are x-right, y-up and z-front.
     return TARGET + Vector((
         horizontal * math.sin(azimuth),
-        -horizontal * math.cos(azimuth),
         distance * math.sin(elevation),
+        horizontal * math.cos(azimuth),
     ))
 
 
@@ -159,7 +158,7 @@ def render_views(args: argparse.Namespace, objects: list[bpy.types.Object]) -> N
         "version": "reference-b-render-v1",
         "reference_objects": [obj.name for obj in objects],
         "repair_c_excluded": True,
-        "coordinate_conversion": "blender(x,y,z) -> canonical(x,z,-y)",
+        "coordinate_conversion": "canonical Blender and Unity model coordinates are identical",
         "resolution": [args.width, args.height],
         "target_blender": list(TARGET),
         "views": views,
@@ -213,7 +212,7 @@ def nearest_hit(origin_world: Vector, direction_world: Vector, bvhs) -> Vector |
 
 
 def blender_to_canonical(point: Vector) -> list[float]:
-    return [float(point.x), float(point.z), float(-point.y)]
+    return [float(point.x), float(point.y), float(point.z)]
 
 
 def raycast_keypoints(args: argparse.Namespace, objects: list[bpy.types.Object]) -> None:
@@ -231,6 +230,9 @@ def raycast_keypoints(args: argparse.Namespace, objects: list[bpy.types.Object])
             view["azimuth_degrees"], view["elevation_degrees"], view["distance_model_units"]
         )
         point_camera(camera)
+        # Ray casting runs without a render call, so Blender has not otherwise
+        # evaluated the camera transform for this view.
+        bpy.context.view_layer.update()
         values = {name: float(view[name]) for name in ("fx", "fy", "cx", "cy")}
         view_hits = []
         for keypoint in view["keypoints"]:

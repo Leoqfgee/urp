@@ -1,31 +1,40 @@
-# URP AR
+# BottleFullAlignedV2 AR restoration
 
-Unity Android prototype for the cultural heritage digital restoration and AR presentation project.
+Unity 2022.3.62f2 Android project for rigid A→B→C restoration:
 
-## Implemented application flow
+- **A** — the real cap-missing bottle seen by the phone camera.
+- **B** — `DamagedBottleB`, the no-cap mesh in the new photogrammetry asset.
+- **C** — `BottleCapC`, the completion mesh fixed beside B under
+  `BottleRepairRoot`.
 
-- Three-dimensional resource viewer for the reconstructed damaged bottle and complete bottle.
-- Thesis section 5.2 Object Tracking flow: show a clean cyan outline registered
-  to no-cap reference B, let the user frame real bottle A inside it, capture that
-  pose on Start, estimate B with adaptive ORB/PnP, continuously update the rigid
-  B+C root, then disable only B's Renderers and render C.
-- Chinese navigation, compact tracking controls, safe-area title coverage and a
-  collapsed Development diagnostics drawer for inspecting B, C and B+C registration.
+The runtime tracker matches natural features from A only against B, solves B's
+full six-degree-of-freedom PnP pose, and applies that pose to
+`TrackedBottleRoot`. C is never positioned independently. The validation stage
+shows translucent B over A. After the operator confirms that B remains aligned
+from multiple views, the app disables only B's Renderers and shows C.
 
-## Tracking data
+The production flow contains no cyan outline, manual box, screen-space anchor,
+camera-front placement, bottleneck single-point projection, display-matrix pose
+correction, or independent ARAnchor for C.
 
-- Actual object: cap-missing coconut drink bottle.
-- Tracking reference: no-cap photogrammetry model B.
-- Repair part: Blender-registered bottle-cap model C; C is excluded from feature matching.
-- ORB 3D database: `Assets/OrbModels/bottle_reference_b.bytes`.
-- Bottle calibration: mouth-centred canonical frame, 34 mm mouth diameter,
-  39 mm cap diameter and 10 mm cap height.
+## Formal assets
 
-The Android ORB/PnP implementation is the project-owned native plugin under `Native/UrpOrbNative`. It is built for `arm64-v8a` with OpenCV 4.10 and does not depend on the Asset Store demo plugin at runtime.
+- B+C FBX:
+  `Assets/Models/CleanBottleReconstruction/BottleFullAlignedV2/bottle_full_aligned_v2.fbx`
+- B-only ORB database: `Assets/OrbModels/bottle_reference_b.bytes`
+- Calibration: `Assets/Calibration/CoconutBottleRepairCalibration.asset`
+- Scene: `Assets/Scenes/UrpARPrototype.unity`
 
-## Build
+## Validation and build
 
-- Unity version: 2022.3.62f2.
-- Unity menu: `URP AR/Setup Prototype Scene`.
-- Command-line method: `Urp.ArDemo.Editor.UrpArProjectSetup.BuildAndroidFromCommandLine`.
-- APK output: `Builds/RigidBottleBCTrackingAR.apk`.
+- Static/runtime-contract validation:
+  `Urp.ArDemo.Editor.UrpArValidation.RunFromCommandLine`
+- Play Mode smoke validation:
+  `Urp.ArDemo.Editor.UrpArValidation.RunPlayModeSmokeFromCommandLine`
+- Android build:
+  `Urp.ArDemo.Editor.UrpArProjectSetup.BuildAndroidFromCommandLine`
+- APK: `Builds/BottleFullAlignedV2AR.apk`
+
+Static validation and an APK do not prove physical A/B registration. Real-device
+acceptance still requires an actual translucent-B-over-A recording followed by
+an actual C-only recording from moving viewpoints.

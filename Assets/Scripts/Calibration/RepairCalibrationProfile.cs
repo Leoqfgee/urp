@@ -25,17 +25,6 @@ namespace Urp.ArDemo.Calibration
         public Vector3 orbToModelLocalEulerAngles = Vector3.zero;
         public Vector3 orbToModelLocalScale = Vector3.one;
 
-        [Header("Registered repair model")]
-        public Vector3 capLocalPosition = Vector3.zero;
-        public Vector3 capLocalEulerAngles = Vector3.zero;
-        public Vector3 capLocalScale = Vector3.one;
-
-        [Header("Registered occluder")]
-        public bool occluderVerified;
-        public Vector3 occluderLocalPosition = Vector3.zero;
-        public Vector3 occluderLocalEulerAngles = Vector3.zero;
-        public Vector3 occluderLocalScale = Vector3.one;
-
         public Vector3 UpInModel
         {
             get

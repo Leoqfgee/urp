@@ -1,132 +1,97 @@
 #!/usr/bin/env python3
-"""Offline integrity checks for ORB models, OBJ assets, and calibration data."""
+"""Validate the formal BottleFullAlignedV2 runtime data without Unity."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import struct
 from pathlib import Path
 
 import numpy as np
-import trimesh
 
 
 ROOT = Path(__file__).resolve().parents[1]
+MAGIC = b"URP3DM1\0"
 
 
-def read_orb(path: Path) -> np.ndarray:
+def sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest().upper()
+
+
+def read_points(path: Path) -> np.ndarray:
     data = path.read_bytes()
-    if data[:8] != b"URP3DM1\0":
-        raise ValueError(f"{path}: invalid magic")
+    if data[:8] != MAGIC:
+        raise ValueError(f"{path}: invalid URP3DM1 magic")
     count = struct.unpack_from("<I", data, 8)[0]
-    record_size = 44
-    expected = 12 + count * record_size
-    if len(data) != expected:
-        raise ValueError(f"{path}: expected {expected} bytes, got {len(data)}")
-    return np.asarray([
-        struct.unpack_from("<fff", data, 12 + index * record_size)
-        for index in range(count)
-    ], dtype=np.float64)
+    if count < 1000 or len(data) != 12 + count * 44:
+        raise ValueError(f"{path}: invalid record count or length ({count})")
+    return np.asarray(
+        [
+            struct.unpack_from("<3f", data, 12 + index * 44)
+            for index in range(count)
+        ],
+        dtype=np.float32,
+    )
 
 
 def main() -> None:
-    orb_paths = sorted((ROOT / "Assets/OrbModels").glob("bottle_view_*.bytes"))
-    if not orb_paths:
-        raise SystemExit("no ORB models found")
-    ranges = []
-    for path in orb_paths:
-        points = read_orb(path)
-        ranges.append((points.min(axis=0), points.max(axis=0)))
-        spread = points.max(axis=0) - points.min(axis=0)
-        if len(points) < 45 or np.count_nonzero(spread > 0.05) < 3:
-            raise SystemExit(f"{path.name}: insufficient 3D distribution")
-    global_min = np.vstack([item[0] for item in ranges]).min(axis=0)
-    global_max = np.vstack([item[1] for item in ranges]).max(axis=0)
-    if np.any(global_min < np.array([-0.35, -1.60, -0.20])) \
-            or np.any(global_max > np.array([0.35, 0.15, 0.25])):
-        raise SystemExit("ORB models do not share the expected canonical mouth domain")
-    reference_model_path = ROOT / "Assets/OrbModels/bottle_reference_b.bytes"
-    reference_points = read_orb(reference_model_path)
-    if len(reference_points) < 1000:
-        raise SystemExit("reference model b ORB database contains too few records")
-    reference_manifest = json.loads(
-        reference_model_path.with_name("bottle_reference_b_manifest.json").read_text(
-            encoding="utf-8"
-        )
+    database = ROOT / "Assets/OrbModels/bottle_reference_b.bytes"
+    manifest_path = ROOT / "Assets/OrbModels/bottle_reference_b_manifest.json"
+    fbx = (
+        ROOT
+        / "Assets/Models/CleanBottleReconstruction/BottleFullAlignedV2"
+        / "bottle_full_aligned_v2.fbx"
     )
-    if not reference_manifest.get("repair_c_excluded_from_matching"):
-        raise SystemExit("repair cap c leaked into reference model b matching data")
-    if "solvePnP estimates b" not in reference_manifest.get("logic", ""):
-        raise SystemExit("reference database does not document the a-to-b pose chain")
+    report_path = fbx.with_name("bottle_full_aligned_v2_report.json")
+    controller_path = ROOT / "Assets/Scripts/OrbImageTrackingController.cs"
+    points = read_points(database)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    controller = controller_path.read_text(encoding="utf-8")
 
-    calibration = json.loads(
-        (ROOT / "Tools/calibration/coconut_bottle_repair_calibration.json").read_text(
-            encoding="utf-8"
-        )
+    if manifest["version"] != "bottle-full-aligned-v2-reference-b-rendered-v1":
+        raise ValueError("ORB manifest is not for BottleFullAlignedV2")
+    if manifest["database_sha256"] != sha256(database):
+        raise ValueError("ORB manifest SHA256 does not match the database")
+    if manifest["repair_c_excluded_from_matching"] is not True:
+        raise ValueError("BottleCapC must be excluded from B feature generation")
+    if manifest.get("device_overlay_verified") is not False:
+        raise ValueError("Device overlay cannot be marked verified without evidence")
+    if report["runtimeHierarchy"] != {
+        "root": "BottleRepairRoot",
+        "referenceB": "DamagedBottleB",
+        "repairC": "BottleCapC",
+    }:
+        raise ValueError("Blender report hierarchy is invalid")
+    if not report["rigidRelationshipPreserved"]:
+        raise ValueError("Blender report does not preserve the rigid B/C relationship")
+
+    prohibited = (
+        "displayMatrix",
+        "WorldToViewportPoint",
+        "ScreenPoint",
+        "AlignmentOutline",
+        "ARAnchor",
+        "registeredRepairPart.localPosition",
+        "registeredRepairPart.localRotation",
+        "registeredRepairPart.localScale",
     )
-    mouth = np.asarray(calibration["mouth_center_in_model"])
-    if np.linalg.norm(mouth) > 1e-8:
-        raise SystemExit("mouth frame is not canonical zero")
-    if abs(calibration["meters_per_model_unit"] - 0.17) > 1e-8:
-        raise SystemExit("unexpected bottle physical scale")
-    if not calibration["physical_scale_verified"]:
-        raise SystemExit("supplied bottle measurements were not recorded")
+    found = [token for token in prohibited if token in controller]
+    if found:
+        raise ValueError(f"Production tracker contains prohibited logic: {found}")
 
-    registration = json.loads(
-        (
-            ROOT
-            / "Assets/Models/RegisteredRepair/"
-            "coconut_bottle_cap_registration_report.json"
-        ).read_text(encoding="utf-8")
-    )
-    if registration["correspondence_count"] < 4:
-        raise SystemExit("cap registration has too few correspondences")
-    if registration["rms_model_units"] > 0.001:
-        raise SystemExit("cap registration RMS exceeds the configured offline limit")
-    cap_mesh = trimesh.load(
-        ROOT / "Assets/Models/RegisteredRepair/coconut_bottle_cap_registered.obj",
-        force="mesh",
-        process=False,
-    )
-    cap_size_m = np.asarray(cap_mesh.extents) * calibration["meters_per_model_unit"]
-    if abs(max(cap_size_m[0], cap_size_m[2]) - 0.039) > 0.0001:
-        raise SystemExit(f"cap diameter is not 39 mm: {cap_size_m}")
-    if abs(cap_size_m[1] - 0.010) > 0.0001:
-        raise SystemExit(f"cap height is not 10 mm: {cap_size_m}")
-
-    mesh_reports = {}
-    for path in sorted((ROOT / "Assets/Models").glob("*Processed/*.obj")):
-        mesh = trimesh.load(path, force="mesh", process=False)
-        components = trimesh.graph.connected_components(
-            mesh.face_adjacency,
-            nodes=np.arange(len(mesh.faces)),
-            min_len=1,
-        )
-        mesh_reports[str(path.relative_to(ROOT))] = {
-            "vertices": int(len(mesh.vertices)),
-            "faces": int(len(mesh.faces)),
-            "components": int(len(components)),
-            "bounds": mesh.bounds.tolist(),
-        }
-        if len(mesh.faces) == 0:
-            raise SystemExit(f"{path}: empty mesh")
-
-    report = {
-        "orb_model_count": len(orb_paths),
-        "reference_b_orb_record_count": len(reference_points),
-        "reference_b_orb_version": reference_manifest["version"],
+    payload = {
+        "status": "BOTTLE_FULL_ALIGNED_V2_DATA_OK",
+        "fbx_sha256": sha256(fbx),
+        "database_sha256": sha256(database),
+        "database_records": len(points),
+        "database_bounds_min": points.min(axis=0).tolist(),
+        "database_bounds_max": points.max(axis=0).tolist(),
         "repair_c_excluded_from_matching": True,
-        "orb_global_min": global_min.tolist(),
-        "orb_global_max": global_max.tolist(),
-        "calibration_status": calibration["status"],
-        "cap_size_meters": cap_size_m.tolist(),
-        "cap_registration_rms_model_units": registration["rms_model_units"],
-        "mesh_reports": mesh_reports,
+        "device_overlay_verified": False,
     }
-    output = ROOT / "Builds/validation-report.json"
-    output.parent.mkdir(exist_ok=True)
-    output.write_text(json.dumps(report, indent=2), encoding="utf-8")
-    print(json.dumps(report, indent=2))
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

@@ -267,6 +267,8 @@ namespace Urp.ArDemo
                 profile?.damagedViewerPrefab, "Damaged Viewer Model");
             completeInstance = InstantiateModel(
                 profile?.completeViewerPrefab, "Complete Viewer Model");
+            SetCompletionPartVisible(damagedInstance, false);
+            SetCompletionPartVisible(completeInstance, true);
             damagedState = damagedInstance == null ? null : new ModelViewState(damagedInstance.transform);
             completeState = completeInstance == null ? null : new ModelViewState(completeInstance.transform);
         }
@@ -430,6 +432,40 @@ namespace Urp.ArDemo
             {
                 SetLayerRecursively(child.gameObject, layer);
             }
+        }
+
+        private static void SetCompletionPartVisible(GameObject root, bool visible)
+        {
+            Transform completion = FindDescendant(root != null ? root.transform : null, "BottleCapC");
+            if (completion == null)
+            {
+                return;
+            }
+            foreach (Renderer renderer in completion.GetComponentsInChildren<Renderer>(true))
+            {
+                renderer.enabled = visible;
+            }
+        }
+
+        private static Transform FindDescendant(Transform root, string objectName)
+        {
+            if (root == null)
+            {
+                return null;
+            }
+            if (root.name == objectName)
+            {
+                return root;
+            }
+            for (int index = 0; index < root.childCount; index++)
+            {
+                Transform found = FindDescendant(root.GetChild(index), objectName);
+                if (found != null)
+                {
+                    return found;
+                }
+            }
+            return null;
         }
 
         private sealed class ModelViewState
