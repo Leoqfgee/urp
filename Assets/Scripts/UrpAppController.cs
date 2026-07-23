@@ -317,22 +317,20 @@ namespace Urp.ArDemo
                 new Vector2(0.025f, 0.305f), new Vector2(0.225f, 0.755f), false);
             string[] labels =
             {
-                "开始", "重置", "查看 B 覆盖", "显示修复 C", "文字介绍", "返回"
+                "开始", "重置", "文字介绍", "返回"
             };
             Action[] actions =
             {
                 repairController != null ? repairController.StartRecognition : (Action)null,
                 repairController != null ? repairController.ResetRecognition : (Action)null,
-                orbTracker != null ? orbTracker.ShowReferenceValidation : (Action)null,
-                orbTracker != null ? orbTracker.ConfirmReferenceAlignment : (Action)null,
                 ShowInformation,
                 () => ShowPage(Page.Selection)
             };
             for (int i = 0; i < labels.Length; i++)
             {
-                float top = 0.99f - i * 0.165f;
+                float top = 0.99f - i * 0.245f;
                 CreateButton(controls.transform, labels[i],
-                    new Vector2(0.02f, top - 0.125f), new Vector2(0.98f, top),
+                    new Vector2(0.02f, top - 0.18f), new Vector2(0.98f, top),
                     actions[i], new Color32(255, 255, 255, 235), Ink,
                     labels[i].Length > 2 ? 19 : 24);
             }

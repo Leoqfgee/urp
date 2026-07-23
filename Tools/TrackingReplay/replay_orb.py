@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Offline replay for the exact URP3DM1 ORB database and Native matching policy.
+"""Offline replay for the URP3DM1 model-to-frame fallback matching policy.
 
 This intentionally needs no new packages beyond the already installed OpenCV.
 It can replay source frames now and the raw frames saved by Development Builds
-later. Results are diagnostics, not a substitute for phone-camera acceptance.
+later. The phone runtime can additionally use the user-aligned 3D B pose for
+geometric match guidance; this replay intentionally tests the harder no-prior
+fallback. Results are diagnostics, not a substitute for phone acceptance.
 """
 
 from __future__ import annotations
@@ -25,7 +27,7 @@ class Result:
     image: str
     detected_keypoints: int
     ratio_matches: int
-    mutual_matches: int
+    guided_matches: int
     unique_matches: int
     occupied_grid_cells: int
     coverage_width: float
@@ -73,8 +75,15 @@ def replay(image_path: Path, model_points: np.ndarray, model_desc: np.ndarray,
     image = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
     if image is None:
         raise ValueError(f"cannot read {image_path}")
+    if image.shape[1] > 640:
+        scale = 640.0 / image.shape[1]
+        image = cv2.resize(
+            image,
+            (640, max(1, round(image.shape[0] * scale))),
+            interpolation=cv2.INTER_AREA,
+        )
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    orb = cv2.ORB_create(1800)
+    orb = cv2.ORB_create(2600)
     keypoints, frame_desc = orb.detectAndCompute(gray, None)
     if frame_desc is None or len(keypoints) < 8:
         return Result(str(image_path), len(keypoints), 0, 0, 0, 0, 0, 0,
@@ -83,17 +92,14 @@ def replay(image_path: Path, model_points: np.ndarray, model_desc: np.ndarray,
 
     matcher = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
     forward = ratio_best(matcher.knnMatch(model_desc, frame_desc, k=2), ratio)
-    reverse = ratio_best(matcher.knnMatch(frame_desc, model_desc, k=2), ratio)
-    reverse_best = {m.queryIdx: m.trainIdx for m in reverse}
-    mutual = [m for m in forward if reverse_best.get(m.trainIdx) == m.queryIdx]
-    mutual.sort(key=lambda value: value.distance)
+    forward.sort(key=lambda value: value.distance)
 
     used_model: set[int] = set()
     used_frame: set[int] = set()
     cells = [0] * (8 * 12)
     good = []
     height, width = gray.shape
-    for match in mutual:
+    for match in forward:
         if match.queryIdx in used_model or match.trainIdx in used_frame:
             continue
         x, y = keypoints[match.trainIdx].pt
@@ -134,7 +140,7 @@ def replay(image_path: Path, model_points: np.ndarray, model_desc: np.ndarray,
                 ok, rvec, tvec, inliers = cv2.solvePnPRansac(
                     object_points, frame_points, camera, None,
                     iterationsCount=300, reprojectionError=3.0,
-                    confidence=.99, flags=flag)
+                    confidence=.995, flags=flag)
                 count = 0 if inliers is None else int(len(inliers))
                 if not ok or count < 6:
                     continue
@@ -165,9 +171,9 @@ def replay(image_path: Path, model_points: np.ndarray, model_desc: np.ndarray,
         rejection = "horizontal_coverage"
     elif occupied < 4:
         rejection = "grid_occupancy"
-    elif inliers < min(10, max(6, math.ceil(len(good) * .50))):
+    elif inliers < min(10, max(6, math.ceil(len(good) * .45))):
         rejection = "pose_inliers"
-    elif inlier_ratio < .50:
+    elif inlier_ratio < .45:
         rejection = "inlier_ratio"
     elif rms > 3.0:
         rejection = "reprojection_rms"
@@ -189,7 +195,7 @@ def replay(image_path: Path, model_points: np.ndarray, model_desc: np.ndarray,
     ok, encoded_debug = cv2.imencode(extension, debug)
     if ok:
         encoded_debug.tofile(output)
-    return Result(str(image_path), len(keypoints), len(forward), len(mutual),
+    return Result(str(image_path), len(keypoints), len(forward), 0,
                   len(good), occupied, float(coverage[0]), float(coverage[1]),
                   float(spread[0]), float(spread[1]), float(spread[2]), solver,
                   inliers, inlier_ratio, rms, max_error, positive, accepted, rejection)
@@ -202,7 +208,7 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--step", type=int, default=12)
     parser.add_argument("--ratio", type=float, default=.72)
-    parser.add_argument("--minimum-matches", type=int, default=9)
+    parser.add_argument("--minimum-matches", type=int, default=8)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     points, descriptors = load_model(args.model)
@@ -222,8 +228,8 @@ def main() -> None:
         "success_rate": sum(result.accepted for result in results) / max(1, len(results)),
         "thresholds": {
             "minimum_unique_matches": args.minimum_matches,
-            "minimum_pose_inliers": "adaptive: clamp(ceil(unique*0.50), 6, 10)",
-            "minimum_inlier_ratio": .50,
+            "minimum_pose_inliers": "adaptive: clamp(ceil(unique*0.45), 6, 10)",
+            "minimum_inlier_ratio": .45,
             "low_count_rule": "when inliers < 8: grid >= 5 and RMS <= 1.5px",
             "maximum_reprojection_rms": 3.0,
             "minimum_horizontal_coverage": .05,

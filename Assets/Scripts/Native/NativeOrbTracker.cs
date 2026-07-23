@@ -1,6 +1,5 @@
 using System;
 using System.Runtime.InteropServices;
-using System.Collections.Generic;
 using UnityEngine;
 
 namespace Urp.ArDemo.Native
@@ -49,9 +48,32 @@ namespace Urp.ArDemo.Native
             }
         }
 
-        public bool SetRepairAnchor(Vector3 anchor)
+        /// <summary>
+        /// Supplies a coarse model-to-camera pose only to guide descriptor
+        /// correspondence search. The final pose still comes from natural
+        /// feature correspondences and solvePnPRansac.
+        /// </summary>
+        public unsafe bool SetPosePrior(float[] rotationTranslation, float searchRadiusFraction)
         {
-            return IsValid && urp_orb_set_repair_anchor(handle, anchor.x, anchor.y, anchor.z) != 0;
+            if (!IsValid || rotationTranslation == null || rotationTranslation.Length != 12)
+            {
+                return false;
+            }
+            fixed (float* values = rotationTranslation)
+            {
+                return urp_orb_set_pose_prior(
+                    handle,
+                    values,
+                    searchRadiusFraction) != 0;
+            }
+        }
+
+        public void ClearPosePrior()
+        {
+            if (IsValid)
+            {
+                urp_orb_clear_pose_prior(handle);
+            }
         }
 
         public unsafe bool Track(Texture2D texture, CameraIntrinsics intrinsics, out NativeOrbResult result)
@@ -110,24 +132,6 @@ namespace Urp.ArDemo.Native
             }
         }
 
-        public int GetDebugPoints(List<NativeDebugPoint> output, int maximum = 256)
-        {
-            output?.Clear();
-            if (!IsValid || output == null || maximum <= 0) return 0;
-            float[] packed = new float[maximum * 3];
-            int count = urp_orb_get_debug_points(handle, packed, maximum);
-            for (int index = 0; index < count; index++)
-            {
-                output.Add(new NativeDebugPoint
-                {
-                    x01 = packed[index * 3],
-                    y01 = packed[index * 3 + 1],
-                    kind = Mathf.RoundToInt(packed[index * 3 + 2])
-                });
-            }
-            return count;
-        }
-
         [DllImport(DllName)]
         private static extern int urp_orb_create(int featureCount, float ratio, int minMatches, int maxWidth);
 
@@ -141,11 +145,11 @@ namespace Urp.ArDemo.Native
         private static extern unsafe int urp_orb_set_model(int handle, byte* data, int length);
 
         [DllImport(DllName)]
-        private static extern int urp_orb_set_repair_anchor(int handle, float x, float y, float z);
+        private static extern unsafe int urp_orb_set_pose_prior(
+            int handle, float* rotationTranslation, float searchRadiusFraction);
 
         [DllImport(DllName)]
-        private static extern int urp_orb_get_debug_points(
-            int handle, [Out] float[] packed, int capacity);
+        private static extern int urp_orb_clear_pose_prior(int handle);
 
         [DllImport(DllName)]
         private static extern unsafe int urp_orb_track(
@@ -188,14 +192,6 @@ namespace Urp.ArDemo.Native
     }
 
 
-    [Serializable]
-    public struct NativeDebugPoint
-    {
-        public float x01;
-        public float y01;
-        public int kind;
-    }
-
     internal readonly struct CameraIntrinsics
     {
         public CameraIntrinsics(float focalLengthX, float focalLengthY, float principalPointX, float principalPointY)
@@ -216,20 +212,14 @@ namespace Urp.ArDemo.Native
     public struct NativeOrbResult
     {
         public int tracked;
-        public int goodMatches;
-        public float centerX01;
-        public float centerY01;
-        public float relativeWidth;
-        public float topLeftX01;
-        public float topLeftY01;
-        public float topRightX01;
-        public float topRightY01;
-        public float bottomRightX01;
-        public float bottomRightY01;
-        public float bottomLeftX01;
-        public float bottomLeftY01;
         public int poseValid;
         public int poseInliers;
+        public int uniqueMatches;
+        public int detectedKeypoints;
+        public int ratioMatches;
+        public int guidedMatches;
+        public int occupiedGridCells;
+        public int rejectionCode;
         public float tvecX;
         public float tvecY;
         public float tvecZ;
@@ -243,30 +233,10 @@ namespace Urp.ArDemo.Native
         public float r21;
         public float r22;
         public float reprojectionError;
-        public float anchorX01;
-        public float anchorY01;
-        public float anchorDepth;
-        public int anchorVisible;
-        public float localLuminance;
+        public float reprojectionMax;
         public float inlierRatio;
         public float coverageX;
         public float coverageY;
-        public float modelSpread;
         public float processingMilliseconds;
-        public int detectedKeypoints;
-        public int ratioMatches;
-        public int mutualMatches;
-        public int uniqueMatches;
-        public int occupiedGridCells;
-        public float modelSpreadX;
-        public float modelSpreadY;
-        public float modelSpreadZ;
-        public float reprojectionMax;
-        public int rejectionCode;
-        public float translationJumpMeters;
-        public float rotationJumpDegrees;
-
-        public float coverageWidth => coverageX;
-        public float coverageHeight => coverageY;
     }
 }

@@ -9,13 +9,16 @@ Unity 2022.3.62f2 Android project for rigid A→B→C restoration:
 
 The runtime tracker matches natural features from A only against B, solves B's
 full six-degree-of-freedom PnP pose, and applies that pose to
-`TrackedBottleRoot`. C is never positioned independently. The validation stage
-shows translucent B over A. After the operator confirms that B remains aligned
-from multiple views, the app disables only B's Renderers and shows C.
+`TrackedBottleRoot`. C is never positioned independently. Entering tracking
+shows the Blender-aligned B+C pair at one temporary world-space coarse pose.
+The user moves the phone until B roughly covers A and presses Start. Guided
+natural-feature matching and multi-point PnP refine A→B; after the stable-frame
+gate the app automatically disables only B's Renderers and leaves C.
 
 The production flow contains no cyan outline, manual box, screen-space anchor,
-camera-front placement, bottleneck single-point projection, display-matrix pose
-correction, or independent ARAnchor for C.
+camera-following placement, bottleneck single-point projection, display-matrix
+pose correction, or independent ARAnchor for C. The one pre-alignment pose is a
+world-space B+C pose and stops following the camera immediately.
 
 ## Formal assets
 

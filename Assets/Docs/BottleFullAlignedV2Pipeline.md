@@ -16,11 +16,11 @@ identity and their fixed relationship is stored in both the `.blend` and `.fbx`.
 ## Runtime pose chain
 
 ```text
-TrackedBottleRoot                 accepted full PnP world pose
+TrackedBottleRoot                 coarse world pose, then accepted PnP pose
 └── ModelCoordinateAlignment      fixed ORB-to-Blender calibration
     └── BottleRepairRoot          Blender-authored rigid asset
-        ├── DamagedBottleB        stage-two translucent Renderer
-        └── BottleCapC            stage-three visible Renderer
+        ├── DamagedBottleB        visible before/stabilizing; hidden after
+        └── BottleCapC            always rigid with B; remains visible
 ```
 
 The B-only database is generated from 72 rendered views of `DamagedBottleB`.
@@ -28,9 +28,13 @@ The B-only database is generated from 72 rendered views of `DamagedBottleB`.
 matching and `solvePnPRansac` estimate B. Unity converts OpenCV R/t to one world
 position and rotation and updates only `TrackedBottleRoot`.
 
-Switching from B validation to C repair changes Renderer visibility only. It
-does not delete B, disable the parent, rewrite C's local transform, attach C to
-the camera/Canvas, or create an ARAnchor.
+Entering tracking places B+C once in world space from the current camera pose;
+the model does not remain attached to the camera. The user moves the phone until
+B roughly covers A. Start supplies that full 3D coarse pose only as a geometric
+correspondence prior; natural features and `solvePnPRansac` still produce the
+accepted A→B pose. After stable confirmation, the automatic transition changes
+Renderer visibility only. It does not delete B, disable the parent, rewrite C's
+local transform, attach C to the camera/Canvas, or create an ARAnchor.
 
 ## Acceptance boundary
 

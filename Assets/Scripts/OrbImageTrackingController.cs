@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using Unity.Collections;
 using UnityEngine;
 using UnityEngine.UI;
@@ -26,10 +25,11 @@ namespace Urp.ArDemo
         public enum TrackingState
         {
             Idle,
+            PreAlignment,
             Searching,
             Candidate,
             PoseValidating,
-            ReferenceValidation,
+            AlignmentProof,
             Repair,
             Lost
         }
@@ -48,9 +48,9 @@ namespace Urp.ArDemo
         [Header("Runtime profile")]
         [SerializeField] private RestorationObjectProfile activeProfile;
         [SerializeField] private int maxFrameWidth = 640;
-        [SerializeField] private int minGoodMatches = 9;
+        [SerializeField] private int minGoodMatches = 8;
         [SerializeField] private int minPoseInliers = 6;
-        [SerializeField] private float minimumInlierRatio = 0.50f;
+        [SerializeField] private float minimumInlierRatio = 0.35f;
         [SerializeField] private float maximumReprojectionErrorPixels = 3.0f;
         [SerializeField] private float maximumReprojectionMaxPixels = 8.0f;
         [SerializeField] private float minimumCoverageX = 0.05f;
@@ -58,8 +58,17 @@ namespace Urp.ArDemo
         [SerializeField] private float ratioTest = 0.72f;
         [SerializeField] private float relocationIntervalSeconds = 0.14f;
 
+        [Header("World-space B+C pre-alignment")]
+        [SerializeField] private float preAlignmentDistanceMeters = 0.35f;
+        [SerializeField] private float preAlignmentMouthHeightMeters = 0.105f;
+        [Range(0.08f, 0.35f)]
+        [SerializeField] private float guidedMatchRadiusFraction = 0.12f;
+        [SerializeField] private float maximumInitialCorrectionMeters = 0.25f;
+        [SerializeField] private float maximumInitialCorrectionDegrees = 45f;
+
         [Header("Stable full-pose registration")]
-        [SerializeField] private int registrationConfirmationFrames = 12;
+        [SerializeField] private int registrationConfirmationFrames = 8;
+        [SerializeField] private float stableOverlayProofSeconds = 1.5f;
         [SerializeField] private float registrationPositionToleranceMeters = 0.025f;
         [SerializeField] private float registrationRotationToleranceDegrees = 8f;
         [SerializeField] private float temporaryLossHoldSeconds = 0.35f;
@@ -79,9 +88,9 @@ namespace Urp.ArDemo
         private bool modeEnabled;
         private bool recognitionRunning;
         private bool registrationEstablished;
-        private bool repairModeRequested;
         private bool hasSmoothedPose;
         private int registrationStableFrames;
+        private float alignmentProofStartedAt = float.NegativeInfinity;
         private float nextProcessTime;
         private float lastValidPoseTime = float.NegativeInfinity;
         private Vector3 registrationAveragePosition;
@@ -92,17 +101,12 @@ namespace Urp.ArDemo
         private Quaternion lastAcceptedRotation = Quaternion.identity;
         private Vector3 smoothedRootPosition;
         private Quaternion smoothedRootRotation = Quaternion.identity;
-        private NativeOrbResult lastResult;
-        private int lastFrameRotation;
-        private int lastSourceWidth;
-        private int lastSourceHeight;
         private TrackingState trackingState = TrackingState.Idle;
 
         public bool HasTrackedPose => registrationEstablished;
         public bool IsRigidRegistrationEstablished => registrationEstablished;
-        public bool CanConfirmReferenceAlignment =>
-            registrationEstablished && trackingState == TrackingState.ReferenceValidation;
-        public bool IsRepairMode => repairModeRequested && registrationEstablished;
+        public bool IsRepairMode =>
+            registrationEstablished && trackingState == TrackingState.Repair;
         public TrackingState State => trackingState;
         public bool IsRepairActuallyRenderable =>
             ValidateRigidHierarchy(out _) && AnyEnabled(repairRenderers);
@@ -258,28 +262,35 @@ namespace Urp.ArDemo
             modeEnabled = enabled;
             recognitionRunning = false;
             ResetRegistration();
-            SetReferenceHierarchyVisible(false);
-            SetRepairHierarchyVisible(false);
-            trackingState = enabled ? TrackingState.Idle : TrackingState.Idle;
 
             if (!enabled)
             {
+                trackingState = TrackingState.Idle;
+                SetReferenceHierarchyVisible(false);
+                SetRepairHierarchyVisible(false);
                 UpdateStatus(string.Empty);
                 return;
             }
             if (activeProfile == null)
             {
+                trackingState = TrackingState.Idle;
+                SetReferenceHierarchyVisible(false);
+                SetRepairHierarchyVisible(false);
                 UpdateStatus("尚未选择跟踪对象。");
                 return;
             }
-            if (!activeProfile.HasTrackingAssets || trackers.Count == 0)
+            if (!activeProfile.HasTrackingAssets)
             {
+                trackingState = TrackingState.Idle;
+                SetReferenceHierarchyVisible(false);
+                SetRepairHierarchyVisible(false);
                 UpdateStatus($"{activeProfile.displayName} 的新模型 B 或三维特征库不可用。");
                 return;
             }
+            PlacePreAlignmentPose();
             UpdateStatus(
-                "将真实残缺物体 A 保持在画面中，点击“开始”。"
-                + "程序会直接求解 A→B 的完整三维位姿，不需要套框或固定屏幕位置。");
+                "已显示 Blender 对齐的 B+C 三维模型。移动手机，让半透明 B "
+                + "与真实残缺瓶 A 大致重合，然后点击“开始”。");
         }
 
         public void StartRecognition()
@@ -294,74 +305,143 @@ namespace Urp.ArDemo
             }
 
             ResetRegistration();
-            repairModeRequested = false;
             recognitionRunning = true;
             trackingState = TrackingState.Searching;
             nextProcessTime = 0f;
-            SetReferenceHierarchyVisible(false);
-            SetRepairHierarchyVisible(false);
+            SetReferenceHierarchyVisible(true);
+            SetRepairHierarchyVisible(true);
             UpdateStatus(
-                "正在用真实物体 A 的自然特征估计数字残缺模型 B 的完整 PnP 位姿。");
+                "正在以当前 B 粗对齐姿态引导自然特征匹配；"
+                + "最终位姿仍由 A→B 多点 PnP 自动求解。");
         }
 
         public void ResetTracking()
         {
             recognitionRunning = false;
-            repairModeRequested = false;
-            trackingState = TrackingState.Idle;
             ResetRegistration();
-            SetReferenceHierarchyVisible(false);
-            SetRepairHierarchyVisible(false);
             if (modeEnabled)
             {
-                UpdateStatus("跟踪已重置。保持 A 在画面中，然后点击“开始”。");
-            }
-        }
-
-        /// <summary>
-        /// Stage-three gate. It changes only Renderer visibility. B remains in
-        /// the hierarchy and C keeps the Blender-authored local relationship.
-        /// </summary>
-        public void ConfirmReferenceAlignment()
-        {
-            if (!CanConfirmReferenceAlignment)
-            {
-                UpdateStatus("只有 B 已稳定覆盖 A 后，才能切换为只显示修复部件 C。");
-                return;
-            }
-            repairModeRequested = true;
-            trackingState = TrackingState.Repair;
-            SetReferenceHierarchyVisible(false);
-            SetRepairHierarchyVisible(true);
-            UpdateStatus(
-                "已仅关闭 B 的 Renderer；C 仍在 BottleRepairRoot 中，"
-                + "继续继承 A→B 的实时六自由度位姿。");
-        }
-
-        public void ShowReferenceValidation()
-        {
-            if (!registrationEstablished)
-            {
-                UpdateStatus("尚未获得稳定的 A→B 位姿，不能显示覆盖验证 B。");
-                return;
-            }
-            repairModeRequested = false;
-            trackingState = TrackingState.ReferenceValidation;
-            SetRepairHierarchyVisible(false);
-            SetReferenceHierarchyVisible(true);
-            UpdateStatus("当前仅显示半透明 B，请从多角度检查它是否持续覆盖真实 A。");
-        }
-
-        public void SetRepairVisible(bool visible)
-        {
-            if (visible)
-            {
-                ConfirmReferenceAlignment();
+                PlacePreAlignmentPose();
+                UpdateStatus(
+                    "已重置并重新显示初始 B+C。移动手机让 B 粗略覆盖 A，"
+                    + "然后点击“开始”。");
             }
             else
             {
-                ShowReferenceValidation();
+                trackingState = TrackingState.Idle;
+                SetReferenceHierarchyVisible(false);
+                SetRepairHierarchyVisible(false);
             }
+        }
+
+        private void PlacePreAlignmentPose()
+        {
+            trackingState = TrackingState.PreAlignment;
+            if (trackedObjectPoseRoot == null || arCamera == null || calibration == null)
+            {
+                SetReferenceHierarchyVisible(false);
+                SetRepairHierarchyVisible(false);
+                return;
+            }
+            if (trackedObjectPoseRoot.parent != null)
+            {
+                throw new InvalidOperationException(
+                    "TrackedBottleRoot must remain a world root.");
+            }
+
+            Transform cameraTransform = arCamera.transform;
+            trackedObjectPoseRoot.position =
+                cameraTransform.position
+                + cameraTransform.forward * preAlignmentDistanceMeters
+                + cameraTransform.up * preAlignmentMouthHeightMeters;
+            trackedObjectPoseRoot.rotation = Quaternion.LookRotation(
+                -cameraTransform.forward,
+                cameraTransform.up);
+            trackedObjectPoseRoot.localScale =
+                Vector3.one * calibration.metersPerModelUnit;
+            smoothedRootPosition = trackedObjectPoseRoot.position;
+            smoothedRootRotation = trackedObjectPoseRoot.rotation;
+            hasSmoothedPose = true;
+            SetReferenceHierarchyVisible(true);
+            SetRepairHierarchyVisible(true);
+        }
+
+        private bool SetCurrentPosePrior(NativeOrbTracker tracker)
+        {
+            if (tracker == null)
+            {
+                return false;
+            }
+            if (!TryBuildCurrentPosePrior(out float[] rotationTranslation))
+            {
+                tracker.ClearPosePrior();
+                return false;
+            }
+            return tracker.SetPosePrior(
+                rotationTranslation,
+                guidedMatchRadiusFraction);
+        }
+
+        private bool TryBuildCurrentPosePrior(out float[] rotationTranslation)
+        {
+            rotationTranslation = null;
+            if (arCamera == null
+                || modelCoordinateAlignment == null
+                || calibration == null
+                || calibration.metersPerModelUnit <= 0f)
+            {
+                return false;
+            }
+
+            Vector3 originWorld =
+                modelCoordinateAlignment.TransformPoint(Vector3.zero);
+            Vector3 originCameraUnity =
+                arCamera.transform.InverseTransformPoint(originWorld);
+            Vector3 originCameraCv = new Vector3(
+                originCameraUnity.x,
+                -originCameraUnity.y,
+                originCameraUnity.z) / calibration.metersPerModelUnit;
+            if (!IsFinite(originCameraCv) || originCameraCv.z <= 0f)
+            {
+                return false;
+            }
+
+            // OpenCvUnityPoseConverter reconstructs Unity orientation from
+            // OpenCV up/forward. Reversing that handedness conversion requires
+            // the model-right column to be negated here.
+            Vector3 right = -ModelDirectionToCameraCv(Vector3.right);
+            Vector3 up = ModelDirectionToCameraCv(Vector3.up);
+            Vector3 forward = ModelDirectionToCameraCv(Vector3.forward);
+            if (right.sqrMagnitude < 0.000001f
+                || up.sqrMagnitude < 0.000001f
+                || forward.sqrMagnitude < 0.000001f)
+            {
+                return false;
+            }
+            right.Normalize();
+            up = Vector3.ProjectOnPlane(up, right).normalized;
+            forward = Vector3.Cross(right, up).normalized;
+            up = Vector3.Cross(forward, right).normalized;
+
+            rotationTranslation = new[]
+            {
+                right.x, up.x, forward.x, originCameraCv.x,
+                right.y, up.y, forward.y, originCameraCv.y,
+                right.z, up.z, forward.z, originCameraCv.z
+            };
+            return true;
+        }
+
+        private Vector3 ModelDirectionToCameraCv(Vector3 modelDirection)
+        {
+            Vector3 worldDirection =
+                modelCoordinateAlignment.TransformVector(modelDirection);
+            Vector3 cameraDirection =
+                arCamera.transform.InverseTransformVector(worldDirection);
+            return new Vector3(
+                cameraDirection.x,
+                -cameraDirection.y,
+                cameraDirection.z);
         }
 
         public void SetRepairHierarchyVisible(bool visible)
@@ -377,32 +457,6 @@ namespace Urp.ArDemo
         public void HideFailedProfileVisuals()
         {
             ResetTracking();
-        }
-
-        public void SaveTrackingFailureFrame()
-        {
-            string folder = Path.Combine(Application.persistentDataPath, "TrackingDiagnostics");
-            Directory.CreateDirectory(folder);
-            string stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-            string imagePath = Path.Combine(folder, $"frame_{stamp}.png");
-            string jsonPath = Path.Combine(folder, $"frame_{stamp}.json");
-            if (frameTexture != null)
-            {
-                File.WriteAllBytes(imagePath, frameTexture.EncodeToPNG());
-            }
-            File.WriteAllText(
-                jsonPath,
-                JsonUtility.ToJson(new TrackingDiagnostic
-                {
-                    state = trackingState.ToString(),
-                    registrationEstablished = registrationEstablished,
-                    repairMode = repairModeRequested,
-                    sourceWidth = lastSourceWidth,
-                    sourceHeight = lastSourceHeight,
-                    frameRotationClockwise = lastFrameRotation,
-                    result = lastResult
-                }, true));
-            UpdateStatus($"诊断已保存：{jsonPath}");
         }
 
         private void ProcessCameraFrame()
@@ -428,15 +482,13 @@ namespace Urp.ArDemo
                     texture.height);
                 int rotationClockwise =
                     ResolveFrameRotation(texture.width, texture.height);
-                lastFrameRotation = rotationClockwise;
-                lastSourceWidth = image.width;
-                lastSourceHeight = image.height;
                 byte[] rgba = NativeOrbTracker.GetRgbaBytes(texture);
 
                 NativeOrbResult best = default;
                 bool hasResult = false;
                 foreach (NativeOrbTracker tracker in trackers)
                 {
+                    SetCurrentPosePrior(tracker);
                     tracker.Track(
                         rgba,
                         texture.width,
@@ -464,7 +516,6 @@ namespace Urp.ArDemo
                     return;
                 }
 
-                lastResult = best;
                 if (!OpenCvUnityPoseConverter.TryGetObjectPose(
                         best,
                         rotationClockwise,
@@ -480,9 +531,25 @@ namespace Urp.ArDemo
 
                 if (!registrationEstablished)
                 {
+                    float initialPositionCorrection =
+                        Vector3.Distance(trackedObjectPoseRoot.position, targetPosition);
+                    float initialRotationCorrection =
+                        Quaternion.Angle(trackedObjectPoseRoot.rotation, targetRotation);
+                    if (initialPositionCorrection > maximumInitialCorrectionMeters
+                        || initialRotationCorrection > maximumInitialCorrectionDegrees)
+                    {
+                        trackingState = TrackingState.Candidate;
+                        UpdateStatus(
+                            $"PnP 与当前 B 粗对齐差异过大："
+                            + $"{initialPositionCorrection:F2}m，"
+                            + $"{initialRotationCorrection:F0}°。"
+                            + "请重置后先让 B 大致覆盖 A。");
+                        return;
+                    }
+
                     ApplyTrackedRootPose(targetPosition, targetRotation, false);
-                    SetRepairHierarchyVisible(false);
                     SetReferenceHierarchyVisible(true);
+                    SetRepairHierarchyVisible(true);
                     trackingState = TrackingState.PoseValidating;
                     if (!TryAccumulateStableRegistration(
                             targetPosition,
@@ -497,8 +564,10 @@ namespace Urp.ArDemo
 
                     ApplyTrackedRootPose(stablePosition, stableRotation, false);
                     registrationEstablished = true;
-                    repairModeRequested = false;
-                    trackingState = TrackingState.ReferenceValidation;
+                    trackingState = TrackingState.AlignmentProof;
+                    alignmentProofStartedAt = Time.unscaledTime;
+                    SetReferenceHierarchyVisible(true);
+                    SetRepairHierarchyVisible(true);
                 }
                 else
                 {
@@ -521,26 +590,29 @@ namespace Urp.ArDemo
                 lastAcceptedPosition = targetPosition;
                 lastAcceptedRotation = targetRotation;
                 lastValidPoseTime = Time.unscaledTime;
-                if (repairModeRequested)
+                if (trackingState == TrackingState.AlignmentProof
+                    && Time.unscaledTime - alignmentProofStartedAt
+                        < stableOverlayProofSeconds)
                 {
-                    trackingState = TrackingState.Repair;
-                    SetReferenceHierarchyVisible(false);
-                    SetRepairHierarchyVisible(true);
-                    UpdateStatus(
-                        $"A→B 实时 PnP：内点 {best.poseInliers}/"
-                        + $"{best.uniqueMatches}，RMS {best.reprojectionError:F2}px；"
-                        + "当前仅显示刚性子部件 C。");
-                }
-                else
-                {
-                    trackingState = TrackingState.ReferenceValidation;
-                    SetRepairHierarchyVisible(false);
                     SetReferenceHierarchyVisible(true);
+                    SetRepairHierarchyVisible(true);
+                    float remaining = Mathf.Max(
+                        0f,
+                        stableOverlayProofSeconds
+                            - (Time.unscaledTime - alignmentProofStartedAt));
                     UpdateStatus(
-                        $"B 已连续跟随 A：内点 {best.poseInliers}/"
-                        + $"{best.uniqueMatches}，RMS {best.reprojectionError:F2}px。"
-                        + "请移动手机多角度检查覆盖；确认后点击“显示修复 C”。");
+                        $"B 正在稳定覆盖 A：内点 {best.poseInliers}/"
+                        + $"{best.uniqueMatches}，RMS {best.reprojectionError:F2}px；"
+                        + $"{remaining:F1}s 后自动只显示 C。");
+                    return;
                 }
+                trackingState = TrackingState.Repair;
+                SetReferenceHierarchyVisible(false);
+                SetRepairHierarchyVisible(true);
+                UpdateStatus(
+                    $"B 已稳定配准 A：内点 {best.poseInliers}/"
+                    + $"{best.uniqueMatches}，RMS {best.reprojectionError:F2}px。"
+                    + "已只关闭 B 的 Renderer；C 正在继承同一三维位姿。");
             }
             finally
             {
@@ -660,7 +732,7 @@ namespace Urp.ArDemo
                 reason =
                     $"正在确认 A→B 六自由度位姿 "
                     + $"{registrationStableFrames}/{requiredFrames}；"
-                    + "当前只显示半透明 B，C 保持隐藏。";
+                    + "B 与 C 保持 Blender 固定关系并共同跟随候选位姿。";
                 return false;
             }
             reason = string.Empty;
@@ -707,20 +779,31 @@ namespace Urp.ArDemo
 
         private void HandleTrackingLoss()
         {
+            TrackingState previousState = trackingState;
             trackingState = TrackingState.Lost;
+            if (!registrationEstablished)
+            {
+                // Before registration the user must keep seeing the same
+                // world-space B+C coarse pose. It is never a screen overlay.
+                SetReferenceHierarchyVisible(true);
+                SetRepairHierarchyVisible(true);
+                return;
+            }
             if (registrationEstablished
                 && Time.unscaledTime - lastValidPoseTime <= temporaryLossHoldSeconds)
             {
                 // The root remains a world-space object pose, never a screen
                 // coordinate. AR camera motion still changes perspective.
-                SetReferenceHierarchyVisible(!repairModeRequested);
-                SetRepairHierarchyVisible(repairModeRequested);
+                trackingState = previousState;
+                SetReferenceHierarchyVisible(
+                    previousState == TrackingState.AlignmentProof);
+                SetRepairHierarchyVisible(true);
                 return;
             }
 
             registrationEstablished = false;
-            repairModeRequested = false;
             registrationStableFrames = 0;
+            alignmentProofStartedAt = float.NegativeInfinity;
             hasSmoothedPose = false;
             SetReferenceHierarchyVisible(false);
             SetRepairHierarchyVisible(false);
@@ -730,6 +813,7 @@ namespace Urp.ArDemo
         {
             registrationEstablished = false;
             registrationStableFrames = 0;
+            alignmentProofStartedAt = float.NegativeInfinity;
             hasSmoothedPose = false;
             lastValidPoseTime = float.NegativeInfinity;
             registrationAveragePosition = Vector3.zero;
@@ -750,7 +834,7 @@ namespace Urp.ArDemo
             try
             {
                 NativeOrbTracker tracker =
-                    new NativeOrbTracker(1800, ratioTest, minGoodMatches, maxFrameWidth);
+                    new NativeOrbTracker(2600, ratioTest, minGoodMatches, maxFrameWidth);
                 if (tracker.IsValid
                     && tracker.SetModel(activeProfile.trackingReferenceDatabase))
                 {
@@ -1048,6 +1132,13 @@ namespace Urp.ArDemo
             return false;
         }
 
+        private static bool IsFinite(Vector3 value)
+        {
+            return float.IsFinite(value.x)
+                && float.IsFinite(value.y)
+                && float.IsFinite(value.z);
+        }
+
         private static void DestroyRuntimeObject(UnityEngine.Object value)
         {
             if (value == null)
@@ -1072,16 +1163,5 @@ namespace Urp.ArDemo
             }
         }
 
-        [Serializable]
-        private sealed class TrackingDiagnostic
-        {
-            public string state;
-            public bool registrationEstablished;
-            public bool repairMode;
-            public int sourceWidth;
-            public int sourceHeight;
-            public int frameRotationClockwise;
-            public NativeOrbResult result;
-        }
     }
 }

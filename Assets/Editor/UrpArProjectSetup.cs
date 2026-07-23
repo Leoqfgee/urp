@@ -307,9 +307,11 @@ namespace Urp.ArDemo.Editor
                 + "BottleCapC 是同一摄影测量模型切分出的瓶盖 C。"
                 + "两者以固定同级子对象保存在 BottleRepairRoot 下。";
             bottle.trackingDescription =
-                "App 只使用真实残缺物体 A 与数字残缺模型 B 的自然特征求完整 PnP 位姿。"
-                + "先显示半透明 B 验证覆盖；确认后只关闭 B 的 Renderer 并显示 C。"
-                + "C 不单独定位，也不使用屏幕坐标、相机前固定位置或 ARAnchor。";
+                "进入页面先显示 Blender 对齐的 B+C 三维模型。"
+                + "用户移动手机让 B 与真实残缺瓶 A 大致重合后点击开始。"
+                + "系统只用 A 与 B 的自然特征求完整 PnP 位姿；"
+                + "稳定后自动只关闭 B 的 Renderer。"
+                + "C 不单独识别或定位，只继承 B 的三维跟踪位姿。";
             bottle.missingPartName = "瓶盖 C";
             bottle.thumbnail =
                 AssetDatabase.LoadAssetAtPath<Texture2D>(BottleThumbnailPath);
@@ -341,14 +343,14 @@ namespace Urp.ArDemo.Editor
             bottle.referenceValidationMaterial = validationMaterial;
             bottle.defaultViewerEuler = Vector3.zero;
             bottle.viewerMargin = 0.18f;
-            bottle.trackingSettings.minimumGoodMatches = 9;
+            bottle.trackingSettings.minimumGoodMatches = 8;
             bottle.trackingSettings.minimumPoseInliers = 6;
-            bottle.trackingSettings.minimumInlierRatio = 0.50f;
+            bottle.trackingSettings.minimumInlierRatio = 0.35f;
             bottle.trackingSettings.maximumReprojectionErrorPixels = 3.0f;
             bottle.trackingSettings.maximumReprojectionMaxPixels = 8.0f;
             bottle.trackingSettings.minimumCoverageX = 0.05f;
             bottle.trackingSettings.minimumCoverageY = 0.18f;
-            bottle.trackingSettings.registrationConfirmationFrames = 12;
+            bottle.trackingSettings.registrationConfirmationFrames = 8;
             bottle.trackingSettings.registrationPositionToleranceMeters = 0.025f;
             bottle.trackingSettings.registrationRotationToleranceDegrees = 8f;
             bottle.trackingSettings.temporaryLossHoldSeconds = 0.35f;

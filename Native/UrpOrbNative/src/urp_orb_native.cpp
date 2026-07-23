@@ -17,27 +17,21 @@
 namespace
 {
 constexpr char kModelMagic[8] = {'U', 'R', 'P', '3', 'D', 'M', '1', '\0'};
-constexpr char kBuildVersion[] = "urp-orb-native-2026.07.22-r5-adaptive-pnp-16k";
+constexpr char kBuildVersion[] = "urp-orb-native-2026.07.23-r6-guided-b-pnp-16k";
 constexpr int kDescriptorBytes = 32;
 constexpr int kModelRecordBytes = 3 * static_cast<int>(sizeof(float)) + kDescriptorBytes;
 
 struct UrpOrbResult
 {
     int tracked;
-    int goodMatches;
-    float centerX01;
-    float centerY01;
-    float relativeWidth;
-    float topLeftX01;
-    float topLeftY01;
-    float topRightX01;
-    float topRightY01;
-    float bottomRightX01;
-    float bottomRightY01;
-    float bottomLeftX01;
-    float bottomLeftY01;
     int poseValid;
     int poseInliers;
+    int uniqueMatches;
+    int detectedKeypoints;
+    int ratioMatches;
+    int guidedMatches;
+    int occupiedGridCells;
+    int rejectionCode;
     float tvecX;
     float tvecY;
     float tvecZ;
@@ -51,28 +45,11 @@ struct UrpOrbResult
     float r21;
     float r22;
     float reprojectionError;
-    float anchorX01;
-    float anchorY01;
-    float anchorDepth;
-    int anchorVisible;
-    float localLuminance;
+    float reprojectionMax;
     float inlierRatio;
     float coverageX;
     float coverageY;
-    float modelSpread;
     float processingMilliseconds;
-    int detectedKeypoints;
-    int ratioMatches;
-    int mutualMatches;
-    int uniqueMatches;
-    int occupiedGridCells;
-    float modelSpreadX;
-    float modelSpreadY;
-    float modelSpreadZ;
-    float reprojectionMax;
-    int rejectionCode;
-    float translationJumpMeters;
-    float rotationJumpDegrees;
 };
 
 enum RejectionCode
@@ -89,18 +66,6 @@ enum RejectionCode
     kNegativeDepth = 9,
     kLowCountPoseUnstable = 10
 };
-
-struct DebugPoint
-{
-    float x01;
-    float y01;
-    float kind;
-};
-
-static float Clamp01(float value)
-{
-    return std::max(0.0f, std::min(1.0f, value));
-}
 
 class OrbTracker
 {
@@ -144,23 +109,56 @@ public:
         return targetDescriptors_.empty() || targetModelPoints_.size() < 8 ? 0 : 1;
     }
 
-    void SetRepairAnchor(float x, float y, float z)
+    int SetPosePrior(const float* rotationTranslation, float searchRadiusFraction)
     {
-        repairAnchor_ = cv::Point3f(x, y, z);
-        hasRepairAnchor_ = true;
+        if (rotationTranslation == nullptr)
+        {
+            hasPosePrior_ = false;
+            return 0;
+        }
+
+        cv::Mat rotation(3, 3, CV_64F);
+        cv::Mat translation(3, 1, CV_64F);
+        for (int row = 0; row < 3; row++)
+        {
+            for (int column = 0; column < 3; column++)
+            {
+                const float value = rotationTranslation[row * 4 + column];
+                if (!std::isfinite(value))
+                {
+                    hasPosePrior_ = false;
+                    return 0;
+                }
+                rotation.at<double>(row, column) = value;
+            }
+            const float value = rotationTranslation[row * 4 + 3];
+            if (!std::isfinite(value))
+            {
+                hasPosePrior_ = false;
+                return 0;
+            }
+            translation.at<double>(row) = value;
+        }
+
+        const double determinant = cv::determinant(rotation);
+        if (std::abs(determinant - 1.0) > 0.25
+            || translation.at<double>(2) <= 0.0)
+        {
+            hasPosePrior_ = false;
+            return 0;
+        }
+
+        priorRotation_ = rotation;
+        priorTranslation_ = translation;
+        priorSearchRadiusFraction_ =
+            std::clamp(searchRadiusFraction, 0.08f, 0.35f);
+        hasPosePrior_ = true;
+        return 1;
     }
 
-    int CopyDebugPoints(float* packed, int capacity) const
+    void ClearPosePrior()
     {
-        if (packed == nullptr || capacity <= 0) return 0;
-        const int count = std::min(capacity, static_cast<int>(lastDebugPoints_.size()));
-        for (int index = 0; index < count; index++)
-        {
-            packed[index * 3] = lastDebugPoints_[index].x01;
-            packed[index * 3 + 1] = lastDebugPoints_[index].y01;
-            packed[index * 3 + 2] = lastDebugPoints_[index].kind;
-        }
-        return count;
+        hasPosePrior_ = false;
     }
 
     int Track(const uint8_t* rgba, int width, int height, float fx, float fy, float cx, float cy, int rotationClockwise, UrpOrbResult* result)
@@ -172,24 +170,11 @@ public:
         }
 
         *result = UrpOrbResult{0};
-        lastDebugPoints_.clear();
-        result->centerX01 = 0.5f;
-        result->centerY01 = 0.5f;
-        result->relativeWidth = 0.2f;
-        result->topLeftX01 = 0.4f;
-        result->topLeftY01 = 0.6f;
-        result->topRightX01 = 0.6f;
-        result->topRightY01 = 0.6f;
-        result->bottomRightX01 = 0.6f;
-        result->bottomRightY01 = 0.4f;
-        result->bottomLeftX01 = 0.4f;
-        result->bottomLeftY01 = 0.4f;
         result->r00 = 1.0f;
         result->r11 = 1.0f;
         result->r22 = 1.0f;
         result->reprojectionError = 999.0f;
-        result->anchorX01 = 0.5f;
-        result->anchorY01 = 0.5f;
+        result->reprojectionMax = 999.0f;
 
         if (rgba == nullptr || width <= 0 || height <= 0 || targetDescriptors_.empty())
         {
@@ -235,6 +220,13 @@ public:
         cv::Mat gray;
         cv::cvtColor(frame, gray, cv::COLOR_RGBA2GRAY);
 
+        double scaledFx = orientedFx > 1.0 ? orientedFx * resizeScale : static_cast<double>(frame.cols) * 0.9;
+        double scaledFy = orientedFy > 1.0 ? orientedFy * resizeScale : static_cast<double>(frame.cols) * 0.9;
+        double scaledCx = orientedCx > 1.0 ? orientedCx * resizeScale : static_cast<double>(frame.cols) * 0.5;
+        double scaledCy = orientedCy > 1.0 ? orientedCy * resizeScale : static_cast<double>(frame.rows) * 0.5;
+        cv::Mat cameraMatrix = (cv::Mat_<double>(3, 3) << scaledFx, 0.0, scaledCx, 0.0, scaledFy, scaledCy, 0.0, 0.0, 1.0);
+        cv::Mat distCoeffs = cv::Mat::zeros(4, 1, CV_64F);
+
         std::vector<cv::KeyPoint> frameKeypoints;
         cv::Mat frameDescriptors;
         orb_->detectAndCompute(gray, cv::noArray(), frameKeypoints, frameDescriptors);
@@ -246,41 +238,106 @@ public:
         }
         result->detectedKeypoints = static_cast<int>(frameKeypoints.size());
 
-        std::vector<std::vector<cv::DMatch>> targetToFrame;
-        std::vector<std::vector<cv::DMatch>> frameToTarget;
-        matcher_->knnMatch(targetDescriptors_, frameDescriptors, targetToFrame, 2);
-        matcher_->knnMatch(frameDescriptors, targetDescriptors_, frameToTarget, 2);
-
-        std::vector<int> reverseBest(frameDescriptors.rows, -1);
-        for (const auto& pair : frameToTarget)
+        cv::Mat orientedPriorRotation;
+        cv::Mat orientedPriorTranslation;
+        cv::Mat orientedPriorRvec;
+        std::vector<cv::Point2f> projectedPrior;
+        std::vector<float> projectedPriorDepth;
+        bool hasUsablePrior = false;
+        if (hasPosePrior_)
         {
-            if (pair.size() >= 2 && pair[0].distance < ratio_ * pair[1].distance)
+            cv::Mat orientation = cv::Mat::eye(3, 3, CV_64F);
+            if (rotationClockwise == 90)
             {
-                reverseBest[pair[0].queryIdx] = pair[0].trainIdx;
+                orientation = (cv::Mat_<double>(3, 3)
+                    << 0.0, -1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0);
             }
+            else if (rotationClockwise == 180)
+            {
+                orientation = (cv::Mat_<double>(3, 3)
+                    << -1.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 1.0);
+            }
+            else if (rotationClockwise == 270)
+            {
+                orientation = (cv::Mat_<double>(3, 3)
+                    << 0.0, 1.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 1.0);
+            }
+
+            orientedPriorRotation = orientation * priorRotation_;
+            orientedPriorTranslation = orientation * priorTranslation_;
+            cv::Rodrigues(orientedPriorRotation, orientedPriorRvec);
+            cv::projectPoints(
+                targetModelPoints_,
+                orientedPriorRvec,
+                orientedPriorTranslation,
+                cameraMatrix,
+                distCoeffs,
+                projectedPrior);
+            projectedPriorDepth.resize(targetModelPoints_.size());
+            for (size_t index = 0; index < targetModelPoints_.size(); index++)
+            {
+                const cv::Point3f& point = targetModelPoints_[index];
+                projectedPriorDepth[index] = static_cast<float>(
+                    orientedPriorRotation.at<double>(2, 0) * point.x
+                    + orientedPriorRotation.at<double>(2, 1) * point.y
+                    + orientedPriorRotation.at<double>(2, 2) * point.z
+                    + orientedPriorTranslation.at<double>(2));
+            }
+            hasUsablePrior = projectedPrior.size() == targetModelPoints_.size();
         }
 
-        std::vector<cv::DMatch> mutualMatches;
-        mutualMatches.reserve(targetToFrame.size());
+        std::vector<std::vector<cv::DMatch>> targetToFrame;
+        matcher_->knnMatch(targetDescriptors_, frameDescriptors, targetToFrame, 2);
+        std::vector<cv::DMatch> strictRatioMatches;
+        std::vector<cv::DMatch> guidedMatches;
+        strictRatioMatches.reserve(targetToFrame.size());
+        guidedMatches.reserve(targetToFrame.size());
+        const float guidedRatio = std::max(ratio_, 0.82f);
+        const float guidedRadius = std::max(
+            36.0f,
+            priorSearchRadiusFraction_
+                * static_cast<float>(std::min(frame.cols, frame.rows)));
+        const float guidedRadiusSquared = guidedRadius * guidedRadius;
         for (const auto& pair : targetToFrame)
         {
-            if (pair.size() >= 2
-                && pair[0].distance < ratio_ * pair[1].distance
-                && pair[0].trainIdx >= 0
-                && pair[0].trainIdx < static_cast<int>(reverseBest.size())
-                && reverseBest[pair[0].trainIdx] == pair[0].queryIdx)
+            if (pair.size() < 2)
             {
-                mutualMatches.push_back(pair[0]);
+                continue;
+            }
+            const cv::DMatch& match = pair[0];
+            if (match.distance < ratio_ * pair[1].distance)
+            {
+                strictRatioMatches.push_back(match);
+            }
+            if (!hasUsablePrior
+                || match.queryIdx < 0
+                || match.queryIdx >= static_cast<int>(projectedPrior.size())
+                || match.trainIdx < 0
+                || match.trainIdx >= static_cast<int>(frameKeypoints.size())
+                || projectedPriorDepth[match.queryIdx] <= 0.0f
+                || match.distance > 64.0f
+                || match.distance >= guidedRatio * pair[1].distance)
+            {
+                continue;
+            }
+
+            const cv::Point2f delta =
+                frameKeypoints[match.trainIdx].pt - projectedPrior[match.queryIdx];
+            if (delta.dot(delta) <= guidedRadiusSquared)
+            {
+                guidedMatches.push_back(match);
             }
         }
-        result->ratioMatches = static_cast<int>(
-            std::count_if(targetToFrame.begin(), targetToFrame.end(), [this](const auto& pair)
-            {
-                return pair.size() >= 2 && pair[0].distance < ratio_ * pair[1].distance;
-            }));
-        result->mutualMatches = static_cast<int>(mutualMatches.size());
 
-        std::sort(mutualMatches.begin(), mutualMatches.end(), [](const cv::DMatch& a, const cv::DMatch& b)
+        const bool usedPosePrior =
+            hasUsablePrior
+            && static_cast<int>(guidedMatches.size()) >= minMatches_;
+        std::vector<cv::DMatch> candidateMatches =
+            usedPosePrior ? guidedMatches : strictRatioMatches;
+        result->ratioMatches = static_cast<int>(strictRatioMatches.size());
+        result->guidedMatches = static_cast<int>(guidedMatches.size());
+
+        std::sort(candidateMatches.begin(), candidateMatches.end(), [](const cv::DMatch& a, const cv::DMatch& b)
         {
             return a.distance < b.distance;
         });
@@ -289,10 +346,10 @@ public:
         const int maxMatchesPerCell = 8;
         std::vector<int> cellCounts(gridColumns * gridRows, 0);
         std::vector<cv::DMatch> goodMatches;
-        goodMatches.reserve(mutualMatches.size());
+        goodMatches.reserve(candidateMatches.size());
         std::unordered_set<int> usedModelRecords;
         std::unordered_set<int> usedFrameKeypoints;
-        for (const cv::DMatch& match : mutualMatches)
+        for (const cv::DMatch& match : candidateMatches)
         {
             if (usedModelRecords.count(match.queryIdx) != 0
                 || usedFrameKeypoints.count(match.trainIdx) != 0)
@@ -318,8 +375,7 @@ public:
             }
         }
 
-        result->goodMatches = static_cast<int>(goodMatches.size());
-        result->uniqueMatches = result->goodMatches;
+        result->uniqueMatches = static_cast<int>(goodMatches.size());
         result->occupiedGridCells = static_cast<int>(std::count_if(
             cellCounts.begin(), cellCounts.end(), [](int count) { return count > 0; }));
         if (static_cast<int>(goodMatches.size()) < minMatches_)
@@ -336,48 +392,11 @@ public:
         {
             framePoints.push_back(frameKeypoints[match.trainIdx].pt);
             modelPoints.push_back(targetModelPoints_[match.queryIdx]);
-            const cv::Point2f point = frameKeypoints[match.trainIdx].pt;
-            lastDebugPoints_.push_back(DebugPoint{
-                point.x / static_cast<float>(frame.cols),
-                1.0f - point.y / static_cast<float>(frame.rows),
-                0.0f});
         }
 
-        FillMatchedPointBox(framePoints, frame.cols, frame.rows, result);
         cv::Rect2f matchedBounds = cv::boundingRect(framePoints);
         result->coverageX = matchedBounds.width / std::max(1.0f, static_cast<float>(frame.cols));
         result->coverageY = matchedBounds.height / std::max(1.0f, static_cast<float>(frame.rows));
-        cv::Point3f minimum = modelPoints.front();
-        cv::Point3f maximum = modelPoints.front();
-        for (const cv::Point3f& point : modelPoints)
-        {
-            minimum.x = std::min(minimum.x, point.x);
-            minimum.y = std::min(minimum.y, point.y);
-            minimum.z = std::min(minimum.z, point.z);
-            maximum.x = std::max(maximum.x, point.x);
-            maximum.y = std::max(maximum.y, point.y);
-            maximum.z = std::max(maximum.z, point.z);
-        }
-        result->modelSpread = std::min({
-            maximum.x - minimum.x,
-            maximum.y - minimum.y,
-            maximum.z - minimum.z});
-        result->modelSpreadX = maximum.x - minimum.x;
-        result->modelSpreadY = maximum.y - minimum.y;
-        result->modelSpreadZ = maximum.z - minimum.z;
-        cv::Rect luminanceRegion = cv::boundingRect(framePoints);
-        luminanceRegion &= cv::Rect(0, 0, gray.cols, gray.rows);
-        if (luminanceRegion.width > 4 && luminanceRegion.height > 4)
-        {
-            result->localLuminance = static_cast<float>(cv::mean(gray(luminanceRegion))[0] / 255.0);
-        }
-
-        double scaledFx = orientedFx > 1.0 ? orientedFx * resizeScale : static_cast<double>(frame.cols) * 0.9;
-        double scaledFy = orientedFy > 1.0 ? orientedFy * resizeScale : static_cast<double>(frame.cols) * 0.9;
-        double scaledCx = orientedCx > 1.0 ? orientedCx * resizeScale : static_cast<double>(frame.cols) * 0.5;
-        double scaledCy = orientedCy > 1.0 ? orientedCy * resizeScale : static_cast<double>(frame.rows) * 0.5;
-        cv::Mat cameraMatrix = (cv::Mat_<double>(3, 3) << scaledFx, 0.0, scaledCx, 0.0, scaledFy, scaledCy, 0.0, 0.0, 1.0);
-        cv::Mat distCoeffs = cv::Mat::zeros(4, 1, CV_64F);
 
         cv::Mat rvec;
         cv::Mat tvec;
@@ -385,19 +404,40 @@ public:
         bool poseOk = false;
         if (modelPoints.size() >= 6)
         {
-            poseOk = cv::solvePnPRansac(
-                modelPoints,
-                framePoints,
-                cameraMatrix,
-                distCoeffs,
-                rvec,
-                tvec,
-                false,
-                200,
-                3.0f,
-                0.99,
-                inliers,
-                cv::SOLVEPNP_EPNP);
+            if (usedPosePrior)
+            {
+                rvec = orientedPriorRvec.clone();
+                tvec = orientedPriorTranslation.clone();
+                poseOk = cv::solvePnPRansac(
+                    modelPoints,
+                    framePoints,
+                    cameraMatrix,
+                    distCoeffs,
+                    rvec,
+                    tvec,
+                    true,
+                    300,
+                    3.0f,
+                    0.995,
+                    inliers,
+                    cv::SOLVEPNP_ITERATIVE);
+            }
+            else
+            {
+                poseOk = cv::solvePnPRansac(
+                    modelPoints,
+                    framePoints,
+                    cameraMatrix,
+                    distCoeffs,
+                    rvec,
+                    tvec,
+                    false,
+                    300,
+                    3.0f,
+                    0.995,
+                    inliers,
+                    cv::SOLVEPNP_EPNP);
+            }
         }
 
         const float inlierRatio = goodMatches.empty()
@@ -419,10 +459,6 @@ public:
                 int index = inliers.at<int>(row);
                 inlierModelPoints.push_back(modelPoints[index]);
                 inlierFramePoints.push_back(framePoints[index]);
-                lastDebugPoints_.push_back(DebugPoint{
-                    framePoints[index].x / static_cast<float>(frame.cols),
-                    1.0f - framePoints[index].y / static_cast<float>(frame.rows),
-                    1.0f});
             }
             cv::solvePnPRefineLM(inlierModelPoints, inlierFramePoints, cameraMatrix, distCoeffs, rvec, tvec);
             std::vector<cv::Point2f> projectedInliers;
@@ -435,10 +471,6 @@ public:
                 const double errorSquared = static_cast<double>(delta.dot(delta));
                 squaredError += errorSquared;
                 maximumError = std::max(maximumError, std::sqrt(errorSquared));
-                lastDebugPoints_.push_back(DebugPoint{
-                    projectedInliers[i].x / static_cast<float>(frame.cols),
-                    1.0f - projectedInliers[i].y / static_cast<float>(frame.rows),
-                    2.0f});
             }
 
             result->reprojectionError = projectedInliers.empty()
@@ -463,13 +495,15 @@ public:
             result->r21 = static_cast<float>(rotation.at<double>(2, 1));
             result->r22 = static_cast<float>(rotation.at<double>(2, 2));
 
+            const float requiredInlierRatio = hasUsablePrior ? 0.35f : 0.45f;
             const int requiredPoseInliers = std::clamp(
-                static_cast<int>(std::ceil(goodMatches.size() * 0.50f)), 6, 10);
+                static_cast<int>(std::ceil(
+                    goodMatches.size() * requiredInlierRatio)), 6, 10);
             if (tvec.at<double>(2) <= 0.0)
                 result->rejectionCode = kNegativeDepth;
             else if (inliers.rows < requiredPoseInliers)
                 result->rejectionCode = kInsufficientPoseInliers;
-            else if (inlierRatio < 0.50f)
+            else if (inlierRatio < requiredInlierRatio)
                 result->rejectionCode = kLowInlierRatio;
             else if (result->reprojectionError > 3.0f)
                 result->rejectionCode = kHighReprojectionError;
@@ -484,24 +518,6 @@ public:
                 result->rejectionCode = kAccepted;
             result->poseValid = result->rejectionCode == kAccepted ? 1 : 0;
 
-            if (hasRepairAnchor_)
-            {
-                std::vector<cv::Point3f> anchorPoints{repairAnchor_};
-                std::vector<cv::Point2f> projectedAnchor;
-                cv::projectPoints(anchorPoints, rvec, tvec, cameraMatrix, distCoeffs, projectedAnchor);
-                cv::Mat anchorVector = (cv::Mat_<double>(3, 1)
-                    << repairAnchor_.x, repairAnchor_.y, repairAnchor_.z);
-                cv::Mat anchorInCamera = rotation * anchorVector + tvec;
-                float anchorX = projectedAnchor[0].x / static_cast<float>(frame.cols);
-                float anchorY = 1.0f - projectedAnchor[0].y / static_cast<float>(frame.rows);
-                result->anchorX01 = anchorX;
-                result->anchorY01 = anchorY;
-                result->anchorDepth = static_cast<float>(anchorInCamera.at<double>(2));
-                result->anchorVisible = anchorX >= -0.05f && anchorX <= 1.05f
-                    && anchorY >= -0.05f && anchorY <= 1.05f
-                    && result->anchorDepth > 0.0f;
-                lastDebugPoints_.push_back(DebugPoint{anchorX, anchorY, 3.0f});
-            }
         }
 
         result->processingMilliseconds = static_cast<float>(
@@ -525,39 +541,6 @@ private:
         return resized;
     }
 
-    static void FillMatchedPointBox(const std::vector<cv::Point2f>& points, int frameWidth, int frameHeight, UrpOrbResult* result)
-    {
-        if (points.empty())
-        {
-            return;
-        }
-
-        float minX = points[0].x;
-        float maxX = points[0].x;
-        float minY = points[0].y;
-        float maxY = points[0].y;
-        for (const cv::Point2f& point : points)
-        {
-            minX = std::min(minX, point.x);
-            maxX = std::max(maxX, point.x);
-            minY = std::min(minY, point.y);
-            maxY = std::max(maxY, point.y);
-        }
-        float boxWidth = std::max(1.0f, maxX - minX);
-        float boxHeight = std::max(1.0f, maxY - minY);
-        result->centerX01 = Clamp01((minX + boxWidth * 0.5f) / static_cast<float>(frameWidth));
-        result->centerY01 = Clamp01(1.0f - ((minY + boxHeight * 0.5f) / static_cast<float>(frameHeight)));
-        result->relativeWidth = Clamp01(boxWidth / static_cast<float>(frameWidth));
-        result->topLeftX01 = Clamp01(minX / static_cast<float>(frameWidth));
-        result->topLeftY01 = Clamp01(1.0f - minY / static_cast<float>(frameHeight));
-        result->topRightX01 = Clamp01(maxX / static_cast<float>(frameWidth));
-        result->topRightY01 = result->topLeftY01;
-        result->bottomRightX01 = result->topRightX01;
-        result->bottomRightY01 = Clamp01(1.0f - maxY / static_cast<float>(frameHeight));
-        result->bottomLeftX01 = result->topLeftX01;
-        result->bottomLeftY01 = result->bottomRightY01;
-    }
-
     float ratio_;
     int minMatches_;
     int maxWidth_;
@@ -565,9 +548,10 @@ private:
     cv::Ptr<cv::BFMatcher> matcher_;
     std::vector<cv::Point3f> targetModelPoints_;
     cv::Mat targetDescriptors_;
-    cv::Point3f repairAnchor_{0.0f, 0.0f, 0.0f};
-    bool hasRepairAnchor_ = false;
-    std::vector<DebugPoint> lastDebugPoints_;
+    cv::Mat priorRotation_ = cv::Mat::eye(3, 3, CV_64F);
+    cv::Mat priorTranslation_ = cv::Mat::zeros(3, 1, CV_64F);
+    float priorSearchRadiusFraction_ = 0.12f;
+    bool hasPosePrior_ = false;
 };
 
 static std::mutex gMutex;
@@ -608,7 +592,10 @@ extern "C"
         return found->second->SetModel(data, length);
     }
 
-    int urp_orb_set_repair_anchor(int handle, float x, float y, float z)
+    int urp_orb_set_pose_prior(
+        int handle,
+        const float* rotationTranslation,
+        float searchRadiusFraction)
     {
         std::lock_guard<std::mutex> lock(gMutex);
         auto found = gTrackers.find(handle);
@@ -616,17 +603,21 @@ extern "C"
         {
             return 0;
         }
-
-        found->second->SetRepairAnchor(x, y, z);
-        return 1;
+        return found->second->SetPosePrior(
+            rotationTranslation,
+            searchRadiusFraction);
     }
 
-    int urp_orb_get_debug_points(int handle, float* packed, int capacity)
+    int urp_orb_clear_pose_prior(int handle)
     {
         std::lock_guard<std::mutex> lock(gMutex);
         auto found = gTrackers.find(handle);
-        if (found == gTrackers.end()) return 0;
-        return found->second->CopyDebugPoints(packed, capacity);
+        if (found == gTrackers.end())
+        {
+            return 0;
+        }
+        found->second->ClearPosePrior();
+        return 1;
     }
 
     int urp_orb_track(int handle, const uint8_t* rgba, int width, int height, float fx, float fy, float cx, float cy, int rotationClockwise, UrpOrbResult* result)

@@ -33,6 +33,8 @@ namespace Urp.ArDemo.Editor
             "Assets/Scripts/OrbImageTrackingController.cs";
         private const string SetupPath =
             "Assets/Editor/UrpArProjectSetup.cs";
+        private const string NativeSourcePath =
+            "Native/UrpOrbNative/src/urp_orb_native.cpp";
         private const string PlayModeSessionKey =
             "UrpArValidation.PlayModeSmokeRunning";
 
@@ -291,9 +293,32 @@ namespace Urp.ArDemo.Editor
             Require(
                 controller.Contains("trackedObjectPoseRoot.position")
                 && controller.Contains("trackedObjectPoseRoot.rotation")
-                && controller.Contains("ConfirmReferenceAlignment")
+                && controller.Contains("PlacePreAlignmentPose")
+                && controller.Contains("SetCurrentPosePrior")
+                && controller.Contains("TrackingState.AlignmentProof")
+                && controller.Contains("trackingState = TrackingState.Repair")
                 && controller.Contains("renderer.enabled = enabled"),
-                "Production tracker does not implement root-only pose plus Renderer gate.");
+                "Production tracker does not implement pre-aligned B+C, guided B PnP, and Renderer gate.");
+            Require(
+                !controller.Contains("ConfirmReferenceAlignment")
+                && !controller.Contains("ShowReferenceValidation")
+                && !controller.Contains("SetRepairVisible"),
+                "Production tracker still exposes the removed manual B/C stage controls.");
+            string native = File.ReadAllText(NativeSourcePath);
+            Require(
+                native.Contains("SetPosePrior")
+                && native.Contains("guidedMatches")
+                && !native.Contains("frameToTarget")
+                && !native.Contains("repairAnchor")
+                && !native.Contains("set_repair_anchor"),
+                "Native tracker must use guided B correspondences and contain no reverse-mutual or bottle-mouth anchor path.");
+            string ui = File.ReadAllText(
+                "Assets/Scripts/UrpAppController.cs");
+            Require(
+                !ui.Contains("查看 B 覆盖")
+                && !ui.Contains("显示修复 C")
+                && ui.Contains("\"开始\", \"重置\", \"文字介绍\", \"返回\""),
+                "Tracking page must contain only Start, Reset, Information and Back.");
 
             string[] prohibitedSetupTokens =
             {
@@ -332,6 +357,25 @@ namespace Urp.ArDemo.Editor
             SetPrivateField(controller, "trackedObjectPoseRoot", rootObject.transform);
             SetPrivateField(controller, "modelCoordinateAlignment", alignmentObject.transform);
             controller.SetProfile(profile);
+            controller.SetTrackingEnabled(true);
+            MethodInfo buildPrior = typeof(OrbImageTrackingController).GetMethod(
+                "TryBuildCurrentPosePrior",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            object[] priorArguments = { null };
+            Require(
+                buildPrior != null
+                && (bool)buildPrior.Invoke(controller, priorArguments),
+                "The world-space B+C pre-alignment pose did not produce a valid PnP prior.");
+            float[] prior = priorArguments[0] as float[];
+            float determinant =
+                prior[0] * (prior[5] * prior[10] - prior[6] * prior[9])
+                - prior[1] * (prior[4] * prior[10] - prior[6] * prior[8])
+                + prior[2] * (prior[4] * prior[9] - prior[5] * prior[8]);
+            Require(
+                prior.Length == 12
+                && Mathf.Abs(determinant - 1f) < 0.01f
+                && prior[11] > 0f,
+                "The coarse model-to-camera prior is not a proper positive-depth rotation.");
 
             Transform body =
                 GetPrivateField<Transform>(controller, "registeredReferenceModel");
@@ -341,20 +385,15 @@ namespace Urp.ArDemo.Editor
                 GetPrivateField<Transform>(controller, "registeredBottlePairRoot");
             Require(body.parent == pair && cap.parent == pair,
                 "Runtime changed the Blender-authored B/C parent relationship.");
+            Require(
+                AnyEnabled(body.GetComponentsInChildren<Renderer>(true))
+                && AnyEnabled(cap.GetComponentsInChildren<Renderer>(true)),
+                "Entering tracking must show the Blender-aligned B+C pair.");
             Matrix4x4 bodyBefore = body.localToWorldMatrix;
             Matrix4x4 capLocalBefore = pair.worldToLocalMatrix * cap.localToWorldMatrix;
 
-            SetPrivateField(controller, "registrationEstablished", true);
-            SetPrivateField(
-                controller,
-                "trackingState",
-                OrbImageTrackingController.TrackingState.ReferenceValidation);
-            controller.ShowReferenceValidation();
-            Require(
-                AnyEnabled(body.GetComponentsInChildren<Renderer>(true))
-                && !AnyEnabled(cap.GetComponentsInChildren<Renderer>(true)),
-                "Reference-validation stage must show only B.");
-            controller.ConfirmReferenceAlignment();
+            controller.SetReferenceHierarchyVisible(false);
+            controller.SetRepairHierarchyVisible(true);
             Require(
                 !AnyEnabled(body.GetComponentsInChildren<Renderer>(true))
                 && AnyEnabled(cap.GetComponentsInChildren<Renderer>(true)),
