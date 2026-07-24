@@ -24,6 +24,7 @@ namespace Urp.ArDemo
         [SerializeField] private Camera arCamera;
         [SerializeField] private ARCameraManager arCameraManager;
         [SerializeField] private ARCameraBackground arCameraBackground;
+        [SerializeField] private AROcclusionManager arOcclusionManager;
 
         private readonly Dictionary<Page, GameObject> pages = new Dictionary<Page, GameObject>();
         private Canvas canvas;
@@ -468,6 +469,7 @@ namespace Urp.ArDemo
             {
                 if (arCameraBackground != null) arCameraBackground.enabled = false;
                 if (arCameraManager != null) arCameraManager.enabled = false;
+                if (arOcclusionManager != null) arOcclusionManager.enabled = false;
                 if (arCamera != null) arCamera.enabled = false;
                 if (arSession != null) arSession.enabled = false;
                 return;
@@ -508,6 +510,7 @@ namespace Urp.ArDemo
             if (arSession != null) arSession.enabled = true;
             yield return null;
             if (arCameraManager != null) arCameraManager.enabled = true;
+            if (arOcclusionManager != null) arOcclusionManager.enabled = true;
             if (arCamera != null) arCamera.enabled = true;
             if (arCameraBackground != null) arCameraBackground.enabled = true;
             arActivationRoutine = null;

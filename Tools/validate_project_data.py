@@ -50,12 +50,14 @@ def main() -> None:
     report = json.loads(report_path.read_text(encoding="utf-8"))
     controller = controller_path.read_text(encoding="utf-8")
 
-    if manifest["version"] != "bottle-full-aligned-v2-reference-b-rendered-v1":
+    if manifest["version"] != "bottle-full-aligned-v2-reference-b-real-observations-v2":
         raise ValueError("ORB manifest is not for BottleFullAlignedV2")
     if manifest["database_sha256"] != sha256(database):
         raise ValueError("ORB manifest SHA256 does not match the database")
     if manifest["repair_c_excluded_from_matching"] is not True:
         raise ValueError("BottleCapC must be excluded from B feature generation")
+    if manifest["source_provenance"]["rendered_mesh_descriptors_used"] is not False:
+        raise ValueError("The production database must use real no-cap bottle observations")
     if manifest.get("device_overlay_verified") is not False:
         raise ValueError("Device overlay cannot be marked verified without evidence")
     if report["runtimeHierarchy"] != {

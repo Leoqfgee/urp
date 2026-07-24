@@ -19,18 +19,19 @@ MonoBehaviour:
   viewerDescription: "BottleFullAlignedV2 \u4E2D\uFF0CDamagedBottleB \u662F\u65E0\u76D6\u74F6\u8EAB
     B\uFF0CBottleCapC \u662F\u540C\u4E00\u6444\u5F71\u6D4B\u91CF\u6A21\u578B\u5207\u5206\u51FA\u7684\u74F6\u76D6
     C\u3002\u4E24\u8005\u4EE5\u56FA\u5B9A\u540C\u7EA7\u5B50\u5BF9\u8C61\u4FDD\u5B58\u5728
-    BottleRepairRoot \u4E0B\u3002"
-  trackingDescription: "\u8FDB\u5165\u9875\u9762\u5148\u663E\u793A Blender \u5BF9\u9F50\u7684
-    B+C \u4E09\u7EF4\u6A21\u578B\u3002\u7528\u6237\u79FB\u52A8\u624B\u673A\u8BA9
-    B \u4E0E\u771F\u5B9E\u6B8B\u7F3A\u74F6 A \u5927\u81F4\u91CD\u5408\u540E\u70B9\u51FB\u5F00\u59CB\u3002\u7CFB\u7EDF\u53EA\u7528
-    A \u4E0E B \u7684\u81EA\u7136\u7279\u5F81\u6C42\u5B8C\u6574 PnP \u4F4D\u59FF\uFF1B\u7A33\u5B9A\u540E\u81EA\u52A8\u53EA\u5173\u95ED
-    B \u7684 Renderer\u3002C \u4E0D\u5355\u72EC\u8BC6\u522B\u6216\u5B9A\u4F4D\uFF0C\u53EA\u7EE7\u627F
-    B \u7684\u4E09\u7EF4\u8DDF\u8E2A\u4F4D\u59FF\u3002"
+    BottleRepairRoot \u4E0B\uFF0C\u5E76\u7EDF\u4E00\u4F7F\u7528\u6444\u5F71\u6D4B\u91CF\u7EB9\u7406\u3002"
+  trackingDescription: "\u8FDB\u5165\u9875\u9762\u5148\u663E\u793A\u5E26\u7EB9\u7406\u7684
+    Blender \u5BF9\u9F50 B+C \u4E09\u7EF4\u6A21\u578B\u3002\u7528\u6237\u79FB\u52A8\u624B\u673A\u8BA9
+    B \u4E0E\u771F\u5B9E\u6B8B\u7F3A\u74F6 A \u5927\u81F4\u91CD\u5408\u540E\u70B9\u51FB\u5F00\u59CB\u3002\u70B9\u51FB\u540E\u7ACB\u5373\u53EA\u663E\u793A
+    C\uFF1BB \u4FDD\u6301\u542F\u7528\u4F46\u6539\u4E3A\u53EA\u5199\u6DF1\u5EA6\u3002\u7CFB\u7EDF\u7528\u771F\u5B9E\u65E0\u76D6\u74F6\u7167\u7247\u7684
+    ORB \u7279\u5F81\u6C42 A\u2192B \u5B8C\u6574 PnP \u4F4D\u59FF\uFF0CC \u4E0D\u5355\u72EC\u8BC6\u522B\u6216\u5B9A\u4F4D\uFF0C\u53EA\u7EE7\u627F
+    B \u7684\u4E09\u7EF4\u8DDF\u8E2A\u4F4D\u59FF\u3002C \u7684\u989C\u8272\u4EAE\u5EA6\u7531
+    AR \u5149\u7167\u4F30\u8BA1\u5E73\u6ED1\u6821\u6B63\uFF0CB \u4E0E\u73AF\u5883\u6DF1\u5EA6\u5171\u540C\u5904\u7406\u906E\u6321\u3002"
   missingPartName: "\u74F6\u76D6 C"
   thumbnail: {fileID: 2800000, guid: 70a83d4f40433854ba58459b45fe6eb6, type: 3}
   damagedViewerPrefab: {fileID: 919132149155446097, guid: 927dfa0ba1fe2304a841089a0e61e2c6, type: 3}
   completeViewerPrefab: {fileID: 919132149155446097, guid: 927dfa0ba1fe2304a841089a0e61e2c6, type: 3}
-  viewerMaterial: {fileID: 0}
+  viewerMaterial: {fileID: 2100000, guid: e497a3cc2235ddb4a969ad53bb1da4df, type: 2}
   defaultViewerEuler: {x: 0, y: 0, z: 0}
   viewerMargin: 0.18
   registeredBottlePairPrefab: {fileID: 919132149155446097, guid: 927dfa0ba1fe2304a841089a0e61e2c6, type: 3}
@@ -44,15 +45,15 @@ MonoBehaviour:
     maximumReprojectionErrorPixels: 3
     maximumReprojectionMaxPixels: 8
     minimumCoverageX: 0.05
-    minimumCoverageY: 0.18
+    minimumCoverageY: 0.1
     registrationConfirmationFrames: 8
     registrationPositionToleranceMeters: 0.025
     registrationRotationToleranceDegrees: 8
     temporaryLossHoldSeconds: 0.35
     positionSmoothing: 0.3
     rotationSmoothing: 0.25
-  repairMaterial: {fileID: 0}
-  referenceValidationMaterial: {fileID: 2100000, guid: 7f983ed026a4380429e825c6b49307c8, type: 2}
+  repairMaterial: {fileID: 2100000, guid: e497a3cc2235ddb4a969ad53bb1da4df, type: 2}
+  referenceDepthOcclusionMaterial: {fileID: 2100000, guid: 905267fa57b12674a955cad75181f624, type: 2}
   physicalScaleVerified: 1
   physicalMeasurements:
   - label: "\u74F6\u53E3\u87BA\u7EB9\u6700\u5916\u4FA7\u76F4\u5F84"

@@ -4,7 +4,7 @@ Native Android ARM64 plugin for the URP AR prototype. It performs the ORB target
 matching used by `OrbImageTrackingController` and returns the target center,
 relative width, match diagnostics and full solvePnPRansac pose to Unity.
 
-The current `r6-guided-b-pnp` matcher uses the user-aligned world-space B pose
+The current `r7-real-photo-guided-b-pnp` matcher uses the user-aligned world-space B pose
 only to restrict descriptor correspondences to plausible projected locations.
 It does not return that coarse pose as tracking output. The accepted pose still
 requires B natural-feature correspondences, RANSAC inliers, spatial coverage,
@@ -12,6 +12,10 @@ positive depth and reprojection-error checks. If the guided set is insufficient,
 the tracker falls back to one-way model-to-frame ratio matches; the former
 double-sided mutual test was removed because thousands of legitimate
 multi-view B descriptors made its reverse ratio test reject real matches.
+The formal database contains 4,100 filtered observations from the real
+open/no-cap bottle photo set. Blender-render descriptors are not mixed into
+that database because supplied failure-frame replay showed that the mixed
+geometry reduced PnP consistency.
 
 Build inputs used for the current binary:
 

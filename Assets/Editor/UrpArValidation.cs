@@ -7,6 +7,7 @@ using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.UI;
+using UnityEngine.XR.ARFoundation;
 using Urp.ArDemo.Calibration;
 using Urp.ArDemo.Native;
 
@@ -29,6 +30,11 @@ namespace Urp.ArDemo.Editor
             "Assets/OrbModels/bottle_reference_b.bytes";
         private const string DatabaseManifestPath =
             "Assets/OrbModels/bottle_reference_b_manifest.json";
+        private const string BottleAlbedoPath =
+            "Assets/Models/CleanBottleReconstruction/BottleFullAlignedV2/"
+            + "Textures/bottle_full_clean_v2_albedo.png";
+        private const string BottleDepthShaderPath =
+            "Assets/Shaders/BottleDepthOccluder.shader";
         private const string ControllerPath =
             "Assets/Scripts/OrbImageTrackingController.cs";
         private const string SetupPath =
@@ -182,6 +188,10 @@ namespace Urp.ArDemo.Editor
             Require(
                 File.Exists(DatabaseManifestPath),
                 $"Missing B database manifest: {DatabaseManifestPath}");
+            Require(File.Exists(BottleAlbedoPath),
+                $"Missing bottle photogrammetry texture: {BottleAlbedoPath}");
+            Require(File.Exists(BottleDepthShaderPath),
+                $"Missing B depth occlusion shader: {BottleDepthShaderPath}");
 
             RestorationObjectCatalog catalog =
                 AssetDatabase.LoadAssetAtPath<RestorationObjectCatalog>(CatalogPath);
@@ -212,17 +222,16 @@ namespace Urp.ArDemo.Editor
                 && Mathf.Abs(profile.calibration.metersPerModelUnit - 0.17f) < 0.0001f,
                 "The new canonical B frame or physical scale is invalid.");
             Require(
-                profile.referenceValidationMaterial != null
-                && profile.referenceValidationMaterial.renderQueue
-                >= (int)RenderQueue.Transparent,
-                "B validation material must be translucent.");
-            Color validationColor =
-                profile.referenceValidationMaterial.GetColor("_BaseColor");
+                profile.viewerMaterial != null
+                && profile.viewerMaterial.GetTexture("_BaseMap") != null
+                && profile.repairMaterial == profile.viewerMaterial,
+                "B+C pre-alignment and C repair must use the copied photogrammetry texture.");
             Require(
-                !(validationColor.g > 0.8f
-                  && validationColor.b > 0.8f
-                  && validationColor.r < 0.3f),
-                "The prohibited cyan guide color is still configured.");
+                profile.referenceDepthOcclusionMaterial != null
+                && profile.referenceDepthOcclusionMaterial.shader != null
+                && profile.referenceDepthOcclusionMaterial.shader.name
+                    == "URP AR/Bottle Depth Occluder",
+                "B must use the depth-only occlusion shader after Start.");
 
             byte[] database = File.ReadAllBytes(DatabasePath);
             Require(
@@ -236,10 +245,12 @@ namespace Urp.ArDemo.Editor
                 $"B database record count/length is invalid: {records}.");
             string manifest = File.ReadAllText(DatabaseManifestPath);
             Require(
-                manifest.Contains("bottle-full-aligned-v2-reference-b-rendered-v1")
+                manifest.Contains("bottle-full-aligned-v2-reference-b-real-observations-v2")
+                && manifest.Contains("\"rendered_mesh_descriptors_used\": false")
+                && manifest.Contains("bottle_damaged")
                 && manifest.Contains("\"repair_c_excluded_from_matching\": true")
                 && manifest.Contains("\"device_overlay_verified\": false"),
-                "B database manifest does not describe the new B-only unverified pipeline.");
+                "B database manifest does not describe the real-photo B-only pipeline.");
 
             GameObject pairPrefab =
                 AssetDatabase.LoadAssetAtPath<GameObject>(NewPairPath);
@@ -260,9 +271,6 @@ namespace Urp.ArDemo.Editor
                 body.GetComponentsInChildren<Renderer>(true).Length > 0
                 && cap.GetComponentsInChildren<Renderer>(true).Length > 0,
                 "B or C has no Renderer.");
-            Require(
-                HasTexturedMaterial(body) && HasTexturedMaterial(cap),
-                "The embedded FBX texture is missing from B or C.");
             UnityEngine.Object.DestroyImmediate(pair);
         }
 
@@ -295,10 +303,11 @@ namespace Urp.ArDemo.Editor
                 && controller.Contains("trackedObjectPoseRoot.rotation")
                 && controller.Contains("PlacePreAlignmentPose")
                 && controller.Contains("SetCurrentPosePrior")
-                && controller.Contains("TrackingState.AlignmentProof")
+                && controller.Contains("ShowRepairPresentation")
+                && controller.Contains("referenceDepthOcclusionMaterial")
                 && controller.Contains("trackingState = TrackingState.Repair")
                 && controller.Contains("renderer.enabled = enabled"),
-                "Production tracker does not implement pre-aligned B+C, guided B PnP, and Renderer gate.");
+                "Production tracker does not implement textured pre-alignment, guided B PnP, and depth-only B.");
             Require(
                 !controller.Contains("ConfirmReferenceAlignment")
                 && !controller.Contains("ShowReferenceValidation")
@@ -337,8 +346,22 @@ namespace Urp.ArDemo.Editor
             }
             Require(
                 setup.Contains("BottleFullAlignedV2")
-                && setup.Contains("ReferenceBottleBValidation"),
-                "Scene generator does not bind the new formal model and validation material.");
+                && setup.Contains("BottlePhotogrammetryLit")
+                && setup.Contains("BottleDepthOccluder")
+                && setup.Contains("AROcclusionManager")
+                && setup.Contains("RepairAppearanceConsistencyController"),
+                "Scene generator does not bind texture, depth occlusion, and light consistency.");
+            int buildStart = setup.IndexOf(
+                "public static void BuildAndroidFromCommandLine()",
+                StringComparison.Ordinal);
+            int buildEnd = setup.IndexOf(
+                "private static void DeletePreviousTargetApk()",
+                buildStart + 1,
+                StringComparison.Ordinal);
+            string buildMethod = setup.Substring(buildStart, buildEnd - buildStart);
+            Require(
+                !buildMethod.Contains("SetupPrototypeScene()"),
+                "Android build must consume the saved production scene without regenerating it.");
         }
 
         private static void ValidateRuntimeRendererGate()
@@ -389,22 +412,37 @@ namespace Urp.ArDemo.Editor
                 AnyEnabled(body.GetComponentsInChildren<Renderer>(true))
                 && AnyEnabled(cap.GetComponentsInChildren<Renderer>(true)),
                 "Entering tracking must show the Blender-aligned B+C pair.");
+            Require(
+                AllUseMaterial(
+                    body.GetComponentsInChildren<Renderer>(true),
+                    profile.viewerMaterial)
+                && AllUseMaterial(
+                    cap.GetComponentsInChildren<Renderer>(true),
+                    profile.repairMaterial),
+                "Pre-alignment B+C must use the textured photogrammetry material.");
             Matrix4x4 bodyBefore = body.localToWorldMatrix;
             Matrix4x4 capLocalBefore = pair.worldToLocalMatrix * cap.localToWorldMatrix;
 
-            controller.SetReferenceHierarchyVisible(false);
-            controller.SetRepairHierarchyVisible(true);
+            controller.ShowRepairPresentation();
             Require(
-                !AnyEnabled(body.GetComponentsInChildren<Renderer>(true))
+                AnyEnabled(body.GetComponentsInChildren<Renderer>(true))
                 && AnyEnabled(cap.GetComponentsInChildren<Renderer>(true)),
-                "Repair stage must disable only B Renderers and show C.");
+                "Repair stage must keep depth-only B and visible C enabled.");
+            Require(
+                AllUseMaterial(
+                    body.GetComponentsInChildren<Renderer>(true),
+                    profile.referenceDepthOcclusionMaterial)
+                && AllUseMaterial(
+                    cap.GetComponentsInChildren<Renderer>(true),
+                    profile.repairMaterial),
+                "Start must switch B to depth-only while retaining textured C.");
             Require(body.gameObject.activeSelf && cap.gameObject.activeSelf,
-                "Renderer gate disabled B or C GameObjects instead of Renderers.");
+                "Depth presentation disabled B or C GameObjects.");
             Matrix4x4 capLocalAfter = pair.worldToLocalMatrix * cap.localToWorldMatrix;
             Require(MatrixApproximately(capLocalBefore, capLocalAfter),
                 "C local relationship changed while hiding B.");
             Require(MatrixApproximately(bodyBefore, body.localToWorldMatrix),
-                "B transform changed while hiding its Renderer.");
+                "B transform changed while switching to depth-only occlusion.");
 
             UnityEngine.Object.DestroyImmediate(controllerObject);
             UnityEngine.Object.DestroyImmediate(rootObject);
@@ -422,6 +460,11 @@ namespace Urp.ArDemo.Editor
                 UnityEngine.Object.FindObjectsOfType<RepairOverlayController>(true).Length
                 == 1,
                 "Generated scene must contain exactly one repair UI bridge.");
+            Require(
+                UnityEngine.Object.FindObjectsOfType<RepairAppearanceConsistencyController>(true)
+                    .Length == 1
+                && UnityEngine.Object.FindObjectsOfType<AROcclusionManager>(true).Length == 1,
+                "Generated scene must contain one light-consistency controller and one AR occlusion manager.");
             Transform trackedRoot = GameObject.Find("TrackedBottleRoot")?.transform;
             Transform alignment = GameObject.Find("ModelCoordinateAlignment")?.transform;
             Require(
@@ -529,11 +572,14 @@ namespace Urp.ArDemo.Editor
                 && renderer.gameObject.activeInHierarchy);
         }
 
-        private static bool HasTexturedMaterial(Transform root)
+        private static bool AllUseMaterial(Renderer[] renderers, Material material)
         {
-            return root.GetComponentsInChildren<Renderer>(true).Any(
-                renderer => renderer.sharedMaterials.Any(
-                    material => material != null && material.mainTexture != null));
+            return material != null
+                && renderers.Length > 0
+                && renderers.All(renderer =>
+                    renderer != null
+                    && renderer.sharedMaterials.Length > 0
+                    && renderer.sharedMaterials.All(item => item == material));
         }
 
         private static string GetPath(Transform transform)

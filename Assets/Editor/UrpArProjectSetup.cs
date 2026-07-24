@@ -13,6 +13,7 @@ using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 using UnityEngine.SceneManagement;
 using UnityEngine.XR.ARFoundation;
+using UnityEngine.XR.ARSubsystems;
 using UnityEngine.XR.Management;
 using Urp.ArDemo.Calibration;
 using Urp.ArDemo.Generated;
@@ -28,8 +29,13 @@ namespace Urp.ArDemo.Editor
             + "bottle_full_aligned_v2.fbx";
         private const string BottleThumbnailPath =
             "Assets/Textures/Targets/bottle_full_aligned_v2.png";
-        private const string BottleValidationMaterialPath =
-            "Assets/Materials/ReferenceBottleBValidation.mat";
+        private const string BottleAlbedoPath =
+            "Assets/Models/CleanBottleReconstruction/BottleFullAlignedV2/"
+            + "Textures/bottle_full_clean_v2_albedo.png";
+        private const string BottleSurfaceMaterialPath =
+            "Assets/Materials/BottlePhotogrammetryLit.mat";
+        private const string BottleDepthMaterialPath =
+            "Assets/Materials/BottleDepthOccluder.mat";
         private const string AndroidApkPath = "Builds/BottleFullAlignedV2AR.apk";
         private const string BottleReferenceOrbPath =
             "Assets/OrbModels/bottle_reference_b.bytes";
@@ -68,7 +74,11 @@ namespace Urp.ArDemo.Editor
         public static void BuildAndroidFromCommandLine()
         {
             BuildIdentityData identity = BuildIdentityGenerator.Generate();
-            SetupPrototypeScene();
+            if (!File.Exists(ScenePath))
+            {
+                throw new BuildFailedException(
+                    $"Saved production scene is missing: {ScenePath}");
+            }
             AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
             CleanStaleSimulationTempAssets();
             Directory.CreateDirectory("Builds");
@@ -266,6 +276,7 @@ namespace Urp.ArDemo.Editor
             }
 
             ConfigureTexture(BottleThumbnailPath, 1024);
+            ConfigureTexture(BottleAlbedoPath, 4096);
             ConfigureTexture(TissueTexturePath, 2048);
             ConfigureTexture(TissueThumbnailPath, 1024);
         }
@@ -289,8 +300,10 @@ namespace Urp.ArDemo.Editor
         {
             Material tissueMaterial = CreateLitMaterial(
                 "Assets/Objects/Tissue/Materials/TissueViewerLit.mat", TissueTexturePath, 0.16f);
-            Material validationMaterial = CreateReferenceValidationMaterial(
-                BottleValidationMaterialPath);
+            Material bottleSurfaceMaterial = CreateLitMaterial(
+                BottleSurfaceMaterialPath, BottleAlbedoPath, 0.12f, true);
+            Material bottleDepthMaterial =
+                CreateDepthOcclusionMaterial(BottleDepthMaterialPath);
             GameObject bottlePair =
                 AssetDatabase.LoadAssetAtPath<GameObject>(BottleRegisteredPairPath);
             if (bottlePair == null)
@@ -305,13 +318,15 @@ namespace Urp.ArDemo.Editor
             bottle.viewerDescription =
                 "BottleFullAlignedV2 中，DamagedBottleB 是无盖瓶身 B，"
                 + "BottleCapC 是同一摄影测量模型切分出的瓶盖 C。"
-                + "两者以固定同级子对象保存在 BottleRepairRoot 下。";
+                + "两者以固定同级子对象保存在 BottleRepairRoot 下，"
+                + "并统一使用摄影测量纹理。";
             bottle.trackingDescription =
-                "进入页面先显示 Blender 对齐的 B+C 三维模型。"
+                "进入页面先显示带纹理的 Blender 对齐 B+C 三维模型。"
                 + "用户移动手机让 B 与真实残缺瓶 A 大致重合后点击开始。"
-                + "系统只用 A 与 B 的自然特征求完整 PnP 位姿；"
-                + "稳定后自动只关闭 B 的 Renderer。"
-                + "C 不单独识别或定位，只继承 B 的三维跟踪位姿。";
+                + "点击后立即只显示 C；B 保持启用但改为只写深度。"
+                + "系统用真实无盖瓶照片的 ORB 特征求 A→B 完整 PnP 位姿，"
+                + "C 不单独识别或定位，只继承 B 的三维跟踪位姿。"
+                + "C 的颜色亮度由 AR 光照估计平滑校正，B 与环境深度共同处理遮挡。";
             bottle.missingPartName = "瓶盖 C";
             bottle.thumbnail =
                 AssetDatabase.LoadAssetAtPath<Texture2D>(BottleThumbnailPath);
@@ -338,9 +353,9 @@ namespace Urp.ArDemo.Editor
             bottleCalibration.orbToModelLocalScale = Vector3.one;
             EditorUtility.SetDirty(bottleCalibration);
             bottle.calibration = bottleCalibration;
-            bottle.viewerMaterial = null;
-            bottle.repairMaterial = null;
-            bottle.referenceValidationMaterial = validationMaterial;
+            bottle.viewerMaterial = bottleSurfaceMaterial;
+            bottle.repairMaterial = bottleSurfaceMaterial;
+            bottle.referenceDepthOcclusionMaterial = bottleDepthMaterial;
             bottle.defaultViewerEuler = Vector3.zero;
             bottle.viewerMargin = 0.18f;
             bottle.trackingSettings.minimumGoodMatches = 8;
@@ -349,7 +364,7 @@ namespace Urp.ArDemo.Editor
             bottle.trackingSettings.maximumReprojectionErrorPixels = 3.0f;
             bottle.trackingSettings.maximumReprojectionMaxPixels = 8.0f;
             bottle.trackingSettings.minimumCoverageX = 0.05f;
-            bottle.trackingSettings.minimumCoverageY = 0.18f;
+            bottle.trackingSettings.minimumCoverageY = 0.10f;
             bottle.trackingSettings.registrationConfirmationFrames = 8;
             bottle.trackingSettings.registrationPositionToleranceMeters = 0.025f;
             bottle.trackingSettings.registrationRotationToleranceDegrees = 8f;
@@ -425,7 +440,7 @@ namespace Urp.ArDemo.Editor
             tissue.calibration = tissueCalibration;
             tissue.viewerMaterial = tissueMaterial;
             tissue.repairMaterial = null;
-            tissue.referenceValidationMaterial = null;
+            tissue.referenceDepthOcclusionMaterial = null;
             tissue.defaultViewerEuler = new Vector3(-90f, 0f, 0f);
             tissue.viewerMargin = 0.20f;
             tissue.physicalScaleVerified = false;
@@ -465,12 +480,25 @@ namespace Urp.ArDemo.Editor
             cameraObject.AddComponent<UniversalAdditionalCameraData>();
             cameraObject.AddComponent<AudioListener>();
             ARCameraManager cameraManager = cameraObject.AddComponent<ARCameraManager>();
+            cameraManager.requestedLightEstimation =
+                LightEstimation.AmbientIntensity
+                | LightEstimation.AmbientColor
+                | LightEstimation.AmbientSphericalHarmonics
+                | LightEstimation.MainLightDirection
+                | LightEstimation.MainLightIntensity;
             ARCameraBackground cameraBackground = cameraObject.AddComponent<ARCameraBackground>();
+            AROcclusionManager occlusionManager =
+                cameraObject.AddComponent<AROcclusionManager>();
+            occlusionManager.requestedEnvironmentDepthMode =
+                EnvironmentDepthMode.Fastest;
+            occlusionManager.requestedOcclusionPreferenceMode =
+                OcclusionPreferenceMode.PreferEnvironmentOcclusion;
             cameraBackground.enabled = false;
             cameraManager.enabled = false;
+            occlusionManager.enabled = false;
             arCamera.enabled = false;
             origin.Camera = arCamera;
-            CreateRepairLighting(cameraObject.transform);
+            Light estimatedMainLight = CreateRepairLighting();
 
             GameObject trackedRoot = new GameObject("TrackedBottleRoot");
             GameObject alignment = new GameObject("ModelCoordinateAlignment");
@@ -488,8 +516,13 @@ namespace Urp.ArDemo.Editor
             RepairOverlayController overlay = application.AddComponent<RepairOverlayController>();
             OrbImageTrackingController tracker =
                 originObject.AddComponent<OrbImageTrackingController>();
+            RepairAppearanceConsistencyController appearance =
+                originObject.AddComponent<RepairAppearanceConsistencyController>();
+            AssignReference(appearance, "cameraManager", cameraManager);
+            AssignReference(appearance, "estimatedMainLight", estimatedMainLight);
             AssignReference(tracker, "cameraManager", cameraManager);
             AssignReference(tracker, "arCamera", arCamera);
+            AssignReference(tracker, "appearanceConsistency", appearance);
             AssignReference(tracker, "trackedObjectPoseRoot", trackedRoot.transform);
             AssignReference(tracker, "modelCoordinateAlignment", alignment.transform);
             AssignReference(tracker, "occlusionRoot", occlusionRoot.transform);
@@ -507,6 +540,7 @@ namespace Urp.ArDemo.Editor
             AssignReference(app, "arCamera", arCamera);
             AssignReference(app, "arCameraManager", cameraManager);
             AssignReference(app, "arCameraBackground", cameraBackground);
+            AssignReference(app, "arOcclusionManager", occlusionManager);
 
             CreateEventSystem();
             EditorSceneManager.SaveScene(scene, ScenePath);
@@ -551,31 +585,21 @@ namespace Urp.ArDemo.Editor
             return controller;
         }
 
-        private static void CreateRepairLighting(Transform cameraTransform)
+        private static Light CreateRepairLighting()
         {
-            GameObject keyObject = new GameObject("AR Repair Key Light");
-            keyObject.transform.SetParent(cameraTransform, false);
-            keyObject.transform.localRotation = Quaternion.Euler(38f, -32f, 0f);
+            GameObject keyObject = new GameObject("AR Estimated Main Light");
+            keyObject.transform.rotation = Quaternion.Euler(38f, -32f, 0f);
             Light key = keyObject.AddComponent<Light>();
             key.type = LightType.Directional;
-            key.intensity = 0.92f;
-            key.color = new Color(1f, 0.98f, 0.95f);
+            key.intensity = 0.8f;
+            key.color = Color.white;
             key.cullingMask = 1;
             key.shadows = LightShadows.None;
-
-            GameObject fillObject = new GameObject("AR Repair Fill Light");
-            fillObject.transform.SetParent(cameraTransform, false);
-            fillObject.transform.localRotation = Quaternion.Euler(18f, 148f, 0f);
-            Light fill = fillObject.AddComponent<Light>();
-            fill.type = LightType.Directional;
-            fill.intensity = 0.34f;
-            fill.color = new Color(0.88f, 0.93f, 1f);
-            fill.cullingMask = 1;
-            fill.shadows = LightShadows.None;
+            return key;
         }
 
         private static Material CreateLitMaterial(
-            string path, string texturePath, float smoothness)
+            string path, string texturePath, float smoothness, bool doubleSided = false)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path) ?? "Assets");
             Shader shader = Shader.Find("Universal Render Pipeline/Lit");
@@ -591,6 +615,10 @@ namespace Urp.ArDemo.Editor
             material.SetColor("_BaseColor", Color.white);
             material.SetFloat("_Metallic", 0f);
             material.SetFloat("_Smoothness", smoothness);
+            material.SetFloat(
+                "_Cull",
+                (float)(doubleSided ? CullMode.Off : CullMode.Back));
+            material.doubleSidedGI = doubleSided;
             material.DisableKeyword("_EMISSION");
             if (material.HasProperty("_EmissionColor"))
                 material.SetColor("_EmissionColor", Color.black);
@@ -601,32 +629,20 @@ namespace Urp.ArDemo.Editor
             return material;
         }
 
-        private static Material CreateReferenceValidationMaterial(string path)
+        private static Material CreateDepthOcclusionMaterial(string path)
         {
-            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+            Shader shader = Shader.Find("URP AR/Bottle Depth Occluder");
             if (shader == null)
-                throw new InvalidOperationException("Universal Render Pipeline/Lit shader is missing.");
+                throw new InvalidOperationException(
+                    "URP AR/Bottle Depth Occluder shader is missing.");
             Material material = AssetDatabase.LoadAssetAtPath<Material>(path);
             if (material == null)
             {
                 material = new Material(shader);
                 AssetDatabase.CreateAsset(material, path);
             }
-
             material.shader = shader;
-            material.name = "ReferenceBottleBValidation";
-            material.SetTexture("_BaseMap", null);
-            material.SetColor("_BaseColor", new Color(1.0f, 0.58f, 0.12f, 0.32f));
-            material.SetFloat("_Surface", 1f);
-            material.SetFloat("_Blend", 0f);
-            material.SetFloat("_SrcBlend", (float)BlendMode.SrcAlpha);
-            material.SetFloat("_DstBlend", (float)BlendMode.OneMinusSrcAlpha);
-            material.SetFloat("_ZWrite", 0f);
-            material.SetFloat("_Cull", (float)CullMode.Off);
-            material.SetOverrideTag("RenderType", "Transparent");
-            material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
-            material.DisableKeyword("_ALPHATEST_ON");
-            material.renderQueue = (int)RenderQueue.Transparent;
+            material.name = "BottleDepthOccluder";
             material.SetShaderPassEnabled("ShadowCaster", false);
             EditorUtility.SetDirty(material);
             return material;

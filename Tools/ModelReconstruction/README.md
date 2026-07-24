@@ -1,25 +1,30 @@
-# Clean bottle reconstruction
+# BottleFullAlignedV2 production assets
 
-This generator rebuilds the drink bottle as clean parametric geometry using the
-three supplied photo sets for silhouette and label appearance. It intentionally
-does not retain any photogrammetry background geometry.
+The only production bottle geometry is the rigid Blender-authored pair from:
 
-Physical constraints:
+`F:\Meshroom_work\bottle_full_clean_v2\split_models`
 
-- bottle-neck thread outer diameter: 34 mm
-- cap outer diameter: 39 mm
-- cap height: 10 mm
-- canonical scale: 1 model unit = 170 mm
-- canonical origin: bottle-mouth centre
+Unity uses the byte-identical `bottle_full_aligned_v2.fbx` under
+`Assets/Models/CleanBottleReconstruction/BottleFullAlignedV2`. The hierarchy is:
 
-Run from the repository root:
-
-```powershell
-python Tools/ModelReconstruction/generate_clean_bottle_models.py `
-  --source-root "F:\Au\暑期任务\抽帧照片" `
-  --output "Assets\Models\CleanBottleReconstruction"
+```text
+BottleRepairRoot
+  DamagedBottleB
+  BottleCapC
 ```
 
-Outputs are a damaged/open bottle, a complete/capped bottle, an independent cap,
-a shared MTL, and a photo-derived atlas. All generated geometry is deliberate;
-there are no point-cloud or room-background fragments.
+`prepare_bottle_full_aligned_v2.py` applies one shared canonical transform to B
+and C, places the mouth seam at the origin, and bakes both child transforms to
+identity. `render_bottle_full_aligned_v2_qa.py` renders the six required QA
+views without changing that relationship.
+
+The production ORB database is not generated from Blender renders. It contains
+filtered SfM observations and ORB descriptors from the real open/no-cap bottle
+photo set at `F:\Meshroom_work\bottle_damaged`. C is excluded. The database is
+stored at `Assets/OrbModels/bottle_reference_b.bytes`; its manifest records the
+source, bounds, hash, and supplied failure-frame replay evidence.
+
+The copied Meshroom atlas is
+`Assets/Models/CleanBottleReconstruction/BottleFullAlignedV2/Textures/bottle_full_clean_v2_albedo.png`.
+Unity explicitly assigns it to both B and C instead of relying on FBX material
+path discovery.

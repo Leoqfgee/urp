@@ -1,0 +1,40 @@
+{
+  "date": "2026-07-24",
+  "purpose": "Compare the previous Blender-render descriptor database with real open/no-cap bottle observation descriptors on the three supplied tracking-failure screenshots.",
+  "common_settings": {
+    "frame_orb_features": 2600,
+    "descriptor": "ORB 256-bit",
+    "matcher": "Hamming KNN ratio test",
+    "pnp": "solvePnPRansac followed by LM refinement"
+  },
+  "render_only_database": {
+    "records": 8000,
+    "frames_with_pose": 1,
+    "pose_inliers": [
+      0,
+      0,
+      7
+    ]
+  },
+  "real_no_cap_observation_database": {
+    "records": 4100,
+    "frames_with_pose": 3,
+    "pose_inliers": [
+      19,
+      14,
+      19
+    ],
+    "inlier_ratio": [
+      0.38,
+      0.3684210526315789,
+      0.36538461538461536
+    ],
+    "reprojection_rms_pixels": [
+      1.4396680984531167,
+      1.3109569107091754,
+      1.2433029540716665
+    ]
+  },
+  "decision": "Use only the real no-cap observation database in production. Do not mix render descriptors because mixed 3D correspondences reduced PnP consistency in the same replay.",
+  "device_overlay_verified": false
+}

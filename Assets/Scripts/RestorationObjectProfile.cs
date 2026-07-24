@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using UnityEngine.Serialization;
 using Urp.ArDemo.Calibration;
 
 namespace Urp.ArDemo
@@ -60,7 +61,9 @@ namespace Urp.ArDemo
         public RepairCalibrationProfile calibration;
         public TrackingSettings trackingSettings = new TrackingSettings();
         public Material repairMaterial;
-        public Material referenceValidationMaterial;
+        [FormerlySerializedAs("referenceValidationMaterial")]
+        [Tooltip("Depth-only material for B after Start; B remains in the rigid hierarchy and occludes C without drawing color.")]
+        public Material referenceDepthOcclusionMaterial;
 
         [Header("Physical scale")]
         public bool physicalScaleVerified;

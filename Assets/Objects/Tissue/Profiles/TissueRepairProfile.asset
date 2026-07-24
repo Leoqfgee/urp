@@ -44,6 +44,6 @@ MonoBehaviour:
     positionSmoothing: 0.3
     rotationSmoothing: 0.25
   repairMaterial: {fileID: 0}
-  referenceValidationMaterial: {fileID: 0}
+  referenceDepthOcclusionMaterial: {fileID: 0}
   physicalScaleVerified: 0
   physicalMeasurements: []

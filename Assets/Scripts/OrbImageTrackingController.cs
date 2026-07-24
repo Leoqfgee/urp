@@ -29,7 +29,6 @@ namespace Urp.ArDemo
             Searching,
             Candidate,
             PoseValidating,
-            AlignmentProof,
             Repair,
             Lost
         }
@@ -44,6 +43,7 @@ namespace Urp.ArDemo
         [SerializeField] private Transform occlusionRoot;
         [SerializeField] private Transform debugRoot;
         [SerializeField] private Text statusText;
+        [SerializeField] private RepairAppearanceConsistencyController appearanceConsistency;
 
         [Header("Runtime profile")]
         [SerializeField] private RestorationObjectProfile activeProfile;
@@ -62,13 +62,12 @@ namespace Urp.ArDemo
         [SerializeField] private float preAlignmentDistanceMeters = 0.35f;
         [SerializeField] private float preAlignmentMouthHeightMeters = 0.105f;
         [Range(0.08f, 0.35f)]
-        [SerializeField] private float guidedMatchRadiusFraction = 0.12f;
-        [SerializeField] private float maximumInitialCorrectionMeters = 0.25f;
-        [SerializeField] private float maximumInitialCorrectionDegrees = 45f;
+        [SerializeField] private float guidedMatchRadiusFraction = 0.18f;
+        [SerializeField] private float maximumInitialCorrectionMeters = 0.30f;
+        [SerializeField] private float maximumInitialCorrectionDegrees = 60f;
 
         [Header("Stable full-pose registration")]
         [SerializeField] private int registrationConfirmationFrames = 8;
-        [SerializeField] private float stableOverlayProofSeconds = 1.5f;
         [SerializeField] private float registrationPositionToleranceMeters = 0.025f;
         [SerializeField] private float registrationRotationToleranceDegrees = 8f;
         [SerializeField] private float temporaryLossHoldSeconds = 0.35f;
@@ -90,7 +89,6 @@ namespace Urp.ArDemo
         private bool registrationEstablished;
         private bool hasSmoothedPose;
         private int registrationStableFrames;
-        private float alignmentProofStartedAt = float.NegativeInfinity;
         private float nextProcessTime;
         private float lastValidPoseTime = float.NegativeInfinity;
         private Vector3 registrationAveragePosition;
@@ -234,8 +232,12 @@ namespace Urp.ArDemo
             {
                 collider.enabled = false;
             }
-            ApplyMaterial(referenceRenderers, profile.referenceValidationMaterial);
-            ApplyMaterial(repairRenderers, profile.repairMaterial);
+            ApplyMaterial(referenceRenderers, profile.viewerMaterial);
+            ApplyMaterial(
+                repairRenderers,
+                profile.repairMaterial != null
+                    ? profile.repairMaterial
+                    : profile.viewerMaterial);
             foreach (Renderer renderer in referenceRenderers)
             {
                 PrepareOverlayRenderer(renderer);
@@ -243,6 +245,10 @@ namespace Urp.ArDemo
             foreach (Renderer renderer in repairRenderers)
             {
                 PrepareOverlayRenderer(renderer);
+            }
+            if (appearanceConsistency != null)
+            {
+                appearanceConsistency.BindRepairRenderers(repairRenderers);
             }
             if (occlusionRoot != null)
             {
@@ -289,7 +295,7 @@ namespace Urp.ArDemo
             }
             PlacePreAlignmentPose();
             UpdateStatus(
-                "已显示 Blender 对齐的 B+C 三维模型。移动手机，让半透明 B "
+                "已显示带纹理的 Blender 对齐 B+C。移动手机，让 B "
                 + "与真实残缺瓶 A 大致重合，然后点击“开始”。");
         }
 
@@ -308,11 +314,10 @@ namespace Urp.ArDemo
             recognitionRunning = true;
             trackingState = TrackingState.Searching;
             nextProcessTime = 0f;
-            SetReferenceHierarchyVisible(true);
-            SetRepairHierarchyVisible(true);
+            ShowRepairPresentation();
             UpdateStatus(
-                "正在以当前 B 粗对齐姿态引导自然特征匹配；"
-                + "最终位姿仍由 A→B 多点 PnP 自动求解。");
+                "已切换为只显示瓶盖 C；B 仅写深度用于遮挡。"
+                + "正在以当前粗对齐姿态引导真实照片 ORB 特征和 A→B 多点 PnP。");
         }
 
         public void ResetTracking()
@@ -362,8 +367,7 @@ namespace Urp.ArDemo
             smoothedRootPosition = trackedObjectPoseRoot.position;
             smoothedRootRotation = trackedObjectPoseRoot.rotation;
             hasSmoothedPose = true;
-            SetReferenceHierarchyVisible(true);
-            SetRepairHierarchyVisible(true);
+            ShowPreAlignmentPair();
         }
 
         private bool SetCurrentPosePrior(NativeOrbTracker tracker)
@@ -452,6 +456,42 @@ namespace Urp.ArDemo
         public void SetReferenceHierarchyVisible(bool visible)
         {
             SetRenderersEnabled(referenceRenderers, visible);
+        }
+
+        public void ShowRepairPresentation()
+        {
+            if (activeProfile == null)
+            {
+                SetReferenceHierarchyVisible(false);
+                SetRepairHierarchyVisible(false);
+                return;
+            }
+            ApplyMaterial(
+                referenceRenderers,
+                activeProfile.referenceDepthOcclusionMaterial);
+            ApplyMaterial(
+                repairRenderers,
+                activeProfile.repairMaterial != null
+                    ? activeProfile.repairMaterial
+                    : activeProfile.viewerMaterial);
+            SetReferenceHierarchyVisible(true);
+            SetRepairHierarchyVisible(true);
+        }
+
+        private void ShowPreAlignmentPair()
+        {
+            if (activeProfile == null)
+            {
+                return;
+            }
+            ApplyMaterial(referenceRenderers, activeProfile.viewerMaterial);
+            ApplyMaterial(
+                repairRenderers,
+                activeProfile.repairMaterial != null
+                    ? activeProfile.repairMaterial
+                    : activeProfile.viewerMaterial);
+            SetReferenceHierarchyVisible(true);
+            SetRepairHierarchyVisible(true);
         }
 
         public void HideFailedProfileVisuals()
@@ -548,8 +588,7 @@ namespace Urp.ArDemo
                     }
 
                     ApplyTrackedRootPose(targetPosition, targetRotation, false);
-                    SetReferenceHierarchyVisible(true);
-                    SetRepairHierarchyVisible(true);
+                    ShowRepairPresentation();
                     trackingState = TrackingState.PoseValidating;
                     if (!TryAccumulateStableRegistration(
                             targetPosition,
@@ -564,10 +603,8 @@ namespace Urp.ArDemo
 
                     ApplyTrackedRootPose(stablePosition, stableRotation, false);
                     registrationEstablished = true;
-                    trackingState = TrackingState.AlignmentProof;
-                    alignmentProofStartedAt = Time.unscaledTime;
-                    SetReferenceHierarchyVisible(true);
-                    SetRepairHierarchyVisible(true);
+                    trackingState = TrackingState.Repair;
+                    ShowRepairPresentation();
                 }
                 else
                 {
@@ -590,29 +627,12 @@ namespace Urp.ArDemo
                 lastAcceptedPosition = targetPosition;
                 lastAcceptedRotation = targetRotation;
                 lastValidPoseTime = Time.unscaledTime;
-                if (trackingState == TrackingState.AlignmentProof
-                    && Time.unscaledTime - alignmentProofStartedAt
-                        < stableOverlayProofSeconds)
-                {
-                    SetReferenceHierarchyVisible(true);
-                    SetRepairHierarchyVisible(true);
-                    float remaining = Mathf.Max(
-                        0f,
-                        stableOverlayProofSeconds
-                            - (Time.unscaledTime - alignmentProofStartedAt));
-                    UpdateStatus(
-                        $"B 正在稳定覆盖 A：内点 {best.poseInliers}/"
-                        + $"{best.uniqueMatches}，RMS {best.reprojectionError:F2}px；"
-                        + $"{remaining:F1}s 后自动只显示 C。");
-                    return;
-                }
                 trackingState = TrackingState.Repair;
-                SetReferenceHierarchyVisible(false);
-                SetRepairHierarchyVisible(true);
+                ShowRepairPresentation();
                 UpdateStatus(
                     $"B 已稳定配准 A：内点 {best.poseInliers}/"
                     + $"{best.uniqueMatches}，RMS {best.reprojectionError:F2}px。"
-                    + "已只关闭 B 的 Renderer；C 正在继承同一三维位姿。");
+                    + "B 只写深度而不写颜色；C 继承同一三维位姿并获得正确遮挡。");
             }
             finally
             {
@@ -783,10 +803,9 @@ namespace Urp.ArDemo
             trackingState = TrackingState.Lost;
             if (!registrationEstablished)
             {
-                // Before registration the user must keep seeing the same
-                // world-space B+C coarse pose. It is never a screen overlay.
-                SetReferenceHierarchyVisible(true);
-                SetRepairHierarchyVisible(true);
+                // Start already switched to C plus depth-only B. Keep that
+                // world-space coarse pose while searching.
+                ShowRepairPresentation();
                 return;
             }
             if (registrationEstablished
@@ -795,15 +814,12 @@ namespace Urp.ArDemo
                 // The root remains a world-space object pose, never a screen
                 // coordinate. AR camera motion still changes perspective.
                 trackingState = previousState;
-                SetReferenceHierarchyVisible(
-                    previousState == TrackingState.AlignmentProof);
-                SetRepairHierarchyVisible(true);
+                ShowRepairPresentation();
                 return;
             }
 
             registrationEstablished = false;
             registrationStableFrames = 0;
-            alignmentProofStartedAt = float.NegativeInfinity;
             hasSmoothedPose = false;
             SetReferenceHierarchyVisible(false);
             SetRepairHierarchyVisible(false);
@@ -813,7 +829,6 @@ namespace Urp.ArDemo
         {
             registrationEstablished = false;
             registrationStableFrames = 0;
-            alignmentProofStartedAt = float.NegativeInfinity;
             hasSmoothedPose = false;
             lastValidPoseTime = float.NegativeInfinity;
             registrationAveragePosition = Vector3.zero;

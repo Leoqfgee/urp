@@ -17,7 +17,7 @@
 namespace
 {
 constexpr char kModelMagic[8] = {'U', 'R', 'P', '3', 'D', 'M', '1', '\0'};
-constexpr char kBuildVersion[] = "urp-orb-native-2026.07.23-r6-guided-b-pnp-16k";
+constexpr char kBuildVersion[] = "urp-orb-native-2026.07.24-r7-real-photo-guided-b-pnp";
 constexpr int kDescriptorBytes = 32;
 constexpr int kModelRecordBytes = 3 * static_cast<int>(sizeof(float)) + kDescriptorBytes;
 
@@ -292,7 +292,7 @@ public:
         std::vector<cv::DMatch> guidedMatches;
         strictRatioMatches.reserve(targetToFrame.size());
         guidedMatches.reserve(targetToFrame.size());
-        const float guidedRatio = std::max(ratio_, 0.82f);
+        const float guidedRatio = std::max(ratio_, 0.86f);
         const float guidedRadius = std::max(
             36.0f,
             priorSearchRadiusFraction_
@@ -507,9 +507,9 @@ public:
                 result->rejectionCode = kLowInlierRatio;
             else if (result->reprojectionError > 3.0f)
                 result->rejectionCode = kHighReprojectionError;
-            else if (result->coverageX < 0.05f
-                || result->coverageY < 0.18f
-                || result->occupiedGridCells < 4)
+            else if (result->coverageX < (hasUsablePrior ? 0.035f : 0.05f)
+                || result->coverageY < (hasUsablePrior ? 0.10f : 0.18f)
+                || result->occupiedGridCells < (hasUsablePrior ? 3 : 4))
                 result->rejectionCode = kInsufficientSpatialDistribution;
             else if (inliers.rows < 8
                 && (result->reprojectionError > 1.5f || result->occupiedGridCells < 5))

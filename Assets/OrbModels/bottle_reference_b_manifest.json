@@ -1,28 +1,47 @@
 {
-  "version": "bottle-full-aligned-v2-reference-b-rendered-v1",
-  "logic": "real damaged bottle A is matched only against natural features of the new no-cap model B; solvePnP estimates the full B pose; rigid sibling C is excluded from matching and only inherits that pose",
+  "version": "bottle-full-aligned-v2-reference-b-real-observations-v2",
+  "logic": "ORB descriptors come from real open/no-cap bottle A observations and their filtered SfM points are already in the same canonical bottle frame used by Blender model B. solvePnP estimates B only; rigid child C is excluded and only inherits the B pose.",
   "database": "Assets\\OrbModels\\bottle_reference_b.bytes",
-  "database_sha256": "A7817A5368E2AD3273235D52F0E41A2072778A12780006AEC11EEB30DED839B5",
-  "records": 8000,
-  "candidate_surface_hits": 124118,
+  "database_sha256": "A046CD3386245B4A255A45088ECD9087366FF32A1352B2E20C3AC713253AC1EF",
+  "records": 4100,
   "canonical_bounds_min": [
-    -0.22677671909332275,
-    -1.185168981552124,
-    -0.2649223804473877
+    -0.23538906872272491,
+    -1.2189726829528809,
+    -0.09627003967761993
   ],
   "canonical_bounds_max": [
-    0.19554424285888672,
-    -0.012993305921554565,
-    0.18744516372680664
+    0.23058083653450012,
+    -0.026713119819760323,
+    0.19327491521835327
   ],
-  "registered_blend": "F:\\Meshroom_work\\bottle_full_clean_v2\\split_models\\bottle_full_aligned_v2.blend",
-  "registered_blend_sha256": "B065515259B78B909509EE8CD1DB0A80C53C20D334AD6D49A2DCE90FDD3134D9",
-  "render_views": 72,
+  "source_provenance": {
+    "photo_set": "F:\\Meshroom_work\\bottle_damaged (real open/no-cap bottle photographs)",
+    "selected_masked_images": "F:\\Meshroom_work\\bottle_damaged\\meshroom_input",
+    "original_observation_database_sha256": "A046CD3386245B4A255A45088ECD9087366FF32A1352B2E20C3AC713253AC1EF",
+    "complete_bottle_or_cap_images_used": false,
+    "rendered_mesh_descriptors_used": false,
+    "note": "The previous render-only B database was replaced because real camera observations produce substantially more geometrically consistent matches on the supplied failure frames."
+  },
+  "offline_failure_frame_replay": {
+    "frames": 3,
+    "pose_solutions": 3,
+    "pose_inliers": [
+      19,
+      14,
+      19
+    ],
+    "reprojection_rms_pixels": [
+      1.4396680984531167,
+      1.3109569107091754,
+      1.2433029540716665
+    ],
+    "runtime_minimum_inlier_ratio": 0.35
+  },
   "reference_objects": [
     "DamagedBottleB"
   ],
   "repair_c_excluded_from_matching": true,
   "meters_per_model_unit": 0.17,
   "device_overlay_verified": false,
-  "generator": "Tools\\ModelReconstruction\\generate_reference_b_orb_database.py"
+  "generator": "Tools\\TrackingReplay\\filter_bottle_orb_database.py"
 }
