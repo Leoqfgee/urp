@@ -4,14 +4,18 @@ Native Android ARM64 plugin for the URP AR prototype. It performs the ORB target
 matching used by `OrbImageTrackingController` and returns the target center,
 relative width, match diagnostics and full solvePnPRansac pose to Unity.
 
-The current `r7-real-photo-guided-b-pnp` matcher uses the user-aligned world-space B pose
-only to restrict descriptor correspondences to plausible projected locations.
-It does not return that coarse pose as tracking output. The accepted pose still
-requires B natural-feature correspondences, RANSAC inliers, spatial coverage,
-positive depth and reprojection-error checks. If the guided set is insufficient,
-the tracker falls back to one-way model-to-frame ratio matches; the former
-double-sided mutual test was removed because thousands of legitimate
-multi-view B descriptors made its reverse ratio test reject real matches.
+The current `r8-multiview-pose-hsv` matcher uses the user-aligned world-space B
+pose only to form an additional geometrically guided candidate set. Strict
+real-photo descriptor matches and guided matches are solved independently, so
+an inaccurate coarse projection cannot replace a valid global match set.
+Each candidate is tested with SQPnP, EPNP and iterative RANSAC (with the prior
+used only as one iterative seed), refined with LM, and ranked by inliers,
+inlier ratio and reprojection error. The accepted pose still requires spatial
+coverage, positive depth and bounded RMS/maximum reprojection error.
+
+The plugin also samples low-saturation bright pixels around accepted inliers
+and returns normalized HSV statistics to Unity. These statistics are used only
+for the repair cap material's appearance consistency; they never alter pose.
 The formal database contains 4,100 filtered observations from the real
 open/no-cap bottle photo set. Blender-render descriptors are not mixed into
 that database because supplied failure-frame replay showed that the mixed

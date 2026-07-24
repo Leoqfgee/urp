@@ -113,10 +113,15 @@ namespace Urp.ArDemo.Editor
             string source = File.ReadAllText(NativeSourcePath);
             const string marker = "constexpr char kBuildVersion[] = \"";
             int start = source.IndexOf(marker, StringComparison.Ordinal);
-            if (start < 0) return "unknown";
+            if (start < 0)
+                throw new InvalidOperationException(
+                    "Native build version marker is missing or split across lines.");
             start += marker.Length;
             int end = source.IndexOf('"', start);
-            return end > start ? source.Substring(start, end - start) : "unknown";
+            if (end <= start)
+                throw new InvalidOperationException(
+                    "Native build version value is malformed.");
+            return source.Substring(start, end - start);
         }
 
         private static string Git(string arguments)

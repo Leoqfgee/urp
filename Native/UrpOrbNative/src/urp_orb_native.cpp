@@ -17,7 +17,7 @@
 namespace
 {
 constexpr char kModelMagic[8] = {'U', 'R', 'P', '3', 'D', 'M', '1', '\0'};
-constexpr char kBuildVersion[] = "urp-orb-native-2026.07.24-r7-real-photo-guided-b-pnp";
+constexpr char kBuildVersion[] = "urp-orb-native-2026.07.24-r8-multiview-pose-hsv";
 constexpr int kDescriptorBytes = 32;
 constexpr int kModelRecordBytes = 3 * static_cast<int>(sizeof(float)) + kDescriptorBytes;
 
@@ -50,6 +50,10 @@ struct UrpOrbResult
     float coverageX;
     float coverageY;
     float processingMilliseconds;
+    float sampledHue;
+    float sampledSaturation;
+    float sampledValue;
+    float sampledConfidence;
 };
 
 enum RejectionCode
@@ -329,21 +333,152 @@ public:
             }
         }
 
-        const bool usedPosePrior =
-            hasUsablePrior
-            && static_cast<int>(guidedMatches.size()) >= minMatches_;
-        std::vector<cv::DMatch> candidateMatches =
-            usedPosePrior ? guidedMatches : strictRatioMatches;
         result->ratioMatches = static_cast<int>(strictRatioMatches.size());
         result->guidedMatches = static_cast<int>(guidedMatches.size());
-
-        std::sort(candidateMatches.begin(), candidateMatches.end(), [](const cv::DMatch& a, const cv::DMatch& b)
+        const PoseSolution strictSolution = SolveCandidateSet(
+            strictRatioMatches,
+            frameKeypoints,
+            frame.cols,
+            frame.rows,
+            cameraMatrix,
+            distCoeffs,
+            false,
+            cv::Mat(),
+            cv::Mat());
+        PoseSolution guidedSolution;
+        if (hasUsablePrior
+            && static_cast<int>(guidedMatches.size()) >= minMatches_)
         {
-            return a.distance < b.distance;
-        });
-        const int gridColumns = 8;
-        const int gridRows = 12;
-        const int maxMatchesPerCell = 8;
+            guidedSolution = SolveCandidateSet(
+                guidedMatches,
+                frameKeypoints,
+                frame.cols,
+                frame.rows,
+                cameraMatrix,
+                distCoeffs,
+                true,
+                orientedPriorRvec,
+                orientedPriorTranslation);
+        }
+
+        PoseSolution chosen = strictSolution;
+        if (IsBetterPose(guidedSolution, chosen))
+        {
+            chosen = guidedSolution;
+        }
+        result->uniqueMatches = chosen.uniqueMatches;
+        result->occupiedGridCells = chosen.occupiedGridCells;
+        result->coverageX = chosen.coverageX;
+        result->coverageY = chosen.coverageY;
+        result->poseInliers = chosen.poseInliers;
+        result->inlierRatio = chosen.inlierRatio;
+        result->reprojectionError = chosen.reprojectionError;
+        result->reprojectionMax = chosen.reprojectionMax;
+        if (!chosen.solved)
+        {
+            result->rejectionCode =
+                chosen.uniqueMatches < minMatches_
+                ? kInsufficientUniqueMatches
+                : kPnpFailed;
+        }
+        else
+        {
+            result->tracked = 1;
+            result->tvecX = static_cast<float>(chosen.tvec.at<double>(0));
+            result->tvecY = static_cast<float>(chosen.tvec.at<double>(1));
+            result->tvecZ = static_cast<float>(chosen.tvec.at<double>(2));
+            result->r00 = static_cast<float>(chosen.rotation.at<double>(0, 0));
+            result->r01 = static_cast<float>(chosen.rotation.at<double>(0, 1));
+            result->r02 = static_cast<float>(chosen.rotation.at<double>(0, 2));
+            result->r10 = static_cast<float>(chosen.rotation.at<double>(1, 0));
+            result->r11 = static_cast<float>(chosen.rotation.at<double>(1, 1));
+            result->r12 = static_cast<float>(chosen.rotation.at<double>(1, 2));
+            result->r20 = static_cast<float>(chosen.rotation.at<double>(2, 0));
+            result->r21 = static_cast<float>(chosen.rotation.at<double>(2, 1));
+            result->r22 = static_cast<float>(chosen.rotation.at<double>(2, 2));
+
+            const bool locallyGuided = chosen.usedPosePrior && hasUsablePrior;
+            const float requiredInlierRatio = locallyGuided ? 0.34f : 0.40f;
+            const int requiredPoseInliers = std::clamp(
+                static_cast<int>(std::ceil(
+                    chosen.uniqueMatches * requiredInlierRatio)),
+                6,
+                10);
+            if (chosen.tvec.at<double>(2) <= 0.0)
+                result->rejectionCode = kNegativeDepth;
+            else if (chosen.poseInliers < requiredPoseInliers)
+                result->rejectionCode = kInsufficientPoseInliers;
+            else if (chosen.inlierRatio < requiredInlierRatio)
+                result->rejectionCode = kLowInlierRatio;
+            else if (chosen.reprojectionError > 3.0f
+                || chosen.reprojectionMax > 8.0f)
+                result->rejectionCode = kHighReprojectionError;
+            else if (chosen.coverageX < (locallyGuided ? 0.035f : 0.05f)
+                || chosen.coverageY < (locallyGuided ? 0.10f : 0.16f)
+                || chosen.occupiedGridCells < (locallyGuided ? 3 : 4))
+                result->rejectionCode = kInsufficientSpatialDistribution;
+            else if (chosen.poseInliers < 8
+                && (chosen.reprojectionError > 1.75f
+                    || chosen.occupiedGridCells < 5))
+                result->rejectionCode = kLowCountPoseUnstable;
+            else
+                result->rejectionCode = kAccepted;
+            result->poseValid = result->rejectionCode == kAccepted ? 1 : 0;
+            if (result->poseValid != 0)
+            {
+                SampleReferenceHsv(frame, chosen.inlierFramePoints, result);
+            }
+        }
+
+        result->processingMilliseconds = static_cast<float>(
+            std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - startedAt).count());
+        return result->tracked;
+    }
+
+private:
+    struct PoseSolution
+    {
+        bool solved = false;
+        bool usedPosePrior = false;
+        int uniqueMatches = 0;
+        int occupiedGridCells = 0;
+        int poseInliers = 0;
+        float coverageX = 0.0f;
+        float coverageY = 0.0f;
+        float inlierRatio = 0.0f;
+        float reprojectionError = 999.0f;
+        float reprojectionMax = 999.0f;
+        cv::Mat rvec;
+        cv::Mat tvec;
+        cv::Mat rotation;
+        std::vector<cv::Point2f> inlierFramePoints;
+    };
+
+    PoseSolution SolveCandidateSet(
+        std::vector<cv::DMatch> candidateMatches,
+        const std::vector<cv::KeyPoint>& frameKeypoints,
+        int frameWidth,
+        int frameHeight,
+        const cv::Mat& cameraMatrix,
+        const cv::Mat& distCoeffs,
+        bool usePosePrior,
+        const cv::Mat& priorRvec,
+        const cv::Mat& priorTranslation) const
+    {
+        PoseSolution solution;
+        solution.usedPosePrior = usePosePrior;
+        std::sort(
+            candidateMatches.begin(),
+            candidateMatches.end(),
+            [](const cv::DMatch& a, const cv::DMatch& b)
+            {
+                return a.distance < b.distance;
+            });
+
+        constexpr int gridColumns = 8;
+        constexpr int gridRows = 12;
+        constexpr int maxMatchesPerCell = 8;
         std::vector<int> cellCounts(gridColumns * gridRows, 0);
         std::vector<cv::DMatch> goodMatches;
         goodMatches.reserve(candidateMatches.size());
@@ -351,37 +486,47 @@ public:
         std::unordered_set<int> usedFrameKeypoints;
         for (const cv::DMatch& match : candidateMatches)
         {
-            if (usedModelRecords.count(match.queryIdx) != 0
+            if (match.queryIdx < 0
+                || match.queryIdx >= static_cast<int>(targetModelPoints_.size())
+                || match.trainIdx < 0
+                || match.trainIdx >= static_cast<int>(frameKeypoints.size())
+                || usedModelRecords.count(match.queryIdx) != 0
                 || usedFrameKeypoints.count(match.trainIdx) != 0)
             {
                 continue;
             }
             const cv::Point2f point = frameKeypoints[match.trainIdx].pt;
             const int column = std::clamp(
-                static_cast<int>(point.x / std::max(1.0f, static_cast<float>(frame.cols)) * gridColumns),
+                static_cast<int>(
+                    point.x / std::max(1.0f, static_cast<float>(frameWidth))
+                    * gridColumns),
                 0,
                 gridColumns - 1);
             const int row = std::clamp(
-                static_cast<int>(point.y / std::max(1.0f, static_cast<float>(frame.rows)) * gridRows),
+                static_cast<int>(
+                    point.y / std::max(1.0f, static_cast<float>(frameHeight))
+                    * gridRows),
                 0,
                 gridRows - 1);
             const int cell = row * gridColumns + column;
-            if (cellCounts[cell] < maxMatchesPerCell)
+            if (cellCounts[cell] >= maxMatchesPerCell)
             {
-                cellCounts[cell]++;
-                goodMatches.push_back(match);
-                usedModelRecords.insert(match.queryIdx);
-                usedFrameKeypoints.insert(match.trainIdx);
+                continue;
             }
+            cellCounts[cell]++;
+            goodMatches.push_back(match);
+            usedModelRecords.insert(match.queryIdx);
+            usedFrameKeypoints.insert(match.trainIdx);
         }
 
-        result->uniqueMatches = static_cast<int>(goodMatches.size());
-        result->occupiedGridCells = static_cast<int>(std::count_if(
-            cellCounts.begin(), cellCounts.end(), [](int count) { return count > 0; }));
+        solution.uniqueMatches = static_cast<int>(goodMatches.size());
+        solution.occupiedGridCells = static_cast<int>(std::count_if(
+            cellCounts.begin(),
+            cellCounts.end(),
+            [](int count) { return count > 0; }));
         if (static_cast<int>(goodMatches.size()) < minMatches_)
         {
-            result->rejectionCode = kInsufficientUniqueMatches;
-            return 0;
+            return solution;
         }
 
         std::vector<cv::Point2f> framePoints;
@@ -393,140 +538,245 @@ public:
             framePoints.push_back(frameKeypoints[match.trainIdx].pt);
             modelPoints.push_back(targetModelPoints_[match.queryIdx]);
         }
+        const cv::Rect2f matchedBounds = cv::boundingRect(framePoints);
+        const float inferredWidth =
+            std::max(1.0f, static_cast<float>(frameWidth));
+        const float inferredHeight =
+            std::max(1.0f, static_cast<float>(frameHeight));
+        solution.coverageX = matchedBounds.width / inferredWidth;
+        solution.coverageY = matchedBounds.height / inferredHeight;
 
-        cv::Rect2f matchedBounds = cv::boundingRect(framePoints);
-        result->coverageX = matchedBounds.width / std::max(1.0f, static_cast<float>(frame.cols));
-        result->coverageY = matchedBounds.height / std::max(1.0f, static_cast<float>(frame.rows));
-
-        cv::Mat rvec;
-        cv::Mat tvec;
-        cv::Mat inliers;
-        bool poseOk = false;
-        if (modelPoints.size() >= 6)
+        struct Attempt
         {
-            if (usedPosePrior)
+            bool solved = false;
+            cv::Mat rvec;
+            cv::Mat tvec;
+            cv::Mat inliers;
+            int inlierCount = 0;
+            float inlierRatio = 0.0f;
+            float rms = 999.0f;
+            float maximumError = 999.0f;
+        };
+        Attempt best;
+        auto trySolver = [&](int flag, bool useGuess)
+        {
+            Attempt attempt;
+            if (useGuess)
             {
-                rvec = orientedPriorRvec.clone();
-                tvec = orientedPriorTranslation.clone();
-                poseOk = cv::solvePnPRansac(
+                attempt.rvec = priorRvec.clone();
+                attempt.tvec = priorTranslation.clone();
+            }
+            try
+            {
+                attempt.solved = cv::solvePnPRansac(
                     modelPoints,
                     framePoints,
                     cameraMatrix,
                     distCoeffs,
-                    rvec,
-                    tvec,
-                    true,
-                    300,
-                    3.0f,
+                    attempt.rvec,
+                    attempt.tvec,
+                    useGuess,
+                    400,
+                    4.0f,
                     0.995,
-                    inliers,
-                    cv::SOLVEPNP_ITERATIVE);
+                    attempt.inliers,
+                    flag);
             }
-            else
+            catch (const cv::Exception&)
             {
-                poseOk = cv::solvePnPRansac(
-                    modelPoints,
-                    framePoints,
-                    cameraMatrix,
-                    distCoeffs,
-                    rvec,
-                    tvec,
-                    false,
-                    300,
-                    3.0f,
-                    0.995,
-                    inliers,
-                    cv::SOLVEPNP_EPNP);
+                attempt.solved = false;
             }
-        }
+            if (!attempt.solved || attempt.inliers.rows < 4)
+            {
+                return;
+            }
 
-        const float inlierRatio = goodMatches.empty()
-            ? 0.0f
-            : static_cast<float>(inliers.rows) / static_cast<float>(goodMatches.size());
-        result->inlierRatio = inlierRatio;
-        if (!poseOk)
-        {
-            result->rejectionCode = kPnpFailed;
-        }
-        else
-        {
             std::vector<cv::Point3f> inlierModelPoints;
             std::vector<cv::Point2f> inlierFramePoints;
-            inlierModelPoints.reserve(inliers.rows);
-            inlierFramePoints.reserve(inliers.rows);
-            for (int row = 0; row < inliers.rows; row++)
+            inlierModelPoints.reserve(attempt.inliers.rows);
+            inlierFramePoints.reserve(attempt.inliers.rows);
+            for (int row = 0; row < attempt.inliers.rows; row++)
             {
-                int index = inliers.at<int>(row);
+                const int index = attempt.inliers.at<int>(row);
                 inlierModelPoints.push_back(modelPoints[index]);
                 inlierFramePoints.push_back(framePoints[index]);
             }
-            cv::solvePnPRefineLM(inlierModelPoints, inlierFramePoints, cameraMatrix, distCoeffs, rvec, tvec);
-            std::vector<cv::Point2f> projectedInliers;
-            cv::projectPoints(inlierModelPoints, rvec, tvec, cameraMatrix, distCoeffs, projectedInliers);
+            try
+            {
+                cv::solvePnPRefineLM(
+                    inlierModelPoints,
+                    inlierFramePoints,
+                    cameraMatrix,
+                    distCoeffs,
+                    attempt.rvec,
+                    attempt.tvec);
+            }
+            catch (const cv::Exception&)
+            {
+                return;
+            }
+
+            std::vector<cv::Point2f> projected;
+            cv::projectPoints(
+                inlierModelPoints,
+                attempt.rvec,
+                attempt.tvec,
+                cameraMatrix,
+                distCoeffs,
+                projected);
             double squaredError = 0.0;
             double maximumError = 0.0;
-            for (size_t i = 0; i < projectedInliers.size(); i++)
+            for (size_t index = 0; index < projected.size(); index++)
             {
-                cv::Point2f delta = projectedInliers[i] - inlierFramePoints[i];
+                const cv::Point2f delta = projected[index] - inlierFramePoints[index];
                 const double errorSquared = static_cast<double>(delta.dot(delta));
                 squaredError += errorSquared;
                 maximumError = std::max(maximumError, std::sqrt(errorSquared));
             }
-
-            result->reprojectionError = projectedInliers.empty()
+            attempt.inlierCount = attempt.inliers.rows;
+            attempt.inlierRatio =
+                static_cast<float>(attempt.inlierCount)
+                / static_cast<float>(std::max<size_t>(1, goodMatches.size()));
+            attempt.rms = projected.empty()
                 ? 999.0f
-                : static_cast<float>(std::sqrt(squaredError / projectedInliers.size()));
-            result->reprojectionMax = static_cast<float>(maximumError);
+                : static_cast<float>(
+                    std::sqrt(squaredError / projected.size()));
+            attempt.maximumError = static_cast<float>(maximumError);
+            const float score =
+                attempt.inlierCount * 4.0f
+                + attempt.inlierRatio * 12.0f
+                - attempt.rms;
+            const float bestScore =
+                best.inlierCount * 4.0f
+                + best.inlierRatio * 12.0f
+                - best.rms;
+            if (!best.solved || score > bestScore)
+            {
+                best = attempt;
+            }
+        };
 
-            cv::Mat rotation;
-            cv::Rodrigues(rvec, rotation);
-            result->tracked = 1;
-            result->poseInliers = inliers.rows;
-            result->tvecX = static_cast<float>(tvec.at<double>(0));
-            result->tvecY = static_cast<float>(tvec.at<double>(1));
-            result->tvecZ = static_cast<float>(tvec.at<double>(2));
-            result->r00 = static_cast<float>(rotation.at<double>(0, 0));
-            result->r01 = static_cast<float>(rotation.at<double>(0, 1));
-            result->r02 = static_cast<float>(rotation.at<double>(0, 2));
-            result->r10 = static_cast<float>(rotation.at<double>(1, 0));
-            result->r11 = static_cast<float>(rotation.at<double>(1, 1));
-            result->r12 = static_cast<float>(rotation.at<double>(1, 2));
-            result->r20 = static_cast<float>(rotation.at<double>(2, 0));
-            result->r21 = static_cast<float>(rotation.at<double>(2, 1));
-            result->r22 = static_cast<float>(rotation.at<double>(2, 2));
-
-            const float requiredInlierRatio = hasUsablePrior ? 0.35f : 0.45f;
-            const int requiredPoseInliers = std::clamp(
-                static_cast<int>(std::ceil(
-                    goodMatches.size() * requiredInlierRatio)), 6, 10);
-            if (tvec.at<double>(2) <= 0.0)
-                result->rejectionCode = kNegativeDepth;
-            else if (inliers.rows < requiredPoseInliers)
-                result->rejectionCode = kInsufficientPoseInliers;
-            else if (inlierRatio < requiredInlierRatio)
-                result->rejectionCode = kLowInlierRatio;
-            else if (result->reprojectionError > 3.0f)
-                result->rejectionCode = kHighReprojectionError;
-            else if (result->coverageX < (hasUsablePrior ? 0.035f : 0.05f)
-                || result->coverageY < (hasUsablePrior ? 0.10f : 0.18f)
-                || result->occupiedGridCells < (hasUsablePrior ? 3 : 4))
-                result->rejectionCode = kInsufficientSpatialDistribution;
-            else if (inliers.rows < 8
-                && (result->reprojectionError > 1.5f || result->occupiedGridCells < 5))
-                result->rejectionCode = kLowCountPoseUnstable;
-            else
-                result->rejectionCode = kAccepted;
-            result->poseValid = result->rejectionCode == kAccepted ? 1 : 0;
-
+        if (usePosePrior)
+        {
+            trySolver(cv::SOLVEPNP_ITERATIVE, true);
+        }
+        trySolver(cv::SOLVEPNP_SQPNP, false);
+        trySolver(cv::SOLVEPNP_EPNP, false);
+        trySolver(cv::SOLVEPNP_ITERATIVE, false);
+        if (!best.solved)
+        {
+            return solution;
         }
 
-        result->processingMilliseconds = static_cast<float>(
-            std::chrono::duration<double, std::milli>(
-                std::chrono::steady_clock::now() - startedAt).count());
-        return result->tracked;
+        solution.solved = true;
+        solution.poseInliers = best.inlierCount;
+        solution.inlierRatio = best.inlierRatio;
+        solution.reprojectionError = best.rms;
+        solution.reprojectionMax = best.maximumError;
+        solution.rvec = best.rvec;
+        solution.tvec = best.tvec;
+        cv::Rodrigues(solution.rvec, solution.rotation);
+        solution.inlierFramePoints.reserve(best.inliers.rows);
+        for (int row = 0; row < best.inliers.rows; row++)
+        {
+            const int index = best.inliers.at<int>(row);
+            solution.inlierFramePoints.push_back(framePoints[index]);
+        }
+        return solution;
     }
 
-private:
+    static bool IsBetterPose(
+        const PoseSolution& candidate,
+        const PoseSolution& current)
+    {
+        if (candidate.solved != current.solved)
+        {
+            return candidate.solved;
+        }
+        if (!candidate.solved)
+        {
+            return candidate.uniqueMatches > current.uniqueMatches;
+        }
+        const float candidateScore =
+            candidate.poseInliers * 4.0f
+            + candidate.inlierRatio * 12.0f
+            - candidate.reprojectionError;
+        const float currentScore =
+            current.poseInliers * 4.0f
+            + current.inlierRatio * 12.0f
+            - current.reprojectionError;
+        return candidateScore > currentScore;
+    }
+
+    static void SampleReferenceHsv(
+        const cv::Mat& rgbaFrame,
+        const std::vector<cv::Point2f>& sampleCenters,
+        UrpOrbResult* result)
+    {
+        if (rgbaFrame.empty() || sampleCenters.empty() || result == nullptr)
+        {
+            return;
+        }
+        cv::Mat rgb;
+        cv::Mat hsv;
+        cv::cvtColor(rgbaFrame, rgb, cv::COLOR_RGBA2RGB);
+        cv::cvtColor(rgb, hsv, cv::COLOR_RGB2HSV);
+        double hueX = 0.0;
+        double hueY = 0.0;
+        double saturation = 0.0;
+        double value = 0.0;
+        int count = 0;
+        constexpr int radius = 4;
+        for (const cv::Point2f& center : sampleCenters)
+        {
+            const int centerX = cvRound(center.x);
+            const int centerY = cvRound(center.y);
+            for (int y = centerY - radius; y <= centerY + radius; y += 2)
+            {
+                for (int x = centerX - radius; x <= centerX + radius; x += 2)
+                {
+                    if (x < 0 || y < 0 || x >= hsv.cols || y >= hsv.rows)
+                    {
+                        continue;
+                    }
+                    const cv::Vec3b pixel = hsv.at<cv::Vec3b>(y, x);
+                    if (pixel[1] > 135 || pixel[2] < 70 || pixel[2] > 250)
+                    {
+                        continue;
+                    }
+                    const double angle =
+                        static_cast<double>(pixel[0]) / 180.0 * 2.0 * CV_PI;
+                    const double hueWeight =
+                        std::max(0.05, static_cast<double>(pixel[1]) / 255.0);
+                    hueX += std::cos(angle) * hueWeight;
+                    hueY += std::sin(angle) * hueWeight;
+                    saturation += static_cast<double>(pixel[1]) / 255.0;
+                    value += static_cast<double>(pixel[2]) / 255.0;
+                    count++;
+                }
+            }
+        }
+        if (count < 12)
+        {
+            return;
+        }
+        double hueAngle = std::atan2(hueY, hueX);
+        if (hueAngle < 0.0)
+        {
+            hueAngle += 2.0 * CV_PI;
+        }
+        result->sampledHue = static_cast<float>(hueAngle / (2.0 * CV_PI));
+        result->sampledSaturation =
+            static_cast<float>(saturation / static_cast<double>(count));
+        result->sampledValue =
+            static_cast<float>(value / static_cast<double>(count));
+        result->sampledConfidence = std::clamp(
+            static_cast<float>(count)
+                / static_cast<float>(sampleCenters.size() * 25),
+            0.0f,
+            1.0f);
+    }
+
     cv::Mat ResizeForTracking(const cv::Mat& source, double& scale) const
     {
         if (source.cols <= maxWidth_)

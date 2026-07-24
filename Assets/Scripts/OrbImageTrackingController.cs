@@ -86,6 +86,8 @@ namespace Urp.ArDemo
         private RepairCalibrationProfile calibration;
         private bool modeEnabled;
         private bool recognitionRunning;
+        private bool repairRequested;
+        private bool hasEverRegisteredSinceReset;
         private bool registrationEstablished;
         private bool hasSmoothedPose;
         private int registrationStableFrames;
@@ -104,7 +106,9 @@ namespace Urp.ArDemo
         public bool HasTrackedPose => registrationEstablished;
         public bool IsRigidRegistrationEstablished => registrationEstablished;
         public bool IsRepairMode =>
-            registrationEstablished && trackingState == TrackingState.Repair;
+            repairRequested
+            && registrationEstablished
+            && trackingState == TrackingState.Repair;
         public TrackingState State => trackingState;
         public bool IsRepairActuallyRenderable =>
             ValidateRigidHierarchy(out _) && AnyEnabled(repairRenderers);
@@ -267,6 +271,8 @@ namespace Urp.ArDemo
         {
             modeEnabled = enabled;
             recognitionRunning = false;
+            repairRequested = false;
+            hasEverRegisteredSinceReset = false;
             ResetRegistration();
 
             if (!enabled)
@@ -294,9 +300,11 @@ namespace Urp.ArDemo
                 return;
             }
             PlacePreAlignmentPose();
+            recognitionRunning = true;
+            nextProcessTime = 0f;
             UpdateStatus(
-                "已显示带纹理的 Blender 对齐 B+C。移动手机，让 B "
-                + "与真实残缺瓶 A 大致重合，然后点击“开始”。");
+                "已在画面中央正面显示 Blender 对齐的 B+C，识别已经开始。"
+                + "移动手机让 B 与真实残缺瓶 A 大致重合；识别稳定后点击“开始”。");
         }
 
         public void StartRecognition()
@@ -310,26 +318,38 @@ namespace Urp.ArDemo
                 return;
             }
 
-            ResetRegistration();
-            recognitionRunning = true;
-            trackingState = TrackingState.Searching;
+            repairRequested = true;
             nextProcessTime = 0f;
-            ShowRepairPresentation();
-            UpdateStatus(
-                "已切换为只显示瓶盖 C；B 仅写深度用于遮挡。"
-                + "正在以当前粗对齐姿态引导真实照片 ORB 特征和 A→B 多点 PnP。");
+            if (registrationEstablished)
+            {
+                trackingState = TrackingState.Repair;
+                ShowRepairPresentation();
+                UpdateStatus(
+                    "A 与 B 的三维姿态已经稳定。现在隐藏 B 的颜色，只显示瓶盖 C；"
+                    + "B 仍保留并只写深度，用于几何遮挡。");
+            }
+            else
+            {
+                ShowPreAlignmentPair();
+                UpdateStatus(
+                    "已收到“开始”。正在继续确认 A 与 B 的稳定三维姿态；"
+                    + "确认完成前保留 B+C，完成后会自动隐藏 B 的颜色。");
+            }
         }
 
         public void ResetTracking()
         {
-            recognitionRunning = false;
+            recognitionRunning = modeEnabled;
+            repairRequested = false;
+            hasEverRegisteredSinceReset = false;
             ResetRegistration();
             if (modeEnabled)
             {
                 PlacePreAlignmentPose();
+                nextProcessTime = 0f;
                 UpdateStatus(
-                    "已重置并重新显示初始 B+C。移动手机让 B 粗略覆盖 A，"
-                    + "然后点击“开始”。");
+                    "已重置。B+C 已回到画面中央的正面初始姿态，识别正在运行。"
+                    + "移动手机让 B 粗略覆盖 A，识别稳定后点击“开始”。");
             }
             else
             {
@@ -359,8 +379,12 @@ namespace Urp.ArDemo
                 cameraTransform.position
                 + cameraTransform.forward * preAlignmentDistanceMeters
                 + cameraTransform.up * preAlignmentMouthHeightMeters;
+            // The registered bottle's printed front faces canonical +X, while
+            // +Y is the neck axis. Map +X toward the camera and keep +Y
+            // upright; mapping local +Z to camera right completes the same
+            // right-handed frame.
             trackedObjectPoseRoot.rotation = Quaternion.LookRotation(
-                -cameraTransform.forward,
+                cameraTransform.right,
                 cameraTransform.up);
             trackedObjectPoseRoot.localScale =
                 Vector3.one * calibration.metersPerModelUnit;
@@ -494,6 +518,18 @@ namespace Urp.ArDemo
             SetRepairHierarchyVisible(true);
         }
 
+        private void ShowPresentationForCurrentState()
+        {
+            if (repairRequested && hasEverRegisteredSinceReset)
+            {
+                ShowRepairPresentation();
+            }
+            else
+            {
+                ShowPreAlignmentPair();
+            }
+        }
+
         public void HideFailedProfileVisuals()
         {
             ResetTracking();
@@ -552,7 +588,7 @@ namespace Urp.ArDemo
                     HandleTrackingLoss();
                     UpdateStatus(hasResult
                         ? qualityReason
-                        : "尚未找到可用于 PnP 的 B 特征。");
+                        : "尚未在真实瓶身 A 中找到足够稳定的 B 自然特征。");
                     return;
                 }
 
@@ -565,8 +601,17 @@ namespace Urp.ArDemo
                         out Quaternion targetRotation))
                 {
                     HandleTrackingLoss();
-                    UpdateStatus("PnP 已返回，但三维坐标转换无效。");
+                    UpdateStatus("已找到自然特征，但三维姿态坐标转换无效。");
                     return;
+                }
+                if (appearanceConsistency != null
+                    && best.sampledConfidence > 0f)
+                {
+                    appearanceConsistency.ObserveReferenceHsv(
+                        best.sampledHue,
+                        best.sampledSaturation,
+                        best.sampledValue,
+                        best.sampledConfidence);
                 }
 
                 if (!registrationEstablished)
@@ -580,7 +625,7 @@ namespace Urp.ArDemo
                     {
                         trackingState = TrackingState.Candidate;
                         UpdateStatus(
-                            $"PnP 与当前 B 粗对齐差异过大："
+                            $"识别姿态与当前 B 粗对齐差异过大："
                             + $"{initialPositionCorrection:F2}m，"
                             + $"{initialRotationCorrection:F0}°。"
                             + "请重置后先让 B 大致覆盖 A。");
@@ -588,7 +633,7 @@ namespace Urp.ArDemo
                     }
 
                     ApplyTrackedRootPose(targetPosition, targetRotation, false);
-                    ShowRepairPresentation();
+                    ShowPresentationForCurrentState();
                     trackingState = TrackingState.PoseValidating;
                     if (!TryAccumulateStableRegistration(
                             targetPosition,
@@ -603,8 +648,11 @@ namespace Urp.ArDemo
 
                     ApplyTrackedRootPose(stablePosition, stableRotation, false);
                     registrationEstablished = true;
-                    trackingState = TrackingState.Repair;
-                    ShowRepairPresentation();
+                    hasEverRegisteredSinceReset = true;
+                    trackingState = repairRequested
+                        ? TrackingState.Repair
+                        : TrackingState.PreAlignment;
+                    ShowPresentationForCurrentState();
                 }
                 else
                 {
@@ -627,12 +675,26 @@ namespace Urp.ArDemo
                 lastAcceptedPosition = targetPosition;
                 lastAcceptedRotation = targetRotation;
                 lastValidPoseTime = Time.unscaledTime;
-                trackingState = TrackingState.Repair;
-                ShowRepairPresentation();
-                UpdateStatus(
-                    $"B 已稳定配准 A：内点 {best.poseInliers}/"
-                    + $"{best.uniqueMatches}，RMS {best.reprojectionError:F2}px。"
-                    + "B 只写深度而不写颜色；C 继承同一三维位姿并获得正确遮挡。");
+                trackingState = repairRequested
+                    ? TrackingState.Repair
+                    : TrackingState.PreAlignment;
+                ShowPresentationForCurrentState();
+                if (repairRequested)
+                {
+                    UpdateStatus(
+                        $"A 与 B 已稳定跟踪：有效内点 {best.poseInliers}/"
+                        + $"{best.uniqueMatches}，重投影误差 "
+                        + $"{best.reprojectionError:F2}px。"
+                        + "B 只写深度；C 继承 B 的完整三维姿态。");
+                }
+                else
+                {
+                    UpdateStatus(
+                        $"已识别并稳定跟踪瓶子：有效内点 {best.poseInliers}/"
+                        + $"{best.uniqueMatches}，误差 "
+                        + $"{best.reprojectionError:F2}px。"
+                        + "请确认 B 覆盖真实瓶身 A，然后点击“开始”。");
+                }
             }
             finally
             {
@@ -646,14 +708,14 @@ namespace Urp.ArDemo
             {
                 reason =
                     $"B 特征匹配 {result.uniqueMatches}/{minGoodMatches}，"
-                    + "尚不足以求解完整 PnP。";
+                    + "尚不足以确认完整三维姿态。";
                 return false;
             }
             if (result.poseValid == 0)
             {
                 reason =
-                    $"PnP 未通过：内点 {result.poseInliers}/"
-                    + $"{result.uniqueMatches}，代码 {result.rejectionCode}。";
+                    $"三维姿态尚未通过：内点 {result.poseInliers}/"
+                    + $"{result.uniqueMatches}。请保持瓶身清晰并缓慢移动手机。";
                 return false;
             }
             int requiredInliers = Mathf.Max(
@@ -663,7 +725,7 @@ namespace Urp.ArDemo
                 || result.inlierRatio < minimumInlierRatio)
             {
                 reason =
-                    $"PnP 内点 {result.poseInliers}/{result.uniqueMatches}，"
+                    $"有效姿态内点 {result.poseInliers}/{result.uniqueMatches}，"
                     + $"需要至少 {requiredInliers} 个且比例不低于 "
                     + $"{minimumInlierRatio:P0}。";
                 return false;
@@ -692,7 +754,7 @@ namespace Urp.ArDemo
                 || !float.IsFinite(result.tvecZ)
                 || result.tvecZ <= 0f)
             {
-                reason = "PnP 深度无效。";
+                reason = "识别得到的三维深度无效，请让瓶身完整进入画面。";
                 return false;
             }
             reason = string.Empty;
@@ -803,9 +865,11 @@ namespace Urp.ArDemo
             trackingState = TrackingState.Lost;
             if (!registrationEstablished)
             {
-                // Start already switched to C plus depth-only B. Keep that
-                // world-space coarse pose while searching.
-                ShowRepairPresentation();
+                // Before the first valid registration the visible B+C pair
+                // remains at its world-space coarse pose. After a prior lock,
+                // keep the last C pose while relocalizing; never move it to a
+                // camera or screen coordinate.
+                ShowPresentationForCurrentState();
                 return;
             }
             if (registrationEstablished
@@ -814,15 +878,16 @@ namespace Urp.ArDemo
                 // The root remains a world-space object pose, never a screen
                 // coordinate. AR camera motion still changes perspective.
                 trackingState = previousState;
-                ShowRepairPresentation();
+                ShowPresentationForCurrentState();
                 return;
             }
 
             registrationEstablished = false;
             registrationStableFrames = 0;
-            hasSmoothedPose = false;
-            SetReferenceHierarchyVisible(false);
-            SetRepairHierarchyVisible(false);
+            // Retain the last accepted world pose while ORB relocalizes. AR
+            // camera motion continues to provide correct perspective during
+            // the hold; the next accepted pose is validated before correction.
+            ShowPresentationForCurrentState();
         }
 
         private void ResetRegistration()

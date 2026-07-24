@@ -1,17 +1,20 @@
 {
-  "version": "bottle-full-aligned-v2-canonical",
+  "version": "bottle-no-cap-clean-cap-rigid-registration-v3",
   "runtimeHierarchy": {
     "root": "BottleRepairRoot",
     "referenceB": "DamagedBottleB",
     "repairC": "BottleCapC"
   },
   "sourceSharedTransform": {
+    "bodySource": "F:\\Meshroom_work\\bottle_full_clean_v2\\split_models\\bottle_no_cap\\texturedMesh.obj",
+    "cleanCapSource": "F:\\Au\\暑期任务\\bottle0720\\processed_20260721\\clean_cap\\bottle_cap_clean_39x10mm.obj",
+    "cleanCapSha256": "C0E377C3E2C6A6D42811378FAD5B2D30FC424A2B9E90B75B0337F12AB5E64BFA",
     "mouthCenter": [
-      -0.23158305883407593,
-      5.276992321014404,
-      -0.5871703028678894
+      0.0,
+      0.0,
+      0.0
     ],
-    "uniformScale": 1.5063672985640146,
+    "uniformScale": 1.0000001589457446,
     "canonicalBodyHeightUnits": 1.2,
     "metersPerModelUnit": 0.17,
     "canonicalBodyHeightMeters": 0.20400000000000001
@@ -20,14 +23,14 @@
     "vertices": 64749,
     "polygons": 92918,
     "boundsMin": [
-      -0.2839941084384918,
-      -1.1999998092651367,
-      -0.26533401012420654
+      -0.2839941382408142,
+      -1.1999999284744263,
+      -0.26533403992652893
     ],
     "boundsMax": [
-      0.2144784927368164,
+      0.2144785225391388,
       0.0,
-      0.22504454851150513
+      0.22504457831382751
     ],
     "localPosition": [
       0.0,
@@ -46,17 +49,21 @@
     ]
   },
   "repairC": {
-    "vertices": 8658,
-    "polygons": 10518,
+    "outerDiameterMeters": 0.039,
+    "innerDiameterMeters": 0.0344,
+    "heightMeters": 0.01,
+    "innerRoofHeightMeters": 0.00865,
+    "vertices": 4754,
+    "polygons": 4944,
     "boundsMin": [
-      -0.14172586798667908,
-      -0.016536235809326172,
-      -0.17904138565063477
+      -0.11537646502256393,
+      -0.05158825218677521,
+      -0.11537646502256393
     ],
     "boundsMax": [
-      0.09315907955169678,
-      0.12777471542358398,
-      0.08839499950408936
+      0.11537646502256393,
+      0.007941186428070068,
+      0.11537646502256393
     ],
     "localPosition": [
       0.0,
@@ -74,13 +81,60 @@
       1.0
     ]
   },
-  "seam": {
-    "capMinimumYMinusBodyMaximumY": -0.016536235809326172,
-    "interpretation": "small negative means the scan surfaces overlap slightly at the split seam"
+  "registration": {
+    "method": "Blender rigid registration: common mouth-centred frame; clean cap inner roof aligned to the B mouth plane",
+    "capSourceToCanonicalMatrix": [
+      [
+        5.882352828979492,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        -2.571258050920733e-07,
+        5.882352828979492,
+        -0.050882354378700256
+      ],
+      [
+        0.0,
+        -5.882352828979492,
+        -2.571258050920733e-07,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "mouthPlaneY": 0.0,
+    "capBottomBelowMouthUnits": 0.05158825218677521,
+    "capBottomBelowMouthMeters": 0.008770002871751786,
+    "capTopAboveMouthUnits": 0.007941186428070068,
+    "capTopAboveMouthMeters": 0.0013500016927719116,
+    "radialClearanceUnits": 0.0011764705882352788,
+    "radialClearanceMeters": 0.0001999999999999974,
+    "bToCLocalPosition": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "bToCLocalRotationRadians": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "bToCLocalScale": [
+      1.0,
+      1.0,
+      1.0
+    ]
   },
   "relationshipStorage": [
-    "F:\\Meshroom_work\\bottle_full_clean_v2\\split_models\\bottle_full_aligned_v2.blend",
-    "F:\\Meshroom_work\\bottle_full_clean_v2\\split_models\\bottle_full_aligned_v2.fbx"
+    "F:\\Meshroom_work\\bottle_full_clean_v2\\split_models\\bottle_no_cap_clean_cap_registered.blend",
+    "F:\\Meshroom_work\\bottle_full_clean_v2\\split_models\\bottle_no_cap_clean_cap_registered.fbx"
   ],
   "rigidRelationshipPreserved": true,
   "deviceOverlayVerified": false

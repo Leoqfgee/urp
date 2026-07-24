@@ -1,40 +1,62 @@
 {
   "date": "2026-07-24",
-  "purpose": "Compare the previous Blender-render descriptor database with real open/no-cap bottle observation descriptors on the three supplied tracking-failure screenshots.",
+  "purpose": "Replay the supplied on-device failure screenshots against the production real-photo open/no-cap bottle database and document the runtime failure cause.",
   "common_settings": {
     "frame_orb_features": 2600,
     "descriptor": "ORB 256-bit",
     "matcher": "Hamming KNN ratio test",
-    "pnp": "solvePnPRansac followed by LM refinement"
-  },
-  "render_only_database": {
-    "records": 8000,
-    "frames_with_pose": 1,
-    "pose_inliers": [
-      0,
-      0,
-      7
-    ]
+    "pose": "independent strict/guided candidate solving with SQPnP, EPNP and iterative RANSAC followed by LM refinement"
   },
   "real_no_cap_observation_database": {
+    "version": "bottle-full-aligned-v2-reference-b-real-observations-v2",
     "records": 4100,
-    "frames_with_pose": 3,
-    "pose_inliers": [
-      19,
+    "source": "F:\\Meshroom_work\\bottle_damaged real open/no-cap bottle photographs",
+    "rendered_mesh_descriptors_used": false,
+    "repair_cap_descriptors_used": false
+  },
+  "supplied_failure_frame_replay": {
+    "frames": 4,
+    "accepted": 4,
+    "success_rate": 1.0,
+    "unique_matches": [
+      61,
+      54,
+      59,
+      45
+    ],
+    "occupied_grid_cells": [
+      13,
       14,
-      19
+      12,
+      10
+    ],
+    "pose_inliers": [
+      30,
+      28,
+      30,
+      25
     ],
     "inlier_ratio": [
-      0.38,
-      0.3684210526315789,
-      0.36538461538461536
+      0.4918032786885246,
+      0.5185185185185185,
+      0.5084745762711864,
+      0.5555555555555556
     ],
     "reprojection_rms_pixels": [
-      1.4396680984531167,
-      1.3109569107091754,
-      1.2433029540716665
+      1.6735103131863467,
+      1.512399288639203,
+      1.969894500366726,
+      1.5402857377894128
+    ],
+    "reprojection_max_pixels": [
+      2.504351854324341,
+      2.471198320388794,
+      3.0552937984466553,
+      2.7861733436584473
     ]
   },
-  "decision": "Use only the real no-cap observation database in production. Do not mix render descriptors because mixed 3D correspondences reduced PnP consistency in the same replay.",
+  "root_cause": "The r7 phone runtime selected the coarse-pose-guided match set whenever it contained eight records. A bad initial mesh projection could therefore replace a valid strict real-photo set and send many false correspondences into a single iterative pose attempt. This explains failures such as 0/53 and 20/63 despite the same screenshots having valid strict solutions offline.",
+  "fix": "r8 solves strict real-photo and guided match sets independently, tries multiple robust pose solvers, refines each candidate, and selects using pose inliers, spatial coverage and reprojection error. The coarse B pose is a hint only and cannot suppress a valid global match set.",
+  "scope_boundary": "Offline screenshot replay confirms feature and pose solvability. It does not prove continuous real-device AR tracking or physical B-to-A overlay.",
   "device_overlay_verified": false
 }

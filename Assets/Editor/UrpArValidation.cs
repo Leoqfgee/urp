@@ -35,6 +35,8 @@ namespace Urp.ArDemo.Editor
             + "Textures/bottle_full_clean_v2_albedo.png";
         private const string BottleDepthShaderPath =
             "Assets/Shaders/BottleDepthOccluder.shader";
+        private const string BottleCapMaterialPath =
+            "Assets/Materials/CleanBottleCapLit.mat";
         private const string ControllerPath =
             "Assets/Scripts/OrbImageTrackingController.cs";
         private const string SetupPath =
@@ -192,6 +194,8 @@ namespace Urp.ArDemo.Editor
                 $"Missing bottle photogrammetry texture: {BottleAlbedoPath}");
             Require(File.Exists(BottleDepthShaderPath),
                 $"Missing B depth occlusion shader: {BottleDepthShaderPath}");
+            Require(File.Exists(BottleCapMaterialPath),
+                $"Missing clean C material: {BottleCapMaterialPath}");
 
             RestorationObjectCatalog catalog =
                 AssetDatabase.LoadAssetAtPath<RestorationObjectCatalog>(CatalogPath);
@@ -224,8 +228,12 @@ namespace Urp.ArDemo.Editor
             Require(
                 profile.viewerMaterial != null
                 && profile.viewerMaterial.GetTexture("_BaseMap") != null
-                && profile.repairMaterial == profile.viewerMaterial,
-                "B+C pre-alignment and C repair must use the copied photogrammetry texture.");
+                && profile.repairMaterial != null
+                && profile.repairMaterial != profile.viewerMaterial
+                && profile.repairMaterial.GetTexture("_BaseMap") == null
+                && AssetDatabase.GetAssetPath(profile.repairMaterial)
+                    == BottleCapMaterialPath,
+                "B must use the photogrammetry texture and clean C must use its own white material.");
             Require(
                 profile.referenceDepthOcclusionMaterial != null
                 && profile.referenceDepthOcclusionMaterial.shader != null
@@ -251,6 +259,13 @@ namespace Urp.ArDemo.Editor
                 && manifest.Contains("\"repair_c_excluded_from_matching\": true")
                 && manifest.Contains("\"device_overlay_verified\": false"),
                 "B database manifest does not describe the real-photo B-only pipeline.");
+            string report = File.ReadAllText(NewPairReportPath);
+            Require(
+                report.Contains("bottle-no-cap-clean-cap-rigid-registration-v3")
+                && report.Contains("bottle_cap_clean_39x10mm.obj")
+                && report.Contains("\"radialClearanceMeters\": 0.0001999999999999974")
+                && report.Contains("\"rigidRelationshipPreserved\": true"),
+                "Blender report does not describe the approved clean 39x10mm cap.");
 
             GameObject pairPrefab =
                 AssetDatabase.LoadAssetAtPath<GameObject>(NewPairPath);
@@ -304,6 +319,9 @@ namespace Urp.ArDemo.Editor
                 && controller.Contains("PlacePreAlignmentPose")
                 && controller.Contains("SetCurrentPosePrior")
                 && controller.Contains("ShowRepairPresentation")
+                && controller.Contains("ShowPresentationForCurrentState")
+                && controller.Contains("repairRequested")
+                && controller.Contains("recognitionRunning = true")
                 && controller.Contains("referenceDepthOcclusionMaterial")
                 && controller.Contains("trackingState = TrackingState.Repair")
                 && controller.Contains("renderer.enabled = enabled"),
@@ -317,6 +335,10 @@ namespace Urp.ArDemo.Editor
             Require(
                 native.Contains("SetPosePrior")
                 && native.Contains("guidedMatches")
+                && native.Contains("strictSolution")
+                && native.Contains("guidedSolution")
+                && native.Contains("SOLVEPNP_SQPNP")
+                && native.Contains("SampleReferenceHsv")
                 && !native.Contains("frameToTarget")
                 && !native.Contains("repairAnchor")
                 && !native.Contains("set_repair_anchor"),
@@ -347,6 +369,7 @@ namespace Urp.ArDemo.Editor
             Require(
                 setup.Contains("BottleFullAlignedV2")
                 && setup.Contains("BottlePhotogrammetryLit")
+                && setup.Contains("CleanBottleCapLit")
                 && setup.Contains("BottleDepthOccluder")
                 && setup.Contains("AROcclusionManager")
                 && setup.Contains("RepairAppearanceConsistencyController"),
@@ -381,6 +404,10 @@ namespace Urp.ArDemo.Editor
             SetPrivateField(controller, "modelCoordinateAlignment", alignmentObject.transform);
             controller.SetProfile(profile);
             controller.SetTrackingEnabled(true);
+            Require(
+                GetPrivateField<bool>(controller, "recognitionRunning")
+                && !GetPrivateField<bool>(controller, "repairRequested"),
+                "Entering tracking must start A-to-B recognition before Start.");
             MethodInfo buildPrior = typeof(OrbImageTrackingController).GetMethod(
                 "TryBuildCurrentPosePrior",
                 BindingFlags.Instance | BindingFlags.NonPublic);
@@ -399,6 +426,14 @@ namespace Urp.ArDemo.Editor
                 && Mathf.Abs(determinant - 1f) < 0.01f
                 && prior[11] > 0f,
                 "The coarse model-to-camera prior is not a proper positive-depth rotation.");
+            Require(
+                Vector3.Dot(
+                    rootObject.transform.TransformDirection(Vector3.right),
+                    -camera.transform.forward) > 0.99f
+                && Vector3.Dot(
+                    rootObject.transform.TransformDirection(Vector3.up),
+                    camera.transform.up) > 0.99f,
+                "Initial B+C pose must show canonical +X label front upright to the camera.");
 
             Transform body =
                 GetPrivateField<Transform>(controller, "registeredReferenceModel");
@@ -419,7 +454,7 @@ namespace Urp.ArDemo.Editor
                 && AllUseMaterial(
                     cap.GetComponentsInChildren<Renderer>(true),
                     profile.repairMaterial),
-                "Pre-alignment B+C must use the textured photogrammetry material.");
+                "Pre-alignment must use textured B and the clean white C material.");
             Matrix4x4 bodyBefore = body.localToWorldMatrix;
             Matrix4x4 capLocalBefore = pair.worldToLocalMatrix * cap.localToWorldMatrix;
 

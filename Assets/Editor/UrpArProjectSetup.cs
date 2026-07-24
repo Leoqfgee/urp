@@ -34,6 +34,8 @@ namespace Urp.ArDemo.Editor
             + "Textures/bottle_full_clean_v2_albedo.png";
         private const string BottleSurfaceMaterialPath =
             "Assets/Materials/BottlePhotogrammetryLit.mat";
+        private const string BottleCapMaterialPath =
+            "Assets/Materials/CleanBottleCapLit.mat";
         private const string BottleDepthMaterialPath =
             "Assets/Materials/BottleDepthOccluder.mat";
         private const string AndroidApkPath = "Builds/BottleFullAlignedV2AR.apk";
@@ -302,6 +304,11 @@ namespace Urp.ArDemo.Editor
                 "Assets/Objects/Tissue/Materials/TissueViewerLit.mat", TissueTexturePath, 0.16f);
             Material bottleSurfaceMaterial = CreateLitMaterial(
                 BottleSurfaceMaterialPath, BottleAlbedoPath, 0.12f, true);
+            Material bottleCapMaterial = CreateLitMaterial(
+                BottleCapMaterialPath, null, 0.28f, true);
+            bottleCapMaterial.SetColor(
+                "_BaseColor",
+                new Color(0.96f, 0.96f, 0.94f, 1f));
             Material bottleDepthMaterial =
                 CreateDepthOcclusionMaterial(BottleDepthMaterialPath);
             GameObject bottlePair =
@@ -314,19 +321,19 @@ namespace Urp.ArDemo.Editor
             bottle.objectId = "bottle_full_aligned_v2";
             bottle.displayName = "新重建无盖饮料瓶与瓶盖";
             bottle.shortDescription =
-                "新照片重建并在 Blender 中刚性拼接的残缺瓶身 B 与补全瓶盖 C。";
+                "Blender 中刚性对齐的无盖瓶身 B 与干净白色瓶盖 C。";
             bottle.viewerDescription =
-                "BottleFullAlignedV2 中，DamagedBottleB 是无盖瓶身 B，"
-                + "BottleCapC 是同一摄影测量模型切分出的瓶盖 C。"
-                + "两者以固定同级子对象保存在 BottleRepairRoot 下，"
-                + "并统一使用摄影测量纹理。";
+                "DamagedBottleB 是保留真实纹理的无盖瓶身；"
+                + "BottleCapC 是 39mm x 10mm 的干净瓶盖。"
+                + "两者在 Blender 中以共同瓶口坐标系对齐，"
+                + "并作为 BottleRepairRoot 下的固定同级子对象保存。";
             bottle.trackingDescription =
-                "进入页面先显示带纹理的 Blender 对齐 B+C 三维模型。"
-                + "用户移动手机让 B 与真实残缺瓶 A 大致重合后点击开始。"
-                + "点击后立即只显示 C；B 保持启用但改为只写深度。"
-                + "系统用真实无盖瓶照片的 ORB 特征求 A→B 完整 PnP 位姿，"
-                + "C 不单独识别或定位，只继承 B 的三维跟踪位姿。"
-                + "C 的颜色亮度由 AR 光照估计平滑校正，B 与环境深度共同处理遮挡。";
+                "进入页面后 B+C 以正面初始位姿显示在画面中央，"
+                + "同时使用真实无盖瓶照片的 ORB 特征识别 A→B 六自由度位姿。"
+                + "点击开始后，只在姿态稳定时隐藏 B 的颜色，"
+                + "但保留 B 深度遮挡和 B/C 刚性关系。"
+                + "C 不单独识别，不挂在屏幕或摄像机下。"
+                + "C 的外观结合真实瓶身 HSV 样本和 AR 光照估计平滑校正。";
             bottle.missingPartName = "瓶盖 C";
             bottle.thumbnail =
                 AssetDatabase.LoadAssetAtPath<Texture2D>(BottleThumbnailPath);
@@ -354,7 +361,7 @@ namespace Urp.ArDemo.Editor
             EditorUtility.SetDirty(bottleCalibration);
             bottle.calibration = bottleCalibration;
             bottle.viewerMaterial = bottleSurfaceMaterial;
-            bottle.repairMaterial = bottleSurfaceMaterial;
+            bottle.repairMaterial = bottleCapMaterial;
             bottle.referenceDepthOcclusionMaterial = bottleDepthMaterial;
             bottle.defaultViewerEuler = Vector3.zero;
             bottle.viewerMargin = 0.18f;
@@ -365,12 +372,12 @@ namespace Urp.ArDemo.Editor
             bottle.trackingSettings.maximumReprojectionMaxPixels = 8.0f;
             bottle.trackingSettings.minimumCoverageX = 0.05f;
             bottle.trackingSettings.minimumCoverageY = 0.10f;
-            bottle.trackingSettings.registrationConfirmationFrames = 8;
+            bottle.trackingSettings.registrationConfirmationFrames = 5;
             bottle.trackingSettings.registrationPositionToleranceMeters = 0.025f;
             bottle.trackingSettings.registrationRotationToleranceDegrees = 8f;
-            bottle.trackingSettings.temporaryLossHoldSeconds = 0.35f;
-            bottle.trackingSettings.positionSmoothing = 0.30f;
-            bottle.trackingSettings.rotationSmoothing = 0.25f;
+            bottle.trackingSettings.temporaryLossHoldSeconds = 2.5f;
+            bottle.trackingSettings.positionSmoothing = 0.20f;
+            bottle.trackingSettings.rotationSmoothing = 0.18f;
             bottle.physicalScaleVerified =
                 bottle.calibration != null && bottle.calibration.physicalScaleVerified;
             bottle.physicalMeasurements = new[]

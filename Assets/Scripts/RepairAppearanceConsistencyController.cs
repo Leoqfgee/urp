@@ -7,9 +7,10 @@ namespace Urp.ArDemo
 {
     /// <summary>
     /// Matches C to camera lighting without changing its geometry or pose.
-    /// AR Foundation supplies real-scene color/intensity and, when supported,
-    /// main-light and spherical-harmonic estimates. Color correction is
-    /// smoothed in HSV space before it is applied through property blocks.
+    /// AR Foundation supplies scene light estimates. The tracker also samples
+    /// low-saturation bottle pixels around verified A-to-B inliers, following
+    /// the thesis HSV consistency step. Both signals are smoothed in HSV space
+    /// and affect only C's material, never the B/C rigid transform.
     /// </summary>
     public sealed class RepairAppearanceConsistencyController : MonoBehaviour
     {
@@ -19,12 +20,22 @@ namespace Urp.ArDemo
         [SerializeField] private float smoothing = 0.18f;
         [SerializeField] private float minimumValue = 0.45f;
         [SerializeField] private float maximumValue = 1.35f;
+        [Range(0.01f, 1f)]
+        [SerializeField] private float referenceSampleSmoothing = 0.14f;
+        [Range(0f, 1f)]
+        [SerializeField] private float maximumReferenceSaturation = 0.28f;
+        [Range(0f, 1f)]
+        [SerializeField] private float referenceSampleWeight = 0.65f;
 
         private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
         private Renderer[] repairRenderers = Array.Empty<Renderer>();
         private MaterialPropertyBlock propertyBlock;
+        private Color sceneCorrection = Color.white;
+        private Color referenceCorrection = Color.white;
         private Color smoothedCorrection = Color.white;
-        private bool hasCorrection;
+        private bool hasSceneCorrection;
+        private bool hasReferenceCorrection;
+        private float referenceConfidence;
 
         public bool HasLightEstimate { get; private set; }
         public Color CurrentCorrection => smoothedCorrection;
@@ -33,6 +44,40 @@ namespace Urp.ArDemo
         {
             repairRenderers = renderers ?? Array.Empty<Renderer>();
             ApplyCorrection();
+        }
+
+        public void ObserveReferenceHsv(
+            float hue,
+            float saturation,
+            float value,
+            float confidence)
+        {
+            if (!float.IsFinite(hue)
+                || !float.IsFinite(saturation)
+                || !float.IsFinite(value)
+                || !float.IsFinite(confidence)
+                || confidence <= 0f)
+            {
+                return;
+            }
+
+            Color target = Color.HSVToRGB(
+                Mathf.Repeat(hue, 1f),
+                Mathf.Clamp(saturation, 0f, maximumReferenceSaturation),
+                Mathf.Clamp(value, minimumValue, 1f));
+            target.a = 1f;
+            referenceCorrection = hasReferenceCorrection
+                ? SmoothHsv(
+                    referenceCorrection,
+                    target,
+                    referenceSampleSmoothing * Mathf.Clamp01(confidence))
+                : target;
+            referenceConfidence = Mathf.Lerp(
+                referenceConfidence,
+                Mathf.Clamp01(confidence),
+                referenceSampleSmoothing);
+            hasReferenceCorrection = true;
+            RebuildCombinedCorrection();
         }
 
         private void Awake()
@@ -78,10 +123,10 @@ namespace Urp.ArDemo
                 target.b *= valueScale;
             }
             target.a = 1f;
-            smoothedCorrection = hasCorrection
-                ? SmoothHsv(smoothedCorrection, target, smoothing)
+            sceneCorrection = hasSceneCorrection
+                ? SmoothHsv(sceneCorrection, target, smoothing)
                 : target;
-            hasCorrection = true;
+            hasSceneCorrection = true;
             HasLightEstimate =
                 estimate.colorCorrection.HasValue
                 || estimate.averageBrightness.HasValue
@@ -116,6 +161,23 @@ namespace Urp.ArDemo
                 RenderSettings.ambientProbe =
                     estimate.ambientSphericalHarmonics.Value;
             }
+            RebuildCombinedCorrection();
+        }
+
+        private void RebuildCombinedCorrection()
+        {
+            Color target = hasSceneCorrection ? sceneCorrection : Color.white;
+            if (hasReferenceCorrection)
+            {
+                target = SmoothHsv(
+                    target,
+                    referenceCorrection,
+                    referenceSampleWeight * Mathf.Clamp01(referenceConfidence));
+            }
+            smoothedCorrection = SmoothHsv(
+                smoothedCorrection,
+                target,
+                smoothing);
             ApplyCorrection();
         }
 

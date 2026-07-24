@@ -238,5 +238,9 @@ namespace Urp.ArDemo.Native
         public float coverageX;
         public float coverageY;
         public float processingMilliseconds;
+        public float sampledHue;
+        public float sampledSaturation;
+        public float sampledValue;
+        public float sampledConfidence;
     }
 }

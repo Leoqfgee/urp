@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 import bpy
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 
 def parse_args() -> argparse.Namespace:
@@ -20,7 +20,18 @@ def parse_args() -> argparse.Namespace:
 
 
 def point_at(obj: bpy.types.Object, target: Vector) -> None:
-    obj.rotation_euler = (target - obj.location).to_track_quat("-Z", "Y").to_euler()
+    # This asset is canonical Y-up (mouth at Y=0, body toward negative Y).
+    # Blender's to_track_quat uses its conventional Z-up frame and can roll a
+    # near-horizontal camera by 180 degrees here, so construct a Y-up camera
+    # basis explicitly.
+    forward = (target - obj.location).normalized()
+    world_up = Vector((0.0, 1.0, 0.0))
+    if abs(forward.dot(world_up)) > 0.98:
+        world_up = Vector((0.0, 0.0, 1.0))
+    right = forward.cross(world_up).normalized()
+    up = right.cross(forward).normalized()
+    rotation = Matrix((right, up, -forward)).transposed()
+    obj.rotation_euler = rotation.to_euler()
 
 
 def main() -> None:
@@ -63,9 +74,9 @@ def main() -> None:
 
     lights = []
     for name, energy, size in (
-        ("Key", 900.0, 2.0),
-        ("Fill", 500.0, 2.5),
-        ("Rim", 650.0, 1.6),
+        ("Key", 180.0, 2.0),
+        ("Fill", 75.0, 2.5),
+        ("Rim", 110.0, 1.6),
     ):
         data = bpy.data.lights.new(f"BottleBCQA{name}Data", "AREA")
         data.energy = energy
