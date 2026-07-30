@@ -4,12 +4,15 @@ Native Android ARM64 plugin for the URP AR prototype. It performs the ORB target
 matching used by `OrbImageTrackingController` and returns the target center,
 relative width, match diagnostics and full solvePnPRansac pose to Unity.
 
-The current `r11-coarse-to-fine-multiview` matcher supports both the legacy flat
+The current `r12-prior-constrained-multiview` matcher supports both the legacy flat
 `URP3DM1` database and the grouped `URP3DM2` database. Each V2 group contains
 real no-cap-bottle ORB observations from one calibrated viewpoint. Groups are
 solved independently, which prevents descriptors from incompatible viewpoints
 being combined into a false pose. The best group is ranked by inliers, inlier
-ratio and reprojection error.
+ratio and reprojection error. With a user-aligned B pose, candidates more than
+100 degrees from the prior are rejected and candidates beyond 20 degrees
+receive an additional score penalty. This prevents the approximately
+180-degree front/back ambiguity observed on the near-cylindrical bottle.
 
 During continuous tracking, the last accepted view group is tested first with
 the user-aligned world-space B pose as a geometric prior. A strong solution
@@ -24,7 +27,7 @@ sampled descriptors per view and shortlists the best 24 groups. Full matching
 and PnP then run only on those groups. This preserves the dense viewpoint
 coverage without scanning every full keyframe on the phone.
 
-The v27 build uses a 10-level ORB pyramid (1.15 scale factor) and a low FAST
+The v28 build uses a 10-level ORB pyramid (1.15 scale factor) and a low FAST
 threshold so label features remain repeatable under scale and oblique-view
 changes. After registration, guided matching is constrained to a tighter
 projected neighbourhood; global strict matches remain available for

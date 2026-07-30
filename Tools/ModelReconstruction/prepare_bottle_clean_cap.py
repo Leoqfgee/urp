@@ -4,10 +4,10 @@
 Run with Blender using the already registered B+C blend:
 
   blender --background bottle_no_cap_clean_cap_registered.blend \
-    --python prepare_bottle_clean_cap_v26.py -- \
-    --blend-output bottle_no_cap_clean_cap_v26.blend \
-    --fbx-output bottle_no_cap_clean_cap_v26.fbx \
-    --report-output bottle_no_cap_clean_cap_v26_report.json
+    --python prepare_bottle_clean_cap.py -- \
+    --blend-output bottle_no_cap_clean_cap_v28.blend \
+    --fbx-output bottle_no_cap_clean_cap_v28.fbx \
+    --report-output bottle_no_cap_clean_cap_v28_report.json
 
 The scan remains the authoritative B geometry and coordinate frame.  The clean
 neck is a visual child of B that restores only the cylindrical bottle-neck
@@ -33,6 +33,7 @@ NECK_OUTER_DIAMETER_METERS = 0.034
 CAP_OUTER_DIAMETER_METERS = 0.039
 CAP_HEIGHT_METERS = 0.010
 SEGMENTS = 96
+NECK_AND_CAP_LIFT_MODEL_Y = 0.190
 
 
 def parse_args() -> argparse.Namespace:
@@ -56,7 +57,11 @@ def build_lathed_neck() -> bpy.types.Object:
     if old is not None:
         bpy.data.objects.remove(old, do_unlink=True)
 
-    # Canonical asset is Y-up, with the mouth plane at Y=0 and the body below.
+    # Canonical asset is Y-up.  The residual scan's highest reliable B surface
+    # is the neck cut datum at Y=0; it is not the physical mouth.  Device v27
+    # evidence showed the former negative-Y guide collapsed into the shoulder
+    # and put both the visible neck and C about 32 mm too low.  Build the same
+    # measured profile from the B cut upward to Y=0.190, then seat C at its top.
     # The previous guide widened to 51 mm at its lower edge and looked like a
     # detached funnel.  Keep this replacement within the measured neck/collar
     # envelope: a 34 mm cylindrical neck, two shallow thread rings and a
@@ -152,9 +157,12 @@ def main() -> None:
     neck = build_lathed_neck()
     neck.parent = body
     neck.matrix_parent_inverse = Matrix.Identity(4)
-    neck.location = Vector((0.0, 0.0, 0.0))
+    neck.location = Vector((0.0, NECK_AND_CAP_LIFT_MODEL_Y, 0.0))
     neck.rotation_euler = Vector((0.0, 0.0, 0.0))
     neck.scale = Vector((1.0, 1.0, 1.0))
+    cap.location = Vector((0.0, NECK_AND_CAP_LIFT_MODEL_Y, 0.0))
+    cap.rotation_euler = Vector((0.0, 0.0, 0.0))
+    cap.scale = Vector((1.0, 1.0, 1.0))
 
     keep = {root, body, cap, neck}
     for obj in list(bpy.data.objects):
@@ -185,10 +193,30 @@ def main() -> None:
     )
 
     body_min, body_max = local_bounds(body)
-    cap_min, cap_max = local_bounds(cap)
-    neck_min, neck_max = local_bounds(neck)
+    cap_local_min, cap_local_max = local_bounds(cap)
+    neck_local_min, neck_local_max = local_bounds(neck)
+    cap_min = [
+        cap_local_min[0],
+        cap_local_min[1] + NECK_AND_CAP_LIFT_MODEL_Y,
+        cap_local_min[2],
+    ]
+    cap_max = [
+        cap_local_max[0],
+        cap_local_max[1] + NECK_AND_CAP_LIFT_MODEL_Y,
+        cap_local_max[2],
+    ]
+    neck_min = [
+        neck_local_min[0],
+        neck_local_min[1] + NECK_AND_CAP_LIFT_MODEL_Y,
+        neck_local_min[2],
+    ]
+    neck_max = [
+        neck_local_max[0],
+        neck_local_max[1] + NECK_AND_CAP_LIFT_MODEL_Y,
+        neck_local_max[2],
+    ]
     payload = {
-        "version": "bottle-no-cap-clean-cap-v26",
+        "version": "bottle-no-cap-clean-cap-v28",
         "runtimeHierarchy": {
             "root": root.name,
             "referenceB": body.name,
@@ -196,8 +224,13 @@ def main() -> None:
             "repairC": cap.name,
         },
         "coordinateFrame": {
-            "origin": "bottle mouth centre",
-            "upAxis": "+Y from body to mouth",
+            "origin": "residual B neck cut datum",
+            "physicalMouthCentreModel": [
+                0.0,
+                NECK_AND_CAP_LIFT_MODEL_Y,
+                0.0,
+            ],
+            "upAxis": "+Y from body cut to physical mouth",
             "printedFrontAxis": "+X",
             "metersPerModelUnit": METERS_PER_MODEL_UNIT,
         },
@@ -225,7 +258,8 @@ def main() -> None:
             "boundsMax": cap_max,
         },
         "capSeating": {
-            "mouthPlaneModelY": 0.0,
+            "bCutDatumModelY": 0.0,
+            "mouthPlaneModelY": NECK_AND_CAP_LIFT_MODEL_Y,
             "capBottomMeters": cap_min[1] * METERS_PER_MODEL_UNIT,
             "capTopMeters": cap_max[1] * METERS_PER_MODEL_UNIT,
             "neckTopMeters": neck_max[1] * METERS_PER_MODEL_UNIT,
@@ -249,7 +283,7 @@ def main() -> None:
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
-    print("BOTTLE_CLEAN_CAP_V26_OK")
+    print("BOTTLE_CLEAN_CAP_V28_OK")
     print(json.dumps(payload, ensure_ascii=False))
 
 

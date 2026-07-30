@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render six fixed QA views of the canonical BottleCleanCap asset."""
+"""Render fixed QA views of the canonical BottleCleanCap asset."""
 
 from __future__ import annotations
 
@@ -57,7 +57,7 @@ def main() -> None:
     scene.view_settings.look = "AgX - Medium High Contrast"
 
     camera_data = bpy.data.cameras.new("BottleBCQACameraData")
-    camera_data.lens = 58.0
+    camera_data.lens = 52.0
     camera = bpy.data.objects.new("BottleBCQACamera", camera_data)
     bpy.context.collection.objects.link(camera)
     scene.camera = camera
@@ -67,10 +67,10 @@ def main() -> None:
     # called the +Z barcode view "front", which hid a real orientation error
     # during review even though runtime used +X correctly.
     views = {
-        "front": Vector((2.35, -0.48, 0.0)),
-        "back": Vector((-2.35, -0.48, 0.0)),
-        "left": Vector((0.0, -0.48, 2.35)),
-        "right": Vector((0.0, -0.48, -2.35)),
+        "front": Vector((2.65, -0.48, 0.0)),
+        "back": Vector((-2.65, -0.48, 0.0)),
+        "left": Vector((0.0, -0.48, 2.65)),
+        "right": Vector((0.0, -0.48, -2.65)),
         "top": Vector((0.0, 2.05, 0.35)),
         "oblique": Vector((1.55, 0.35, 1.75)),
     }
@@ -111,7 +111,7 @@ def main() -> None:
         })
 
     payload = {
-        "version": "bottle-no-cap-clean-cap-v26-qa",
+        "version": "bottle-no-cap-clean-cap-v28-qa",
         "hierarchy": (
             "BottleRepairRoot/DamagedBottleB/ReferenceNeckProxyB "
             "+ BottleCapC"

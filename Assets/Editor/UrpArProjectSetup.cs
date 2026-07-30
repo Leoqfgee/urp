@@ -25,18 +25,18 @@ namespace Urp.ArDemo.Editor
         private const string ScenePath = "Assets/Scenes/UrpARPrototype.unity";
         private const string FontPath = "Assets/Fonts/NotoSansSC-Regular.otf";
         private const string BottleRegisteredPairPath =
-            "Assets/Models/CleanBottleReconstruction/BottleCleanCapV26/"
-            + "bottle_no_cap_clean_cap_v26.fbx";
+            "Assets/Models/CleanBottleReconstruction/BottleCleanCapV28/"
+            + "bottle_no_cap_clean_cap_v28.fbx";
         private const string BottleThumbnailPath =
             "Assets/Textures/Targets/bottle_full_aligned_v2.png";
         private const string BottleAlbedoPath =
-            "Assets/Models/CleanBottleReconstruction/BottleCleanCapV26/"
+            "Assets/Models/CleanBottleReconstruction/BottleCleanCapV28/"
             + "Textures/bottle_full_clean_v2_albedo.png";
         private const string BottleSurfaceMaterialPath =
             "Assets/Materials/BottlePhotogrammetryLit.mat";
         private const string BottleCapMaterialPath =
             "Assets/Materials/CleanBottleCapLit.mat";
-        private const string AndroidApkPath = "Builds/BottleRepairAR_v27.apk";
+        private const string AndroidApkPath = "Builds/BottleRepairAR_v28.apk";
         private const string BottleReferenceOrbPath =
             "Assets/OrbModels/bottle_reference_b.bytes";
         private const string BottleCalibrationPath =
@@ -140,14 +140,14 @@ namespace Urp.ArDemo.Editor
 
         private static void ConfigureAndroidProject()
         {
-            PlayerSettings.productName = "瓶盖AR修复 v27";
+            PlayerSettings.productName = "瓶盖AR修复 v28";
             PlayerSettings.companyName = "qfgeeee";
-            PlayerSettings.bundleVersion = "4.2.7";
+            PlayerSettings.bundleVersion = "4.2.8";
             PlayerSettings.SetApplicationIdentifier(
                 BuildTargetGroup.Android, "com.qfgeeee.paper52objecttrackingar");
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
-            PlayerSettings.Android.bundleVersionCode = 427;
+            PlayerSettings.Android.bundleVersionCode = 428;
             PlayerSettings.SetScriptingBackend(
                 BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
@@ -310,11 +310,11 @@ namespace Urp.ArDemo.Editor
             GameObject bottlePair =
                 AssetDatabase.LoadAssetAtPath<GameObject>(BottleRegisteredPairPath);
             if (bottlePair == null)
-                throw new MissingReferenceException("BottleCleanCapV26 FBX import failed.");
+                throw new MissingReferenceException("BottleCleanCapV28 FBX import failed.");
 
             RestorationObjectProfile bottle = LoadOrCreate<RestorationObjectProfile>(
                 BottleProfilePath);
-            bottle.objectId = "bottle_no_cap_clean_cap_v26";
+            bottle.objectId = "bottle_no_cap_clean_cap_v28";
             bottle.displayName = "新重建无盖饮料瓶与瓶盖";
             bottle.shortDescription =
                 "Blender 中刚性对齐的无盖瓶身 B 与干净白色瓶盖 C。";
@@ -344,7 +344,11 @@ namespace Urp.ArDemo.Editor
                 LoadOrCreate<RepairCalibrationProfile>(BottleCalibrationPath);
             bottleCalibration.objectOriginInModel = Vector3.zero;
             bottleCalibration.mouthCenterInModel = Vector3.zero;
-            // The Blender v26 canonical frame is +Y up and the printed label
+            // The Blender v28 tracking datum remains the ORB/B reconstruction
+            // origin at Y=0. The physical mouth, B-only neck guide and C are
+            // stored 0.190 model units above that datum by the FBX child
+            // matrices; runtime never compensates or positions C separately.
+            // The canonical frame is +Y up and the printed label
             // faces +X.  Therefore object-right is -Z.  This same frame is
             // used by the ORB database, PnP conversion and B+C rendering.
             bottleCalibration.mouthRightInModel = new Vector3(0f, 0f, -0.1f);

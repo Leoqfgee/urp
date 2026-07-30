@@ -18,7 +18,7 @@ namespace
 {
 constexpr char kModelMagicV1[8] = {'U', 'R', 'P', '3', 'D', 'M', '1', '\0'};
 constexpr char kModelMagicV2[8] = {'U', 'R', 'P', '3', 'D', 'M', '2', '\0'};
-constexpr char kBuildVersion[] = "urp-orb-native-2026.07.30-r11-coarse-to-fine-multiview";
+constexpr char kBuildVersion[] = "urp-orb-native-2026.07.30-r12-prior-constrained-multiview";
 constexpr int kDescriptorBytes = 32;
 constexpr int kModelRecordBytes = 3 * static_cast<int>(sizeof(float)) + kDescriptorBytes;
 constexpr int kCoarseDescriptorsPerGroup = 40;
@@ -534,9 +534,9 @@ public:
                 frame.rows,
                 cameraMatrix,
                 distCoeffs,
-                false,
-                cv::Mat(),
-                cv::Mat());
+                hasUsablePrior,
+                orientedPriorRvec,
+                orientedPriorTranslation);
             if (hasUsablePrior
                 && static_cast<int>(guidedMatches.size()) >= minMatches_)
             {
@@ -667,6 +667,7 @@ private:
         float inlierRatio = 0.0f;
         float reprojectionError = 999.0f;
         float reprojectionMax = 999.0f;
+        float priorRotationErrorDegrees = 0.0f;
         cv::Mat rvec;
         cv::Mat tvec;
         cv::Mat rotation;
@@ -774,8 +775,14 @@ private:
             float inlierRatio = 0.0f;
             float rms = 999.0f;
             float maximumError = 999.0f;
+            float priorRotationErrorDegrees = 0.0f;
         };
         Attempt best;
+        cv::Mat priorRotationForComparison;
+        if (usePosePrior)
+        {
+            cv::Rodrigues(priorRvec, priorRotationForComparison);
+        }
         auto trySolver = [&](int flag, bool useGuess)
         {
             Attempt attempt;
@@ -860,14 +867,48 @@ private:
                 : static_cast<float>(
                     std::sqrt(squaredError / projected.size()));
             attempt.maximumError = static_cast<float>(maximumError);
+            cv::Mat attemptRotation;
+            cv::Rodrigues(attempt.rvec, attemptRotation);
+            if (usePosePrior)
+            {
+                const cv::Mat delta =
+                    attemptRotation * priorRotationForComparison.t();
+                const double cosine = std::clamp(
+                    (cv::trace(delta)[0] - 1.0) * 0.5,
+                    -1.0,
+                    1.0);
+                attempt.priorRotationErrorDegrees = static_cast<float>(
+                    std::acos(cosine) * 180.0 / CV_PI);
+                // The user has already placed visible B approximately over A.
+                // A pose more than 100 degrees away is the cylindrical
+                // front/back ambiguity, not a valid refinement.  Reject it
+                // before it can beat the prior-consistent solution merely by
+                // having a few extra inliers.
+                if (attempt.priorRotationErrorDegrees > 100.0f)
+                {
+                    return;
+                }
+            }
+            const float priorPenalty = usePosePrior
+                ? std::max(
+                    0.0f,
+                    attempt.priorRotationErrorDegrees - 20.0f) * 1.5f
+                : 0.0f;
             const float score =
                 attempt.inlierCount * 4.0f
                 + attempt.inlierRatio * 12.0f
-                - attempt.rms;
+                - attempt.rms
+                - priorPenalty;
+            const float bestPriorPenalty = usePosePrior
+                ? std::max(
+                    0.0f,
+                    best.priorRotationErrorDegrees - 20.0f) * 1.5f
+                : 0.0f;
             const float bestScore =
                 best.inlierCount * 4.0f
                 + best.inlierRatio * 12.0f
-                - best.rms;
+                - best.rms
+                - bestPriorPenalty;
             if (!best.solved || score > bestScore)
             {
                 best = attempt;
@@ -891,6 +932,8 @@ private:
         solution.inlierRatio = best.inlierRatio;
         solution.reprojectionError = best.rms;
         solution.reprojectionMax = best.maximumError;
+        solution.priorRotationErrorDegrees =
+            best.priorRotationErrorDegrees;
         solution.rvec = best.rvec;
         solution.tvec = best.tvec;
         cv::Rodrigues(solution.rvec, solution.rotation);
@@ -918,11 +961,21 @@ private:
         const float candidateScore =
             candidate.poseInliers * 4.0f
             + candidate.inlierRatio * 12.0f
-            - candidate.reprojectionError;
+            - candidate.reprojectionError
+            - (candidate.usedPosePrior
+                ? std::max(
+                    0.0f,
+                    candidate.priorRotationErrorDegrees - 20.0f) * 1.5f
+                : 0.0f);
         const float currentScore =
             current.poseInliers * 4.0f
             + current.inlierRatio * 12.0f
-            - current.reprojectionError;
+            - current.reprojectionError
+            - (current.usedPosePrior
+                ? std::max(
+                    0.0f,
+                    current.priorRotationErrorDegrees - 20.0f) * 1.5f
+                : 0.0f);
         return candidateScore > currentScore;
     }
 

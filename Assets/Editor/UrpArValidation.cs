@@ -21,17 +21,17 @@ namespace Urp.ArDemo.Editor
         private const string ProfilePath =
             "Assets/Objects/CoconutBottle/Profiles/CoconutBottleRepairProfile.asset";
         private const string NewPairPath =
-            "Assets/Models/CleanBottleReconstruction/BottleCleanCapV26/"
-            + "bottle_no_cap_clean_cap_v26.fbx";
+            "Assets/Models/CleanBottleReconstruction/BottleCleanCapV28/"
+            + "bottle_no_cap_clean_cap_v28.fbx";
         private const string NewPairReportPath =
-            "Assets/Models/CleanBottleReconstruction/BottleCleanCapV26/"
-            + "bottle_no_cap_clean_cap_v26_report.json";
+            "Assets/Models/CleanBottleReconstruction/BottleCleanCapV28/"
+            + "bottle_no_cap_clean_cap_v28_report.json";
         private const string DatabasePath =
             "Assets/OrbModels/bottle_reference_b.bytes";
         private const string DatabaseManifestPath =
             "Assets/OrbModels/bottle_reference_b_manifest.json";
         private const string BottleAlbedoPath =
-            "Assets/Models/CleanBottleReconstruction/BottleCleanCapV26/"
+            "Assets/Models/CleanBottleReconstruction/BottleCleanCapV28/"
             + "Textures/bottle_full_clean_v2_albedo.png";
         private const string BottleSurfaceMaterialPath =
             "Assets/Materials/BottlePhotogrammetryLit.mat";
@@ -308,11 +308,11 @@ namespace Urp.ArDemo.Editor
                 && catalog.objects.Count(item => item == profile) == 1,
                 "The formal catalog must contain the new bottle profile exactly once.");
             Require(
-                profile.objectId == "bottle_no_cap_clean_cap_v26",
+                profile.objectId == "bottle_no_cap_clean_cap_v28",
                 "The formal bottle profile still has the legacy object id.");
             Require(
                 AssetDatabase.GetAssetPath(profile.registeredBottlePairPrefab) == NewPairPath,
-                "registeredBottlePairPrefab does not point to BottleCleanCapV26.");
+                "registeredBottlePairPrefab does not point to BottleCleanCapV28.");
             Require(
                 profile.trackingReferencePrefab == profile.registeredBottlePairPrefab
                 && profile.damagedViewerPrefab == profile.registeredBottlePairPrefab
@@ -360,7 +360,7 @@ namespace Urp.ArDemo.Editor
                 $"B database coverage is insufficient: {records} records, {viewGroups} groups.");
             string manifest = File.ReadAllText(DatabaseManifestPath);
             Require(
-                manifest.Contains("bottle-no-cap-grouped-multiview-v27")
+                manifest.Contains("bottle-no-cap-grouped-multiview-v28")
                 && manifest.Contains($"\"database_format\": \"{databaseFormat}\"")
                 && manifest.Contains($"\"view_group_count\": {viewGroups}")
                 && manifest.Contains("\"rendered_mesh_descriptors_used\": false")
@@ -370,8 +370,10 @@ namespace Urp.ArDemo.Editor
                 "B database manifest does not describe the real-photo B-only pipeline.");
             string report = File.ReadAllText(NewPairReportPath);
             Require(
-                report.Contains("bottle-no-cap-clean-cap-v26")
+                report.Contains("bottle-no-cap-clean-cap-v28")
                 && report.Contains("bottle_cap_clean_39x10mm.obj")
+                && report.Contains("\"physicalMouthCentreModel\"")
+                && report.Contains("\"mouthPlaneModelY\": 0.19")
                 && report.Contains("\"referenceNeckGuideB\"")
                 && report.Contains("\"cIsNeverPositionedIndependentlyAtRuntime\": true"),
                 "Blender report does not describe the approved clean 39x10mm cap.");
@@ -390,8 +392,24 @@ namespace Urp.ArDemo.Editor
             Require(
                 body.parent == root && cap.parent == root && neck.parent == body,
                 "B and C are not rigid siblings or the B-only neck guide is outside B.");
-            Require(IsIdentity(body) && IsIdentity(cap) && IsIdentity(neck),
-                "Blender B/C/neck local transforms were not baked to identity.");
+            Require(IsIdentity(body),
+                "B must remain at the canonical ORB tracking datum.");
+            Vector3 capLiftInPair =
+                pair.transform.InverseTransformPoint(cap.position)
+                - pair.transform.InverseTransformPoint(root.position);
+            Vector3 neckLiftInPair =
+                pair.transform.InverseTransformPoint(neck.position)
+                - pair.transform.InverseTransformPoint(root.position);
+            Require(
+                Mathf.Abs(capLiftInPair.magnitude - 0.19f) < 0.0002f
+                && Vector3.Distance(capLiftInPair, neckLiftInPair) < 0.0001f
+                && Quaternion.Angle(cap.localRotation, Quaternion.identity) < 0.05f
+                && Quaternion.Angle(neck.localRotation, Quaternion.identity) < 0.05f
+                && Vector3.Distance(cap.localScale, Vector3.one) < 0.001f
+                && Vector3.Distance(neck.localScale, Vector3.one) < 0.001f,
+                "The imported v28 geometry lost the Blender-authored raised neck/cap. "
+                + $"capLift={capLiftInPair}, neckLift={neckLiftInPair}, "
+                + $"rootScale={root.localScale}.");
             Require(
                 body.GetComponentsInChildren<Renderer>(true).Length > 0
                 && cap.GetComponentsInChildren<Renderer>(true).Length > 0,
@@ -457,6 +475,8 @@ namespace Urp.ArDemo.Editor
                 && native.Contains("kRelocalizationGroupLimit")
                 && native.Contains("SOLVEPNP_SQPNP")
                 && native.Contains("SampleReferenceHsv")
+                && native.Contains("priorRotationErrorDegrees")
+                && native.Contains("> 100.0f")
                 && !native.Contains("frameToTarget")
                 && !native.Contains("repairAnchor")
                 && !native.Contains("set_repair_anchor"),
@@ -485,7 +505,7 @@ namespace Urp.ArDemo.Editor
                     $"Scene generator still restores a removed legacy asset: {token}");
             }
             Require(
-                setup.Contains("BottleCleanCapV26")
+                setup.Contains("BottleCleanCapV28")
                 && setup.Contains("BottlePhotogrammetryLit")
                 && setup.Contains("CleanBottleCapLit")
                 && setup.Contains("AROcclusionManager")
@@ -761,8 +781,11 @@ namespace Urp.ArDemo.Editor
             Require(body.parent == pair && cap.parent == pair,
                 "Runtime changed the Blender-authored B/C parent relationship.");
             Require(
-                Vector3.Distance(body.position, cap.position) < 0.0001f,
-                "Imported B and C no longer share the Blender mouth origin.");
+                Mathf.Abs(
+                    Vector3.Distance(body.position, cap.position) - 0.0323f)
+                    < 0.0002f,
+                "Imported C no longer retains the Blender-authored 32.3 mm "
+                + $"lift from B. Runtime distance={Vector3.Distance(body.position, cap.position):F5}m.");
             Require(
                 AnyEnabled(body.GetComponentsInChildren<Renderer>(true))
                 && AnyEnabled(cap.GetComponentsInChildren<Renderer>(true)),
@@ -867,10 +890,14 @@ namespace Urp.ArDemo.Editor
                 0,
                 0);
             image.Apply(false);
-            int visiblePixels = image.GetPixels32().Count(pixel =>
-                pixel.r + pixel.g + pixel.b >= 48);
+            Color32[] pixels = image.GetPixels32();
+            Color32 background = pixels[0];
+            int visiblePixels = pixels.Count(pixel =>
+                Mathf.Abs(pixel.r - background.r)
+                + Mathf.Abs(pixel.g - background.g)
+                + Mathf.Abs(pixel.b - background.b) >= 12);
             string outputDirectory = Path.GetFullPath(
-                "Builds/Validation/v27");
+                "Builds/Validation/v28");
             Directory.CreateDirectory(outputDirectory);
             File.WriteAllBytes(
                 Path.Combine(outputDirectory, $"repair-c-{viewName}.png"),
