@@ -164,19 +164,59 @@ namespace Urp.ArDemo.Editor
                 $"PnP translation changed unexpectedly: {position}");
             Require(IsFinite(rotation), "PnP rotation is not finite.");
 
+            NativeOrbResult portraitOriented = new NativeOrbResult
+            {
+                poseValid = 1,
+                tvecX = 0.3f,
+                tvecY = 0.2f,
+                tvecZ = 2f,
+                r00 = 0f,
+                r01 = -1f,
+                r10 = 1f,
+                r11 = 0f,
+                r22 = 1f
+            };
             Require(
                 OpenCvUnityPoseConverter.TryGetObjectPose(
-                    identity,
+                    portraitOriented,
                     90,
                     camera,
                     profile,
                     out Vector3 portraitPosition,
                     out Quaternion portraitRotation),
-                "Portrait PnP pose conversion failed.");
+                "Portrait-oriented PnP pose conversion failed.");
             Require(
                 Vector3.Distance(position, portraitPosition) < 0.0001f
                 && Quaternion.Angle(rotation, portraitRotation) < 0.01f,
-                "Display rotation was incorrectly applied to an already-oriented PnP pose.");
+                "The oriented PnP camera frame did not return to the physical AR camera frame.");
+
+            NativeOrbResult portraitUpsideDownOriented = new NativeOrbResult
+            {
+                poseValid = 1,
+                tvecX = -0.3f,
+                tvecY = -0.2f,
+                tvecZ = 2f,
+                r00 = 0f,
+                r01 = 1f,
+                r10 = -1f,
+                r11 = 0f,
+                r22 = 1f
+            };
+            Require(
+                OpenCvUnityPoseConverter.TryGetObjectPose(
+                    portraitUpsideDownOriented,
+                    270,
+                    camera,
+                    profile,
+                    out Vector3 portraitUpsideDownPosition,
+                    out Quaternion portraitUpsideDownRotation)
+                && Vector3.Distance(
+                    position,
+                    portraitUpsideDownPosition) < 0.0001f
+                && Quaternion.Angle(
+                    rotation,
+                    portraitUpsideDownRotation) < 0.01f,
+                "The 270-degree PnP camera frame did not return to the physical AR camera frame.");
 
             UnityEngine.Object.DestroyImmediate(profile);
             UnityEngine.Object.DestroyImmediate(cameraObject);
@@ -253,7 +293,7 @@ namespace Urp.ArDemo.Editor
                 && profile.referenceDepthOcclusionMaterial.shader != null
                 && profile.referenceDepthOcclusionMaterial.shader.name
                     == "URP AR/Bottle Depth Occluder",
-                "B must use the depth-only occlusion shader after Start.");
+                "The optional B depth material is missing.");
 
             byte[] database = File.ReadAllBytes(DatabasePath);
             Require(
@@ -340,10 +380,12 @@ namespace Urp.ArDemo.Editor
                 && controller.Contains("hasReadyPoseCandidate")
                 && controller.Contains("repairRequested")
                 && controller.Contains("recognitionRunning = true")
-                && controller.Contains("referenceDepthOcclusionMaterial")
+                && controller.Contains("SetReferenceHierarchyVisible(false)")
+                && controller.Contains("worldPositionDeadbandMeters")
+                && controller.Contains("maximumWorldRotationCorrectionDegreesPerSecond")
                 && controller.Contains("trackingState = TrackingState.Repair")
                 && controller.Contains("renderer.enabled = enabled"),
-                "Production tracker does not implement textured pre-alignment, guided B PnP, and depth-only B.");
+                "Production tracker does not implement pre-alignment, guided PnP, hidden B, and stabilized C.");
             Require(
                 !controller.Contains("ConfirmReferenceAlignment")
                 && !controller.Contains("ShowReferenceValidation")
@@ -391,7 +433,7 @@ namespace Urp.ArDemo.Editor
                 && setup.Contains("BottleDepthOccluder")
                 && setup.Contains("AROcclusionManager")
                 && setup.Contains("RepairAppearanceConsistencyController"),
-                "Scene generator does not bind texture, depth occlusion, and light consistency.");
+                "Scene generator does not bind texture, optional depth resources, and light consistency.");
             int buildStart = setup.IndexOf(
                 "public static void BuildAndroidFromCommandLine()",
                 StringComparison.Ordinal);
@@ -551,6 +593,9 @@ namespace Urp.ArDemo.Editor
             Require(body.parent == pair && cap.parent == pair,
                 "Runtime changed the Blender-authored B/C parent relationship.");
             Require(
+                Vector3.Distance(body.position, cap.position) < 0.0001f,
+                "Imported B and C no longer share the Blender mouth origin.");
+            Require(
                 AnyEnabled(body.GetComponentsInChildren<Renderer>(true))
                 && AnyEnabled(cap.GetComponentsInChildren<Renderer>(true)),
                 "Entering tracking must show the Blender-aligned B+C pair.");
@@ -567,24 +612,21 @@ namespace Urp.ArDemo.Editor
 
             controller.ShowRepairPresentation();
             Require(
-                AnyEnabled(body.GetComponentsInChildren<Renderer>(true))
+                !AnyEnabled(body.GetComponentsInChildren<Renderer>(true))
                 && AnyEnabled(cap.GetComponentsInChildren<Renderer>(true)),
-                "Repair stage must keep depth-only B and visible C enabled.");
+                "Repair stage must disable B Renderers while keeping C visible.");
             Require(
                 AllUseMaterial(
-                    body.GetComponentsInChildren<Renderer>(true),
-                    profile.referenceDepthOcclusionMaterial)
-                && AllUseMaterial(
                     cap.GetComponentsInChildren<Renderer>(true),
                     profile.repairMaterial),
-                "Start must switch B to depth-only while retaining textured C.");
+                "Start must retain the clean C material.");
             Require(body.gameObject.activeSelf && cap.gameObject.activeSelf,
-                "Depth presentation disabled B or C GameObjects.");
+                "Hiding B Renderers disabled the B or C GameObject.");
             Matrix4x4 capLocalAfter = pair.worldToLocalMatrix * cap.localToWorldMatrix;
             Require(MatrixApproximately(capLocalBefore, capLocalAfter),
                 "C local relationship changed while hiding B.");
             Require(MatrixApproximately(bodyBefore, body.localToWorldMatrix),
-                "B transform changed while switching to depth-only occlusion.");
+                "B transform changed while hiding its Renderers.");
 
             UnityEngine.Object.DestroyImmediate(controllerObject);
             UnityEngine.Object.DestroyImmediate(rootObject);

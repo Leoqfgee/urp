@@ -76,6 +76,12 @@ namespace Urp.ArDemo
         [Range(0.01f, 1f)]
         [SerializeField] private float rotationSmoothing = 0.25f;
 
+        [Header("AR world-pose stabilization")]
+        [SerializeField] private float worldPositionDeadbandMeters = 0.003f;
+        [SerializeField] private float worldRotationDeadbandDegrees = 1.5f;
+        [SerializeField] private float maximumWorldPositionCorrectionMetersPerSecond = 0.018f;
+        [SerializeField] private float maximumWorldRotationCorrectionDegreesPerSecond = 6f;
+
         private readonly List<NativeOrbTracker> trackers = new List<NativeOrbTracker>();
         private Texture2D frameTexture;
         private Transform registeredBottlePairRoot;
@@ -101,6 +107,7 @@ namespace Urp.ArDemo
         private Quaternion lastAcceptedRotation = Quaternion.identity;
         private Vector3 smoothedRootPosition;
         private Quaternion smoothedRootRotation = Quaternion.identity;
+        private float lastRootPoseApplicationTime = float.NegativeInfinity;
         private bool sessionCoordinateFrameCalibrated;
         private bool hasReadyPoseCandidate;
         private Vector3 readyCandidatePosition;
@@ -331,7 +338,7 @@ namespace Urp.ArDemo
                 ShowRepairPresentation();
                 UpdateStatus(
                     "A 与 B 的三维姿态已经稳定。现在隐藏 B 的颜色，只显示瓶盖 C；"
-                    + "B 仍保留并只写深度，用于几何遮挡。");
+                    + "B 仍保留完整位置和旋转关系，但其 Renderer 已关闭。");
             }
             else if (hasReadyPoseCandidate
                      && Time.unscaledTime - readyCandidateTime <= 0.75f)
@@ -557,14 +564,15 @@ namespace Urp.ArDemo
                 return;
             }
             ApplyMaterial(
-                referenceRenderers,
-                activeProfile.referenceDepthOcclusionMaterial);
-            ApplyMaterial(
                 repairRenderers,
                 activeProfile.repairMaterial != null
                     ? activeProfile.repairMaterial
                     : activeProfile.viewerMaterial);
-            SetReferenceHierarchyVisible(true);
+            // B stays in the hierarchy as the tracked rigid reference, but its
+            // noisy photogrammetry surface must not depth-occlude C. The old
+            // depth-only pass cut the clean cap into a floating crescent near
+            // the reconstructed mouth. AR environment depth remains active.
+            SetReferenceHierarchyVisible(false);
             SetRepairHierarchyVisible(true);
         }
 
@@ -764,7 +772,7 @@ namespace Urp.ArDemo
                         $"A 与 B 已稳定跟踪：有效内点 {best.poseInliers}/"
                         + $"{best.uniqueMatches}，重投影误差 "
                         + $"{best.reprojectionError:F2}px。"
-                        + "B 只写深度；C 继承 B 的完整三维姿态。");
+                        + "B 的 Renderer 已关闭；C 继承 B 的完整三维姿态。");
                 }
                 else
                 {
@@ -923,19 +931,48 @@ namespace Urp.ArDemo
             }
             else
             {
-                smoothedRootPosition = Vector3.Lerp(
-                    smoothedRootPosition,
-                    position,
-                    positionSmoothing);
-                smoothedRootRotation = Quaternion.Slerp(
-                    smoothedRootRotation,
-                    rotation,
-                    rotationSmoothing);
+                // AR Foundation already supplies the camera's continuous
+                // world motion. Keep the registered object almost stationary
+                // in that world and let PnP correct only slow accumulated
+                // drift. Driving the root with every raw PnP sample amplified
+                // cylindrical-bottle yaw noise into a visibly shaking cap.
+                float elapsed = float.IsFinite(lastRootPoseApplicationTime)
+                    ? Mathf.Clamp(
+                        Time.unscaledTime - lastRootPoseApplicationTime,
+                        0.02f,
+                        0.25f)
+                    : Mathf.Max(0.02f, relocationIntervalSeconds);
+                float positionError =
+                    Vector3.Distance(smoothedRootPosition, position);
+                if (positionError > worldPositionDeadbandMeters)
+                {
+                    float positionStep = Mathf.Min(
+                        positionError - worldPositionDeadbandMeters,
+                        maximumWorldPositionCorrectionMetersPerSecond * elapsed);
+                    smoothedRootPosition = Vector3.MoveTowards(
+                        smoothedRootPosition,
+                        position,
+                        positionStep);
+                }
+
+                float rotationError =
+                    Quaternion.Angle(smoothedRootRotation, rotation);
+                if (rotationError > worldRotationDeadbandDegrees)
+                {
+                    float rotationStep = Mathf.Min(
+                        rotationError - worldRotationDeadbandDegrees,
+                        maximumWorldRotationCorrectionDegreesPerSecond * elapsed);
+                    smoothedRootRotation = Quaternion.RotateTowards(
+                        smoothedRootRotation,
+                        rotation,
+                        rotationStep);
+                }
             }
             trackedObjectPoseRoot.position = smoothedRootPosition;
             trackedObjectPoseRoot.rotation = smoothedRootRotation;
             trackedObjectPoseRoot.localScale =
                 Vector3.one * calibration.metersPerModelUnit;
+            lastRootPoseApplicationTime = Time.unscaledTime;
         }
 
         private void EstablishRegistration(
@@ -986,7 +1023,7 @@ namespace Urp.ArDemo
             // rotation exactly once for this reset cycle. Translation and
             // physical scale still come from PnP and the calibration profile.
             Quaternion alignedModelWorldRotation =
-                modelCoordinateAlignment.rotation;
+                GetUprightAlignmentWorldRotation();
             ApplyTrackedRootPose(
                 orbRootPosition,
                 orbRootRotation,
@@ -999,6 +1036,42 @@ namespace Urp.ArDemo
             modelCoordinateAlignment.localScale =
                 calibration.orbToModelLocalScale;
             sessionCoordinateFrameCalibrated = true;
+        }
+
+        private Quaternion GetUprightAlignmentWorldRotation()
+        {
+            if (registeredReferenceModel == null
+                || modelCoordinateAlignment == null)
+            {
+                return modelCoordinateAlignment != null
+                    ? modelCoordinateAlignment.rotation
+                    : Quaternion.identity;
+            }
+
+            Vector3 desiredUp = Vector3.up;
+            Vector3 desiredFront = Vector3.ProjectOnPlane(
+                registeredReferenceModel.TransformDirection(Vector3.right),
+                desiredUp);
+            if (desiredFront.sqrMagnitude < 0.000001f && arCamera != null)
+            {
+                desiredFront = Vector3.ProjectOnPlane(
+                    -arCamera.transform.forward,
+                    desiredUp);
+            }
+            if (desiredFront.sqrMagnitude < 0.000001f)
+            {
+                return modelCoordinateAlignment.rotation;
+            }
+
+            desiredFront.Normalize();
+            Vector3 desiredForward =
+                Vector3.Cross(desiredFront, desiredUp).normalized;
+            Quaternion desiredBodyRotation =
+                Quaternion.LookRotation(desiredForward, desiredUp);
+            Quaternion bodyCorrection =
+                desiredBodyRotation
+                * Quaternion.Inverse(registeredReferenceModel.rotation);
+            return bodyCorrection * modelCoordinateAlignment.rotation;
         }
 
         private void HandleTrackingLoss()
@@ -1049,6 +1122,7 @@ namespace Urp.ArDemo
             readyCandidatePosition = Vector3.zero;
             readyCandidateRotation = Quaternion.identity;
             readyCandidateTime = float.NegativeInfinity;
+            lastRootPoseApplicationTime = float.NegativeInfinity;
             RestoreProfileCoordinateAlignment();
         }
 

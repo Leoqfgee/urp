@@ -22,16 +22,24 @@ namespace Urp.ArDemo.Calibration
             if (arCamera == null || calibration == null || !calibration.HasValidFrame)
                 return false;
 
-            // Native rotates both the CPU image and its camera intrinsics before
-            // solvePnP. R/t therefore already describe the oriented camera frame.
-            // Applying frameRotationClockwise again here used to swap X/Y a
-            // second time and sent a valid cap pose to the left of the bottle.
-            Vector3 originCameraCv = TransformModelPoint(result, calibration.objectOriginInModel);
+            // Native rotates both the CPU image and its intrinsics before
+            // solvePnP. R/t therefore describe the oriented image camera frame,
+            // not ARCamera's physical camera frame. Undo that image rotation
+            // once before applying OpenCV-to-Unity handedness conversion.
+            Vector3 originCameraCv = UndoImageRotation(
+                TransformModelPoint(result, calibration.objectOriginInModel),
+                frameRotationClockwise);
             Vector3 originCameraUnity = CvCameraToUnityCamera(originCameraCv)
                 * calibration.metersPerModelUnit;
 
-            Vector3 upCamera = ConvertDirection(result, calibration.UpInModel);
-            Vector3 forwardCamera = ConvertDirection(result, calibration.ForwardInModel);
+            Vector3 upCamera = ConvertDirection(
+                result,
+                calibration.UpInModel,
+                frameRotationClockwise);
+            Vector3 forwardCamera = ConvertDirection(
+                result,
+                calibration.ForwardInModel,
+                frameRotationClockwise);
             forwardCamera = Vector3.ProjectOnPlane(forwardCamera, upCamera);
             if (!IsFinite(originCameraUnity)
                 || upCamera.sqrMagnitude < 0.5f
@@ -80,9 +88,14 @@ namespace Urp.ArDemo.Calibration
         }
 
         private static Vector3 ConvertDirection(
-            NativeOrbResult result, Vector3 direction)
+            NativeOrbResult result,
+            Vector3 direction,
+            int frameRotationClockwise)
         {
-            return CvCameraToUnityCamera(TransformModelDirection(result, direction));
+            return CvCameraToUnityCamera(
+                UndoImageRotation(
+                    TransformModelDirection(result, direction),
+                    frameRotationClockwise));
         }
 
         private static bool IsFinite(Vector3 value)

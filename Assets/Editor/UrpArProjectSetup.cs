@@ -334,8 +334,9 @@ namespace Urp.ArDemo.Editor
             bottle.trackingDescription =
                 "进入页面后 B+C 以正面初始位姿显示在画面中央，"
                 + "同时使用真实无盖瓶照片的 ORB 特征识别 A→B 六自由度位姿。"
-                + "点击开始后，只在姿态稳定时隐藏 B 的颜色，"
-                + "但保留 B 深度遮挡和 B/C 刚性关系。"
+                + "点击开始后，在姿态稳定时关闭 B 的 Renderer，"
+                + "但保留 B 的跟踪位姿和 B/C 刚性关系。"
+                + "手机运动由 AR 世界相机提供连续透视，PnP 只缓慢修正漂移。"
                 + "C 不单独识别，不挂在屏幕或摄像机下。"
                 + "C 的外观结合真实瓶身 HSV 样本和 AR 光照估计平滑校正。";
             bottle.missingPartName = "瓶盖 C";

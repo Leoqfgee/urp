@@ -27,20 +27,22 @@ hash and B/C transforms are stored in
 TrackedBottleRoot                 coarse world pose, then accepted A-to-B pose
 └── ModelCoordinateAlignment      fixed ORB-to-Blender calibration
     └── BottleRepairRoot          Blender-authored rigid asset
-        ├── DamagedBottleB        textured before Start; depth-only after lock
+        ├── DamagedBottleB        textured before Start; Renderer off after lock
         └── BottleCapC            clean material; never positioned independently
 ```
 
 Entering the page places B+C once in world space, upright and centred. Recognition
 starts immediately, before Start is pressed. The object is not parented to the
 camera or Canvas. Phone motion therefore changes its perspective naturally.
-The imported FBX keeps an axis-conversion rotation on `BottleRepairRoot`.
-Runtime pose-prior projection and PnP output both compose that same fixed
-conversion, so the visible B mesh, ORB canonical points and `TrackedBottleRoot`
-share one frame. A round-trip validation rejects any build where those rotations
-differ by more than 0.1 degrees. Before registration, B uses a dedicated
-semi-transparent textured material so the real A label and silhouette remain
-visible during coarse overlap.
+The imported FBX keeps an axis-conversion rotation on `BottleRepairRoot`. The
+ORB reconstruction and Blender B reconstruction have independent yaw-zero
+directions, so Start solves their fixed child rotation once from the user's
+coarse B overlay. Portrait CPU images are rotated before native pose solving;
+the returned pose is rotated back into the physical AR camera frame before it
+is converted to Unity world space. Round-trip validation covers this 0/90-degree
+camera-frame conversion. Before registration, B uses a dedicated semi-transparent
+textured material so the real A label and silhouette remain visible during
+coarse overlap.
 
 The production ORB database contains 4,100 filtered records from real open/no-cap
 bottle photographs. It excludes C and excludes rendered-mesh descriptors. Strict
@@ -54,25 +56,28 @@ A-to-B pose. The UI deliberately reports this as “三维姿态” instead of e
 the implementation name.
 
 Pressing Start requests repair presentation. B remains visible until the pose
-has passed consecutive-frame stability checks. Then only B's colour is removed:
-its Renderer stays enabled with a depth-only material, while C remains a fixed
-sibling and inherits the same root pose. During short or prolonged ORB
-relocalisation the last accepted root remains in AR world space; C is never
-snapped to a screen point.
+has passed consecutive-frame stability checks. Then B's Renderers are disabled
+without disabling or deleting its GameObject; C remains a fixed sibling and
+inherits the same root pose. The noisy photogrammetry B surface is deliberately
+not used as a depth occluder because it cut the clean cap into a floating
+crescent around the mouth. AR Foundation environment depth remains enabled.
+During tracking, AR camera motion provides the continuous perspective change.
+PnP corrects only slow world-pose drift through position/rotation deadbands and
+bounded correction speeds instead of driving C with every noisy raw sample.
 
 ## Thesis consistency steps
 
 - Geometric consistency: B and C share a Blender coordinate frame and only the
   common `TrackedBottleRoot` receives pose updates.
-- Occlusion consistency: depth-only B hides portions of C that should be behind
-  the real bottle; AR Foundation environment depth remains enabled when the
-  device supports it.
+- Occlusion consistency: B's inaccurate photogrammetry Renderer is disabled
+  after lock; AR Foundation environment depth remains enabled when the device
+  supports it.
 - Illumination consistency: verified B inliers sample low-saturation bright
   bottle pixels in HSV. The smoothed sample is combined with AR Foundation
   ambient, main-light and spherical-harmonic estimates and applied only to C.
 - Tracking robustness: real-photo multi-view ORB performs initialisation and
-  relocalisation; world-space holding avoids visible screen-space snapping while
-  a new accepted pose is sought.
+  relocalisation; AR world-space holding plus bounded PnP drift correction avoids
+  visible screen-space snapping and cylindrical-object pose jitter.
 
 ## Acceptance boundary
 
