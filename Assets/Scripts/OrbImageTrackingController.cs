@@ -101,6 +101,11 @@ namespace Urp.ArDemo
         private Quaternion lastAcceptedRotation = Quaternion.identity;
         private Vector3 smoothedRootPosition;
         private Quaternion smoothedRootRotation = Quaternion.identity;
+        private bool sessionCoordinateFrameCalibrated;
+        private bool hasReadyPoseCandidate;
+        private Vector3 readyCandidatePosition;
+        private Quaternion readyCandidateRotation = Quaternion.identity;
+        private float readyCandidateTime = float.NegativeInfinity;
         private TrackingState trackingState = TrackingState.Idle;
 
         public bool HasTrackedPose => registrationEstablished;
@@ -328,6 +333,16 @@ namespace Urp.ArDemo
                     "A 与 B 的三维姿态已经稳定。现在隐藏 B 的颜色，只显示瓶盖 C；"
                     + "B 仍保留并只写深度，用于几何遮挡。");
             }
+            else if (hasReadyPoseCandidate
+                     && Time.unscaledTime - readyCandidateTime <= 0.75f)
+            {
+                EstablishRegistration(
+                    readyCandidatePosition,
+                    readyCandidateRotation);
+                UpdateStatus(
+                    "已用当前粗对齐自动标定 B 与 ORB 重建坐标系，B 已隐藏且只显示瓶盖 C。"
+                    + "之后 C 只继承 B 的完整三维跟踪位姿。");
+            }
             else
             {
                 ShowPreAlignmentPair();
@@ -437,13 +452,6 @@ namespace Urp.ArDemo
                 canonicalUpInRoot);
         }
 
-        private Quaternion ConvertModelRotationToTrackedRootRotation(
-            Quaternion canonicalModelWorldRotation)
-        {
-            return canonicalModelWorldRotation
-                * Quaternion.Inverse(GetCanonicalModelRotationInTrackedRoot());
-        }
-
         private bool SetCurrentPosePrior(NativeOrbTracker tracker)
         {
             if (tracker == null)
@@ -471,12 +479,13 @@ namespace Urp.ArDemo
                 return false;
             }
 
-            Quaternion canonicalModelInRoot =
-                GetCanonicalModelRotationInTrackedRoot();
-            Vector3 canonicalOriginInRoot =
-                canonicalModelInRoot * calibration.objectOriginInModel;
-            Vector3 originWorld =
-                trackedObjectPoseRoot.TransformPoint(canonicalOriginInRoot);
+            Quaternion priorFrameInRoot = sessionCoordinateFrameCalibrated
+                ? Quaternion.identity
+                : GetCanonicalModelRotationInTrackedRoot();
+            Vector3 originWorld = sessionCoordinateFrameCalibrated
+                ? trackedObjectPoseRoot.position
+                : trackedObjectPoseRoot.TransformPoint(
+                    priorFrameInRoot * calibration.objectOriginInModel);
             Vector3 originCameraUnity =
                 arCamera.transform.InverseTransformPoint(originWorld);
             Vector3 originCameraCv = new Vector3(
@@ -492,11 +501,11 @@ namespace Urp.ArDemo
             // OpenCV up/forward. Reversing that handedness conversion requires
             // the model-right column to be negated here.
             Vector3 right = -ModelDirectionToCameraCv(
-                canonicalModelInRoot * Vector3.right);
+                priorFrameInRoot * Vector3.right);
             Vector3 up = ModelDirectionToCameraCv(
-                canonicalModelInRoot * Vector3.up);
+                priorFrameInRoot * Vector3.up);
             Vector3 forward = ModelDirectionToCameraCv(
-                canonicalModelInRoot * Vector3.forward);
+                priorFrameInRoot * Vector3.forward);
             if (right.sqrMagnitude < 0.000001f
                 || up.sqrMagnitude < 0.000001f
                 || forward.sqrMagnitude < 0.000001f)
@@ -665,8 +674,6 @@ namespace Urp.ArDemo
                     UpdateStatus("已找到自然特征，但三维姿态坐标转换无效。");
                     return;
                 }
-                targetRotation =
-                    ConvertModelRotationToTrackedRootRotation(targetRotation);
                 if (appearanceConsistency != null
                     && best.sampledConfidence > 0f)
                 {
@@ -684,7 +691,9 @@ namespace Urp.ArDemo
                     float initialRotationCorrection =
                         Quaternion.Angle(trackedObjectPoseRoot.rotation, targetRotation);
                     if (initialPositionCorrection > maximumInitialCorrectionMeters
-                        || initialRotationCorrection > maximumInitialCorrectionDegrees)
+                        || (sessionCoordinateFrameCalibrated
+                            && initialRotationCorrection
+                                > maximumInitialCorrectionDegrees))
                     {
                         trackingState = TrackingState.Candidate;
                         UpdateStatus(
@@ -695,7 +704,6 @@ namespace Urp.ArDemo
                         return;
                     }
 
-                    ApplyTrackedRootPose(targetPosition, targetRotation, false);
                     ShowPresentationForCurrentState();
                     trackingState = TrackingState.PoseValidating;
                     if (!TryAccumulateStableRegistration(
@@ -709,13 +717,21 @@ namespace Urp.ArDemo
                         return;
                     }
 
-                    ApplyTrackedRootPose(stablePosition, stableRotation, false);
-                    registrationEstablished = true;
-                    hasEverRegisteredSinceReset = true;
-                    trackingState = repairRequested
-                        ? TrackingState.Repair
-                        : TrackingState.PreAlignment;
-                    ShowPresentationForCurrentState();
+                    hasReadyPoseCandidate = true;
+                    readyCandidatePosition = stablePosition;
+                    readyCandidateRotation = stableRotation;
+                    readyCandidateTime = Time.unscaledTime;
+                    if (!repairRequested)
+                    {
+                        trackingState = TrackingState.Candidate;
+                        UpdateStatus(
+                            $"已在点击开始前识别到稳定瓶身姿态：内点 {best.poseInliers}/"
+                            + $"{best.uniqueMatches}，误差 {best.reprojectionError:F2}px。"
+                            + "请让半透明 B 粗略覆盖真实 A，然后点击“开始”。");
+                        return;
+                    }
+
+                    EstablishRegistration(stablePosition, stableRotation);
                 }
                 else
                 {
@@ -922,6 +938,69 @@ namespace Urp.ArDemo
                 Vector3.one * calibration.metersPerModelUnit;
         }
 
+        private void EstablishRegistration(
+            Vector3 orbRootPosition,
+            Quaternion orbRootRotation)
+        {
+            if (!sessionCoordinateFrameCalibrated)
+            {
+                CalibrateSessionCoordinateFrame(
+                    orbRootPosition,
+                    orbRootRotation);
+            }
+            else
+            {
+                ApplyTrackedRootPose(
+                    orbRootPosition,
+                    orbRootRotation,
+                    false);
+            }
+
+            registrationEstablished = true;
+            hasEverRegisteredSinceReset = true;
+            lastAcceptedPosition = orbRootPosition;
+            lastAcceptedRotation = orbRootRotation;
+            lastValidPoseTime = Time.unscaledTime;
+            trackingState = repairRequested
+                ? TrackingState.Repair
+                : TrackingState.PreAlignment;
+            ShowPresentationForCurrentState();
+        }
+
+        private void CalibrateSessionCoordinateFrame(
+            Vector3 orbRootPosition,
+            Quaternion orbRootRotation)
+        {
+            if (trackedObjectPoseRoot == null
+                || modelCoordinateAlignment == null
+                || calibration == null)
+            {
+                return;
+            }
+
+            // The ORB database and the Blender B mesh were reconstructed in
+            // separate SfM projects, so their yaw-zero directions are
+            // arbitrary. The user-supplied coarse overlay defines that missing
+            // fixed rotation. Keep the current rendered B orientation, move
+            // the root to the measured ORB pose, and solve the B-to-ORB child
+            // rotation exactly once for this reset cycle. Translation and
+            // physical scale still come from PnP and the calibration profile.
+            Quaternion alignedModelWorldRotation =
+                modelCoordinateAlignment.rotation;
+            ApplyTrackedRootPose(
+                orbRootPosition,
+                orbRootRotation,
+                false);
+            modelCoordinateAlignment.localPosition =
+                calibration.orbToModelLocalPosition;
+            modelCoordinateAlignment.localRotation =
+                Quaternion.Inverse(trackedObjectPoseRoot.rotation)
+                * alignedModelWorldRotation;
+            modelCoordinateAlignment.localScale =
+                calibration.orbToModelLocalScale;
+            sessionCoordinateFrameCalibrated = true;
+        }
+
         private void HandleTrackingLoss()
         {
             TrackingState previousState = trackingState;
@@ -965,6 +1044,30 @@ namespace Urp.ArDemo
             lastCandidateRotation = Quaternion.identity;
             lastAcceptedPosition = Vector3.zero;
             lastAcceptedRotation = Quaternion.identity;
+            sessionCoordinateFrameCalibrated = false;
+            hasReadyPoseCandidate = false;
+            readyCandidatePosition = Vector3.zero;
+            readyCandidateRotation = Quaternion.identity;
+            readyCandidateTime = float.NegativeInfinity;
+            RestoreProfileCoordinateAlignment();
+        }
+
+        private void RestoreProfileCoordinateAlignment()
+        {
+            if (modelCoordinateAlignment == null)
+            {
+                return;
+            }
+            modelCoordinateAlignment.localPosition = calibration != null
+                ? calibration.orbToModelLocalPosition
+                : Vector3.zero;
+            modelCoordinateAlignment.localRotation = Quaternion.Euler(
+                calibration != null
+                    ? calibration.orbToModelLocalEulerAngles
+                    : Vector3.zero);
+            modelCoordinateAlignment.localScale = calibration != null
+                ? calibration.orbToModelLocalScale
+                : Vector3.one;
         }
 
         private void BuildTrackers()

@@ -19,8 +19,8 @@ namespace Urp.ArDemo.Calibration
         [Min(0f)] public float expectedPhysicalCapDiameter = 0.0408f;
         [Min(0f)] public float expectedPhysicalCapHeight = 0.02f;
 
-        [Header("Fixed ORB to Blender B transform (T_orb_to_b)")]
-        [Tooltip("Applied once on ModelCoordinateAlignment; never applied to BottleCapC directly.")]
+        [Header("Baseline Blender B to ORB transform")]
+        [Tooltip("Baseline child transform on ModelCoordinateAlignment. Runtime may refine its rotation once from the user's coarse B overlay; BottleCapC is never positioned independently.")]
         public Vector3 orbToModelLocalPosition = Vector3.zero;
         public Vector3 orbToModelLocalEulerAngles = Vector3.zero;
         public Vector3 orbToModelLocalScale = Vector3.one;

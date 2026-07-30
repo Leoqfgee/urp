@@ -334,8 +334,10 @@ namespace Urp.ArDemo.Editor
                 && controller.Contains("SetCurrentPosePrior")
                 && controller.Contains("ShowRepairPresentation")
                 && controller.Contains("ShowPresentationForCurrentState")
-                && controller.Contains("ConvertModelRotationToTrackedRootRotation")
                 && controller.Contains("GetCanonicalModelRotationInTrackedRoot")
+                && controller.Contains("CalibrateSessionCoordinateFrame")
+                && controller.Contains("sessionCoordinateFrameCalibrated")
+                && controller.Contains("hasReadyPoseCandidate")
                 && controller.Contains("repairRequested")
                 && controller.Contains("recognitionRunning = true")
                 && controller.Contains("referenceDepthOcclusionMaterial")
@@ -464,23 +466,73 @@ namespace Urp.ArDemo.Editor
                     0,
                     camera,
                     profile.calibration,
-                    out _,
-                    out Quaternion priorModelRotation),
+                    out Vector3 priorOrbPosition,
+                    out Quaternion priorOrbRotation),
                 "Could not convert the visible B prior back to a model pose.");
-            MethodInfo convertRootRotation =
+            Quaternion alignmentWorldRotationBefore =
+                alignmentObject.transform.rotation;
+            MethodInfo calibrateSessionFrame =
                 typeof(OrbImageTrackingController).GetMethod(
-                    "ConvertModelRotationToTrackedRootRotation",
+                    "CalibrateSessionCoordinateFrame",
                     BindingFlags.Instance | BindingFlags.NonPublic);
-            Require(convertRootRotation != null,
-                "PnP model-to-imported-root rotation correction is missing.");
-            Quaternion priorRootRotation = (Quaternion)convertRootRotation.Invoke(
+            Require(calibrateSessionFrame != null,
+                "The coarse-alignment B-to-ORB calibration path is missing.");
+            calibrateSessionFrame.Invoke(
                 controller,
-                new object[] { priorModelRotation });
+                new object[] { priorOrbPosition, priorOrbRotation });
             Require(
-                Quaternion.Angle(
+                GetPrivateField<bool>(
+                    controller,
+                    "sessionCoordinateFrameCalibrated")
+                && Vector3.Distance(
+                    rootObject.transform.position,
+                    priorOrbPosition) < 0.0001f
+                && Quaternion.Angle(
                     rootObject.transform.rotation,
-                    priorRootRotation) < 0.1f,
-                "Visible B, guided ORB prior and PnP root pose do not share one coordinate frame.");
+                    priorOrbRotation) < 0.1f
+                && Quaternion.Angle(
+                    alignmentObject.transform.rotation,
+                    alignmentWorldRotationBefore) < 0.1f
+                && Vector3.Distance(
+                    alignmentObject.transform.localPosition,
+                    profile.calibration.orbToModelLocalPosition) < 0.0001f,
+                "Session calibration must move the ORB root without rotating the visible B overlay.");
+            object[] calibratedPriorArguments = { null };
+            Require(
+                (bool)buildPrior.Invoke(controller, calibratedPriorArguments),
+                "The calibrated ORB root did not produce a valid pose prior.");
+            float[] calibratedPrior = calibratedPriorArguments[0] as float[];
+            NativeOrbResult calibratedPriorPose = new NativeOrbResult
+            {
+                poseValid = 1,
+                tvecX = calibratedPrior[3],
+                tvecY = calibratedPrior[7],
+                tvecZ = calibratedPrior[11],
+                r00 = calibratedPrior[0],
+                r01 = calibratedPrior[1],
+                r02 = calibratedPrior[2],
+                r10 = calibratedPrior[4],
+                r11 = calibratedPrior[5],
+                r12 = calibratedPrior[6],
+                r20 = calibratedPrior[8],
+                r21 = calibratedPrior[9],
+                r22 = calibratedPrior[10]
+            };
+            Require(
+                OpenCvUnityPoseConverter.TryGetObjectPose(
+                    calibratedPriorPose,
+                    0,
+                    camera,
+                    profile.calibration,
+                    out Vector3 roundTripPosition,
+                    out Quaternion roundTripRotation)
+                && Vector3.Distance(
+                    rootObject.transform.position,
+                    roundTripPosition) < 0.0001f
+                && Quaternion.Angle(
+                    rootObject.transform.rotation,
+                    roundTripRotation) < 0.1f,
+                "The calibrated ORB pose prior must round-trip directly to TrackedBottleRoot.");
 
             Transform body =
                 GetPrivateField<Transform>(controller, "registeredReferenceModel");
