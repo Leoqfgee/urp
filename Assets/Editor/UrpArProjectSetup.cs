@@ -25,12 +25,12 @@ namespace Urp.ArDemo.Editor
         private const string ScenePath = "Assets/Scenes/UrpARPrototype.unity";
         private const string FontPath = "Assets/Fonts/NotoSansSC-Regular.otf";
         private const string BottleRegisteredPairPath =
-            "Assets/Models/CleanBottleReconstruction/BottleFullAlignedV2/"
-            + "bottle_full_aligned_v2.fbx";
+            "Assets/Models/CleanBottleReconstruction/BottleCleanCapV25/"
+            + "bottle_no_cap_clean_cap_v25.fbx";
         private const string BottleThumbnailPath =
             "Assets/Textures/Targets/bottle_full_aligned_v2.png";
         private const string BottleAlbedoPath =
-            "Assets/Models/CleanBottleReconstruction/BottleFullAlignedV2/"
+            "Assets/Models/CleanBottleReconstruction/BottleCleanCapV25/"
             + "Textures/bottle_full_clean_v2_albedo.png";
         private const string BottleSurfaceMaterialPath =
             "Assets/Materials/BottlePhotogrammetryLit.mat";
@@ -38,7 +38,7 @@ namespace Urp.ArDemo.Editor
             "Assets/Materials/CleanBottleCapLit.mat";
         private const string BottleDepthMaterialPath =
             "Assets/Materials/BottleDepthOccluder.mat";
-        private const string AndroidApkPath = "Builds/BottleRepairAR_v24.apk";
+        private const string AndroidApkPath = "Builds/BottleRepairAR_v25.apk";
         private const string BottleReferenceOrbPath =
             "Assets/OrbModels/bottle_reference_b.bytes";
         private const string BottleCalibrationPath =
@@ -142,14 +142,14 @@ namespace Urp.ArDemo.Editor
 
         private static void ConfigureAndroidProject()
         {
-            PlayerSettings.productName = "瓶盖AR修复 v24";
+            PlayerSettings.productName = "瓶盖AR修复 v25";
             PlayerSettings.companyName = "qfgeeee";
-            PlayerSettings.bundleVersion = "4.2.4";
+            PlayerSettings.bundleVersion = "4.2.5";
             PlayerSettings.SetApplicationIdentifier(
                 BuildTargetGroup.Android, "com.qfgeeee.paper52objecttrackingar");
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
-            PlayerSettings.Android.bundleVersionCode = 424;
+            PlayerSettings.Android.bundleVersionCode = 425;
             PlayerSettings.SetScriptingBackend(
                 BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
@@ -314,11 +314,11 @@ namespace Urp.ArDemo.Editor
             GameObject bottlePair =
                 AssetDatabase.LoadAssetAtPath<GameObject>(BottleRegisteredPairPath);
             if (bottlePair == null)
-                throw new MissingReferenceException("BottleFullAlignedV2 FBX import failed.");
+                throw new MissingReferenceException("BottleCleanCapV25 FBX import failed.");
 
             RestorationObjectProfile bottle = LoadOrCreate<RestorationObjectProfile>(
                 BottleProfilePath);
-            bottle.objectId = "bottle_full_aligned_v2";
+            bottle.objectId = "bottle_no_cap_clean_cap_v25";
             bottle.displayName = "新重建无盖饮料瓶与瓶盖";
             bottle.shortDescription =
                 "Blender 中刚性对齐的无盖瓶身 B 与干净白色瓶盖 C。";
@@ -348,8 +348,11 @@ namespace Urp.ArDemo.Editor
                 LoadOrCreate<RepairCalibrationProfile>(BottleCalibrationPath);
             bottleCalibration.objectOriginInModel = Vector3.zero;
             bottleCalibration.mouthCenterInModel = Vector3.zero;
-            bottleCalibration.mouthRightInModel = new Vector3(0.1f, 0f, 0f);
-            bottleCalibration.mouthFrontInModel = new Vector3(0f, 0f, 0.1f);
+            // The Blender v25 canonical frame is +Y up and the printed label
+            // faces +X.  Therefore object-right is -Z.  This same frame is
+            // used by the ORB database, PnP conversion and B+C rendering.
+            bottleCalibration.mouthRightInModel = new Vector3(0f, 0f, -0.1f);
+            bottleCalibration.mouthFrontInModel = new Vector3(0.1f, 0f, 0f);
             bottleCalibration.neckAxisPointInModel = new Vector3(0f, -0.2f, 0f);
             bottleCalibration.metersPerModelUnit = 0.17f;
             bottleCalibration.physicalScaleVerified = true;
@@ -370,14 +373,14 @@ namespace Urp.ArDemo.Editor
             bottle.referenceDepthOcclusionMaterial = bottleDepthMaterial;
             bottle.defaultViewerEuler = Vector3.zero;
             bottle.viewerMargin = 0.18f;
-            bottle.trackingSettings.minimumGoodMatches = 8;
-            bottle.trackingSettings.minimumPoseInliers = 6;
-            bottle.trackingSettings.minimumInlierRatio = 0.35f;
+            bottle.trackingSettings.minimumGoodMatches = 10;
+            bottle.trackingSettings.minimumPoseInliers = 8;
+            bottle.trackingSettings.minimumInlierRatio = 0.40f;
             bottle.trackingSettings.maximumReprojectionErrorPixels = 3.0f;
             bottle.trackingSettings.maximumReprojectionMaxPixels = 8.0f;
             bottle.trackingSettings.minimumCoverageX = 0.05f;
-            bottle.trackingSettings.minimumCoverageY = 0.10f;
-            bottle.trackingSettings.registrationConfirmationFrames = 5;
+            bottle.trackingSettings.minimumCoverageY = 0.14f;
+            bottle.trackingSettings.registrationConfirmationFrames = 7;
             bottle.trackingSettings.registrationPositionToleranceMeters = 0.025f;
             bottle.trackingSettings.registrationRotationToleranceDegrees = 8f;
             bottle.trackingSettings.temporaryLossHoldSeconds = 2.5f;

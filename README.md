@@ -1,4 +1,4 @@
-# BottleFullAlignedV2 AR restoration
+# BottleCleanCapV25 AR restoration
 
 Unity 2022.3.62f2 Android project for rigid A→B→C restoration:
 
@@ -6,6 +6,10 @@ Unity 2022.3.62f2 Android project for rigid A→B→C restoration:
 - **B** — `DamagedBottleB`, the no-cap mesh in the new photogrammetry asset.
 - **C** — `BottleCapC`, the completion mesh fixed beside B under
   `BottleRepairRoot`.
+- `ReferenceNeckProxyB` is an opaque B-only coarse-alignment guide. It is
+  hidden with B after Start; a depth-only clone supplies the local
+  B-before-C occlusion relationship without using the noisy scan as a full
+  occluder.
 
 The runtime tracker matches natural features from A only against B, solves B's
 full six-degree-of-freedom PnP pose, and applies that pose to
@@ -23,7 +27,7 @@ world-space B+C pose and stops following the camera immediately.
 ## Formal assets
 
 - B+C FBX:
-  `Assets/Models/CleanBottleReconstruction/BottleFullAlignedV2/bottle_full_aligned_v2.fbx`
+  `Assets/Models/CleanBottleReconstruction/BottleCleanCapV25/bottle_no_cap_clean_cap_v25.fbx`
 - B-only ORB database: `Assets/OrbModels/bottle_reference_b.bytes`
 - Calibration: `Assets/Calibration/CoconutBottleRepairCalibration.asset`
 - Scene: `Assets/Scenes/UrpARPrototype.unity`
@@ -36,7 +40,7 @@ world-space B+C pose and stops following the camera immediately.
   `Urp.ArDemo.Editor.UrpArValidation.RunPlayModeSmokeFromCommandLine`
 - Android build:
   `Urp.ArDemo.Editor.UrpArProjectSetup.BuildAndroidFromCommandLine`
-- APK: `Builds/BottleFullAlignedV2AR.apk`
+- APK: `Builds/BottleRepairAR_v25.apk`
 
 Static validation and an APK do not prove physical A/B registration. Real-device
 acceptance still requires an actual translucent-B-over-A recording followed by

@@ -60,7 +60,7 @@ namespace Urp.ArDemo
 
         [Header("World-space B+C pre-alignment")]
         [SerializeField] private float preAlignmentDistanceMeters = 0.35f;
-        [SerializeField] private float preAlignmentMouthHeightMeters = 0.105f;
+        [SerializeField] private float preAlignmentMouthHeightMeters = 0f;
         [Range(0.08f, 0.35f)]
         [SerializeField] private float guidedMatchRadiusFraction = 0.18f;
         [SerializeField] private float maximumInitialCorrectionMeters = 0.30f;
@@ -89,6 +89,7 @@ namespace Urp.ArDemo
         private Transform registeredRepairPart;
         private Renderer[] referenceRenderers = Array.Empty<Renderer>();
         private Renderer[] repairRenderers = Array.Empty<Renderer>();
+        private Renderer[] geometricOcclusionRenderers = Array.Empty<Renderer>();
         private RepairCalibrationProfile calibration;
         private bool modeEnabled;
         private bool recognitionRunning;
@@ -123,7 +124,9 @@ namespace Urp.ArDemo
             && trackingState == TrackingState.Repair;
         public TrackingState State => trackingState;
         public bool IsRepairActuallyRenderable =>
-            ValidateRigidHierarchy(out _) && AnyEnabled(repairRenderers);
+            ValidateRigidHierarchy(out _)
+            && AnyEnabled(repairRenderers)
+            && IsRepairProjectedIntoCamera();
 
         private void Awake()
         {
@@ -209,7 +212,7 @@ namespace Urp.ArDemo
             GameObject instance = Instantiate(
                 profile.registeredBottlePairPrefab,
                 modelCoordinateAlignment);
-            instance.name = "BottleFullAlignedV2";
+            instance.name = "BottleCleanCapV25";
             instance.transform.localPosition = Vector3.zero;
             instance.transform.localRotation = Quaternion.identity;
             instance.transform.localScale = Vector3.one;
@@ -250,6 +253,11 @@ namespace Urp.ArDemo
             }
             ApplyMaterial(referenceRenderers, profile.viewerMaterial);
             ApplyMaterial(
+                FindNamedRenderers(referenceRenderers, "ReferenceNeckProxyB"),
+                profile.repairMaterial != null
+                    ? profile.repairMaterial
+                    : profile.viewerMaterial);
+            ApplyMaterial(
                 repairRenderers,
                 profile.repairMaterial != null
                     ? profile.repairMaterial
@@ -266,6 +274,7 @@ namespace Urp.ArDemo
             {
                 appearanceConsistency.BindRepairRenderers(repairRenderers);
             }
+            BuildGeometricOcclusionProxy(profile);
             if (occlusionRoot != null)
             {
                 occlusionRoot.gameObject.SetActive(false);
@@ -292,6 +301,7 @@ namespace Urp.ArDemo
                 trackingState = TrackingState.Idle;
                 SetReferenceHierarchyVisible(false);
                 SetRepairHierarchyVisible(false);
+                SetGeometricOcclusionVisible(false);
                 UpdateStatus(string.Empty);
                 return;
             }
@@ -300,6 +310,7 @@ namespace Urp.ArDemo
                 trackingState = TrackingState.Idle;
                 SetReferenceHierarchyVisible(false);
                 SetRepairHierarchyVisible(false);
+                SetGeometricOcclusionVisible(false);
                 UpdateStatus("尚未选择跟踪对象。");
                 return;
             }
@@ -308,6 +319,7 @@ namespace Urp.ArDemo
                 trackingState = TrackingState.Idle;
                 SetReferenceHierarchyVisible(false);
                 SetRepairHierarchyVisible(false);
+                SetGeometricOcclusionVisible(false);
                 UpdateStatus($"{activeProfile.displayName} 的新模型 B 或三维特征库不可用。");
                 return;
             }
@@ -422,7 +434,7 @@ namespace Urp.ArDemo
             Quaternion canonicalModelInRoot =
                 GetCanonicalModelRotationInTrackedRoot();
             Vector3 modelFrontInRoot =
-                canonicalModelInRoot * Vector3.right;
+                canonicalModelInRoot * Vector3.forward;
             Vector3 modelUpInRoot =
                 canonicalModelInRoot * Vector3.up;
             modelFrontInRoot.Normalize();
@@ -447,15 +459,15 @@ namespace Urp.ArDemo
             Vector3 canonicalUpInRoot =
                 trackedObjectPoseRoot.InverseTransformDirection(
                     registeredReferenceModel.TransformDirection(Vector3.up));
-            Vector3 canonicalForwardInRoot =
+            Vector3 canonicalFrontInRoot =
                 trackedObjectPoseRoot.InverseTransformDirection(
-                    registeredReferenceModel.TransformDirection(Vector3.forward));
+                    registeredReferenceModel.TransformDirection(Vector3.right));
             canonicalUpInRoot.Normalize();
-            canonicalForwardInRoot = Vector3.ProjectOnPlane(
-                canonicalForwardInRoot,
+            canonicalFrontInRoot = Vector3.ProjectOnPlane(
+                canonicalFrontInRoot,
                 canonicalUpInRoot).normalized;
             return Quaternion.LookRotation(
-                canonicalForwardInRoot,
+                canonicalFrontInRoot,
                 canonicalUpInRoot);
         }
 
@@ -472,7 +484,9 @@ namespace Urp.ArDemo
             }
             return tracker.SetPosePrior(
                 rotationTranslation,
-                guidedMatchRadiusFraction);
+                registrationEstablished
+                    ? Mathf.Min(0.09f, guidedMatchRadiusFraction)
+                    : guidedMatchRadiusFraction);
         }
 
         private bool TryBuildCurrentPosePrior(out float[] rotationTranslation)
@@ -486,9 +500,10 @@ namespace Urp.ArDemo
                 return false;
             }
 
-            Quaternion priorFrameInRoot = sessionCoordinateFrameCalibrated
-                ? Quaternion.identity
-                : GetCanonicalModelRotationInTrackedRoot();
+            // TrackedBottleRoot is the canonical ORB object frame. Imported
+            // FBX axis conversion belongs below ModelCoordinateAlignment and
+            // must never be applied a second time to the native pose prior.
+            Quaternion priorFrameInRoot = Quaternion.identity;
             Vector3 originWorld = sessionCoordinateFrameCalibrated
                 ? trackedObjectPoseRoot.position
                 : trackedObjectPoseRoot.TransformPoint(
@@ -504,33 +519,49 @@ namespace Urp.ArDemo
                 return false;
             }
 
-            // OpenCvUnityPoseConverter reconstructs Unity orientation from
-            // OpenCV up/forward. Reversing that handedness conversion requires
-            // the model-right column to be negated here.
-            Vector3 right = -ModelDirectionToCameraCv(
-                priorFrameInRoot * Vector3.right);
-            Vector3 up = ModelDirectionToCameraCv(
-                priorFrameInRoot * Vector3.up);
-            Vector3 forward = ModelDirectionToCameraCv(
-                priorFrameInRoot * Vector3.forward);
-            if (right.sqrMagnitude < 0.000001f
-                || up.sqrMagnitude < 0.000001f
-                || forward.sqrMagnitude < 0.000001f)
+            // OpenCV camera coordinates and Unity camera coordinates have
+            // opposite handedness. Reflect the model's semantic right axis
+            // once when building the proper OpenCV rotation. This is
+            // calibration-driven: v25 printed-front is +X and object-right
+            // is -Z, so hard-coding the raw X column was incorrect.
+            Vector3 semanticRight = calibration.RightInModel.normalized;
+            Vector3 columnX = ModelDirectionToCameraCv(
+                priorFrameInRoot * ReflectAcrossAxis(
+                    Vector3.right,
+                    semanticRight));
+            Vector3 columnY = ModelDirectionToCameraCv(
+                priorFrameInRoot * ReflectAcrossAxis(
+                    Vector3.up,
+                    semanticRight));
+            Vector3 columnZ = ModelDirectionToCameraCv(
+                priorFrameInRoot * ReflectAcrossAxis(
+                    Vector3.forward,
+                    semanticRight));
+            if (columnX.sqrMagnitude < 0.000001f
+                || columnY.sqrMagnitude < 0.000001f
+                || columnZ.sqrMagnitude < 0.000001f)
             {
                 return false;
             }
-            right.Normalize();
-            up = Vector3.ProjectOnPlane(up, right).normalized;
-            forward = Vector3.Cross(right, up).normalized;
-            up = Vector3.Cross(forward, right).normalized;
+            columnX.Normalize();
+            columnY = Vector3.ProjectOnPlane(columnY, columnX).normalized;
+            columnZ = Vector3.Cross(columnX, columnY).normalized;
+            columnY = Vector3.Cross(columnZ, columnX).normalized;
 
             rotationTranslation = new[]
             {
-                right.x, up.x, forward.x, originCameraCv.x,
-                right.y, up.y, forward.y, originCameraCv.y,
-                right.z, up.z, forward.z, originCameraCv.z
+                columnX.x, columnY.x, columnZ.x, originCameraCv.x,
+                columnX.y, columnY.y, columnZ.y, originCameraCv.y,
+                columnX.z, columnY.z, columnZ.z, originCameraCv.z
             };
             return true;
+        }
+
+        private static Vector3 ReflectAcrossAxis(
+            Vector3 value,
+            Vector3 axis)
+        {
+            return value - 2f * Vector3.Dot(value, axis) * axis;
         }
 
         private Vector3 ModelDirectionToCameraCv(Vector3 modelDirection)
@@ -555,6 +586,11 @@ namespace Urp.ArDemo
             SetRenderersEnabled(referenceRenderers, visible);
         }
 
+        private void SetGeometricOcclusionVisible(bool visible)
+        {
+            SetRenderersEnabled(geometricOcclusionRenderers, visible);
+        }
+
         public void ShowRepairPresentation()
         {
             if (activeProfile == null)
@@ -574,6 +610,7 @@ namespace Urp.ArDemo
             // glossy close-range bottle, because it can swallow C completely.
             SetReferenceHierarchyVisible(false);
             SetRepairHierarchyVisible(true);
+            SetGeometricOcclusionVisible(true);
         }
 
         private void ShowPreAlignmentPair()
@@ -586,12 +623,18 @@ namespace Urp.ArDemo
                 referenceRenderers,
                 activeProfile.viewerMaterial);
             ApplyMaterial(
+                FindNamedRenderers(referenceRenderers, "ReferenceNeckProxyB"),
+                activeProfile.repairMaterial != null
+                    ? activeProfile.repairMaterial
+                    : activeProfile.viewerMaterial);
+            ApplyMaterial(
                 repairRenderers,
                 activeProfile.repairMaterial != null
                     ? activeProfile.repairMaterial
                     : activeProfile.viewerMaterial);
             SetReferenceHierarchyVisible(true);
             SetRepairHierarchyVisible(true);
+            SetGeometricOcclusionVisible(false);
         }
 
         private void ShowPresentationForCurrentState()
@@ -977,19 +1020,24 @@ namespace Urp.ArDemo
             Vector3 orbRootPosition,
             Quaternion orbRootRotation)
         {
-            if (!sessionCoordinateFrameCalibrated)
-            {
-                CalibrateSessionCoordinateFrame(
-                    orbRootPosition,
-                    orbRootRotation);
-            }
-            else
-            {
-                ApplyTrackedRootPose(
-                    orbRootPosition,
-                    orbRootRotation,
-                    false);
-            }
+            // The production ORB database is authored in the exact same
+            // mouth-centred canonical frame as Blender B+C.  Apply that full
+            // six-degree-of-freedom pose directly.  The former session
+            // compensation preserved the coarse upright overlay instead of
+            // the measured pitch/roll, which made C stay front-facing in
+            // oblique and top-down views and could move it outside the camera
+            // frustum after Start.
+            modelCoordinateAlignment.localPosition =
+                calibration.orbToModelLocalPosition;
+            modelCoordinateAlignment.localRotation = Quaternion.Euler(
+                calibration.orbToModelLocalEulerAngles);
+            modelCoordinateAlignment.localScale =
+                calibration.orbToModelLocalScale;
+            ApplyTrackedRootPose(
+                orbRootPosition,
+                orbRootRotation,
+                false);
+            sessionCoordinateFrameCalibrated = true;
 
             registrationEstablished = true;
             hasEverRegisteredSinceReset = true;
@@ -1000,76 +1048,6 @@ namespace Urp.ArDemo
                 ? TrackingState.Repair
                 : TrackingState.PreAlignment;
             ShowPresentationForCurrentState();
-        }
-
-        private void CalibrateSessionCoordinateFrame(
-            Vector3 orbRootPosition,
-            Quaternion orbRootRotation)
-        {
-            if (trackedObjectPoseRoot == null
-                || modelCoordinateAlignment == null
-                || calibration == null)
-            {
-                return;
-            }
-
-            // The ORB database and the Blender B mesh were reconstructed in
-            // separate SfM projects, so their yaw-zero directions are
-            // arbitrary. The user-supplied coarse overlay defines that missing
-            // fixed rotation. Keep the current rendered B orientation, move
-            // the root to the measured ORB pose, and solve the B-to-ORB child
-            // rotation exactly once for this reset cycle. Translation and
-            // physical scale still come from PnP and the calibration profile.
-            Quaternion alignedModelWorldRotation =
-                GetUprightAlignmentWorldRotation();
-            ApplyTrackedRootPose(
-                orbRootPosition,
-                orbRootRotation,
-                false);
-            modelCoordinateAlignment.localPosition =
-                calibration.orbToModelLocalPosition;
-            modelCoordinateAlignment.localRotation =
-                Quaternion.Inverse(trackedObjectPoseRoot.rotation)
-                * alignedModelWorldRotation;
-            modelCoordinateAlignment.localScale =
-                calibration.orbToModelLocalScale;
-            sessionCoordinateFrameCalibrated = true;
-        }
-
-        private Quaternion GetUprightAlignmentWorldRotation()
-        {
-            if (registeredReferenceModel == null
-                || modelCoordinateAlignment == null)
-            {
-                return modelCoordinateAlignment != null
-                    ? modelCoordinateAlignment.rotation
-                    : Quaternion.identity;
-            }
-
-            Vector3 desiredUp = Vector3.up;
-            Vector3 desiredFront = Vector3.ProjectOnPlane(
-                registeredReferenceModel.TransformDirection(Vector3.right),
-                desiredUp);
-            if (desiredFront.sqrMagnitude < 0.000001f && arCamera != null)
-            {
-                desiredFront = Vector3.ProjectOnPlane(
-                    -arCamera.transform.forward,
-                    desiredUp);
-            }
-            if (desiredFront.sqrMagnitude < 0.000001f)
-            {
-                return modelCoordinateAlignment.rotation;
-            }
-
-            desiredFront.Normalize();
-            Vector3 desiredForward =
-                Vector3.Cross(desiredFront, desiredUp).normalized;
-            Quaternion desiredBodyRotation =
-                Quaternion.LookRotation(desiredForward, desiredUp);
-            Quaternion bodyCorrection =
-                desiredBodyRotation
-                * Quaternion.Inverse(registeredReferenceModel.rotation);
-            return bodyCorrection * modelCoordinateAlignment.rotation;
         }
 
         private void HandleTrackingLoss()
@@ -1199,6 +1177,7 @@ namespace Urp.ArDemo
             registeredRepairPart = null;
             referenceRenderers = Array.Empty<Renderer>();
             repairRenderers = Array.Empty<Renderer>();
+            geometricOcclusionRenderers = Array.Empty<Renderer>();
         }
 
         private bool ValidateRigidHierarchy(out string reason)
@@ -1386,6 +1365,130 @@ namespace Urp.ArDemo
                 }
             }
             return null;
+        }
+
+        private static Renderer[] FindNamedRenderers(
+            Renderer[] renderers,
+            string nameFragment)
+        {
+            if (renderers == null || string.IsNullOrEmpty(nameFragment))
+            {
+                return Array.Empty<Renderer>();
+            }
+            List<Renderer> matches = new List<Renderer>();
+            foreach (Renderer renderer in renderers)
+            {
+                if (renderer != null
+                    && renderer.name.IndexOf(
+                        nameFragment,
+                        StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    matches.Add(renderer);
+                }
+            }
+            return matches.ToArray();
+        }
+
+        private void BuildGeometricOcclusionProxy(
+            RestorationObjectProfile profile)
+        {
+            geometricOcclusionRenderers = Array.Empty<Renderer>();
+            if (profile == null
+                || profile.referenceDepthOcclusionMaterial == null
+                || registeredBottlePairRoot == null
+                || registeredReferenceModel == null)
+            {
+                return;
+            }
+
+            Transform source = FindDescendant(
+                registeredReferenceModel,
+                "ReferenceNeckProxyB");
+            if (source == null)
+            {
+                return;
+            }
+
+            GameObject depthProxy = Instantiate(
+                source.gameObject,
+                registeredBottlePairRoot);
+            depthProxy.name = "ReferenceNeckDepthOccluder";
+            depthProxy.transform.localPosition = source.localPosition;
+            depthProxy.transform.localRotation = source.localRotation;
+            depthProxy.transform.localScale = source.localScale;
+            geometricOcclusionRenderers =
+                depthProxy.GetComponentsInChildren<Renderer>(true);
+            ApplyMaterial(
+                geometricOcclusionRenderers,
+                profile.referenceDepthOcclusionMaterial);
+            foreach (Renderer renderer in geometricOcclusionRenderers)
+            {
+                PrepareOverlayRenderer(renderer);
+            }
+            SetGeometricOcclusionVisible(false);
+        }
+
+        private bool IsRepairProjectedIntoCamera()
+        {
+            if (arCamera == null
+                || repairRenderers == null
+                || repairRenderers.Length == 0)
+            {
+                return false;
+            }
+
+            bool hasPositiveDepth = false;
+            float minX = float.PositiveInfinity;
+            float minY = float.PositiveInfinity;
+            float maxX = float.NegativeInfinity;
+            float maxY = float.NegativeInfinity;
+            foreach (Renderer renderer in repairRenderers)
+            {
+                if (renderer == null
+                    || !renderer.enabled
+                    || !renderer.gameObject.activeInHierarchy)
+                {
+                    continue;
+                }
+
+                Bounds bounds = renderer.bounds;
+                Vector3 centre = bounds.center;
+                Vector3 extents = bounds.extents;
+                for (int x = -1; x <= 1; x += 2)
+                {
+                    for (int y = -1; y <= 1; y += 2)
+                    {
+                        for (int z = -1; z <= 1; z += 2)
+                        {
+                            Vector3 screen = arCamera.WorldToScreenPoint(
+                                centre + Vector3.Scale(
+                                    extents,
+                                    new Vector3(x, y, z)));
+                            if (screen.z <= arCamera.nearClipPlane)
+                            {
+                                continue;
+                            }
+                            hasPositiveDepth = true;
+                            minX = Mathf.Min(minX, screen.x);
+                            minY = Mathf.Min(minY, screen.y);
+                            maxX = Mathf.Max(maxX, screen.x);
+                            maxY = Mathf.Max(maxY, screen.y);
+                        }
+                    }
+                }
+            }
+
+            if (!hasPositiveDepth)
+            {
+                return false;
+            }
+            float width = Mathf.Max(1f, arCamera.pixelWidth);
+            float height = Mathf.Max(1f, arCamera.pixelHeight);
+            bool overlapsViewport =
+                maxX >= 0f && maxY >= 0f && minX <= width && minY <= height;
+            return overlapsViewport
+                && maxX - minX >= 4f
+                && maxY - minY >= 4f;
         }
 
         private static void ApplyMaterial(Renderer[] renderers, Material material)

@@ -4,7 +4,7 @@ Native Android ARM64 plugin for the URP AR prototype. It performs the ORB target
 matching used by `OrbImageTrackingController` and returns the target center,
 relative width, match diagnostics and full solvePnPRansac pose to Unity.
 
-The current `r8-multiview-pose-hsv` matcher uses the user-aligned world-space B
+The current `r9-dense-pyramid-guided-pose` matcher uses the user-aligned world-space B
 pose only to form an additional geometrically guided candidate set. Strict
 real-photo descriptor matches and guided matches are solved independently, so
 an inaccurate coarse projection cannot replace a valid global match set.
@@ -12,6 +12,12 @@ Each candidate is tested with SQPnP, EPNP and iterative RANSAC (with the prior
 used only as one iterative seed), refined with LM, and ranked by inliers,
 inlier ratio and reprojection error. The accepted pose still requires spatial
 coverage, positive depth and bounded RMS/maximum reprojection error.
+
+The v25 build uses a 10-level ORB pyramid (1.15 scale factor) and a low FAST
+threshold so label features remain repeatable under scale and oblique-view
+changes. After registration, guided matching is constrained to a tighter
+projected neighbourhood; global strict matches remain available for
+relocalization.
 
 The plugin also samples low-saturation bright pixels around accepted inliers
 and returns normalized HSV statistics to Unity. These statistics are used only

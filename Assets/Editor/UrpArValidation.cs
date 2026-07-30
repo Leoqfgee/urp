@@ -21,17 +21,17 @@ namespace Urp.ArDemo.Editor
         private const string ProfilePath =
             "Assets/Objects/CoconutBottle/Profiles/CoconutBottleRepairProfile.asset";
         private const string NewPairPath =
-            "Assets/Models/CleanBottleReconstruction/BottleFullAlignedV2/"
-            + "bottle_full_aligned_v2.fbx";
+            "Assets/Models/CleanBottleReconstruction/BottleCleanCapV25/"
+            + "bottle_no_cap_clean_cap_v25.fbx";
         private const string NewPairReportPath =
-            "Assets/Models/CleanBottleReconstruction/BottleFullAlignedV2/"
-            + "bottle_full_aligned_v2_report.json";
+            "Assets/Models/CleanBottleReconstruction/BottleCleanCapV25/"
+            + "bottle_no_cap_clean_cap_v25_report.json";
         private const string DatabasePath =
             "Assets/OrbModels/bottle_reference_b.bytes";
         private const string DatabaseManifestPath =
             "Assets/OrbModels/bottle_reference_b_manifest.json";
         private const string BottleAlbedoPath =
-            "Assets/Models/CleanBottleReconstruction/BottleFullAlignedV2/"
+            "Assets/Models/CleanBottleReconstruction/BottleCleanCapV25/"
             + "Textures/bottle_full_clean_v2_albedo.png";
         private const string BottleDepthShaderPath =
             "Assets/Shaders/BottleDepthOccluder.shader";
@@ -248,11 +248,11 @@ namespace Urp.ArDemo.Editor
                 && catalog.objects.Count(item => item == profile) == 1,
                 "The formal catalog must contain the new bottle profile exactly once.");
             Require(
-                profile.objectId == "bottle_full_aligned_v2",
+                profile.objectId == "bottle_no_cap_clean_cap_v25",
                 "The formal bottle profile still has the legacy object id.");
             Require(
                 AssetDatabase.GetAssetPath(profile.registeredBottlePairPrefab) == NewPairPath,
-                "registeredBottlePairPrefab does not point to BottleFullAlignedV2.");
+                "registeredBottlePairPrefab does not point to BottleCleanCapV25.");
             Require(
                 profile.trackingReferencePrefab == profile.registeredBottlePairPrefab
                 && profile.damagedViewerPrefab == profile.registeredBottlePairPrefab
@@ -310,10 +310,10 @@ namespace Urp.ArDemo.Editor
                 "B database manifest does not describe the real-photo B-only pipeline.");
             string report = File.ReadAllText(NewPairReportPath);
             Require(
-                report.Contains("bottle-no-cap-clean-cap-rigid-registration-v3")
+                report.Contains("bottle-no-cap-clean-cap-v25")
                 && report.Contains("bottle_cap_clean_39x10mm.obj")
-                && report.Contains("\"radialClearanceMeters\": 0.0001999999999999974")
-                && report.Contains("\"rigidRelationshipPreserved\": true"),
+                && report.Contains("\"referenceNeckGuideB\"")
+                && report.Contains("\"cIsNeverPositionedIndependentlyAtRuntime\": true"),
                 "Blender report does not describe the approved clean 39x10mm cap.");
 
             GameObject pairPrefab =
@@ -322,15 +322,16 @@ namespace Urp.ArDemo.Editor
             Require(pair != null, "Could not instantiate the new B+C FBX.");
             Transform body = FindDescendant(pair.transform, "DamagedBottleB");
             Transform cap = FindDescendant(pair.transform, "BottleCapC");
+            Transform neck = FindDescendant(pair.transform, "ReferenceNeckProxyB");
             Transform root = FindDescendant(pair.transform, "BottleRepairRoot");
-            Require(body != null && cap != null && root != null,
-                "New FBX is missing BottleRepairRoot/DamagedBottleB/BottleCapC. "
+            Require(body != null && cap != null && neck != null && root != null,
+                "New FBX is missing BottleRepairRoot/DamagedBottleB/ReferenceNeckProxyB/BottleCapC. "
                 + $"Imported transforms: {string.Join(", ", pair.GetComponentsInChildren<Transform>(true).Select(item => item.name))}");
             Require(
-                body.parent == root && cap.parent == root,
-                "B and C are not fixed siblings under BottleRepairRoot.");
-            Require(IsIdentity(body) && IsIdentity(cap),
-                "Blender B/C local transforms were not baked to identity.");
+                body.parent == root && cap.parent == root && neck.parent == body,
+                "B and C are not rigid siblings or the B-only neck guide is outside B.");
+            Require(IsIdentity(body) && IsIdentity(cap) && IsIdentity(neck),
+                "Blender B/C/neck local transforms were not baked to identity.");
             Require(
                 body.GetComponentsInChildren<Renderer>(true).Length > 0
                 && cap.GetComponentsInChildren<Renderer>(true).Length > 0,
@@ -346,7 +347,6 @@ namespace Urp.ArDemo.Editor
             {
                 "displayMatrix",
                 "WorldToViewportPoint",
-                "ScreenPoint",
                 "ViewportPointToRay",
                 "AlignmentOutline",
                 "initialMouthPositionInCamera",
@@ -370,7 +370,8 @@ namespace Urp.ArDemo.Editor
                 && controller.Contains("ShowRepairPresentation")
                 && controller.Contains("ShowPresentationForCurrentState")
                 && controller.Contains("GetCanonicalModelRotationInTrackedRoot")
-                && controller.Contains("CalibrateSessionCoordinateFrame")
+                && controller.Contains("BuildGeometricOcclusionProxy")
+                && controller.Contains("IsRepairProjectedIntoCamera")
                 && controller.Contains("sessionCoordinateFrameCalibrated")
                 && controller.Contains("hasReadyPoseCandidate")
                 && controller.Contains("repairRequested")
@@ -422,7 +423,7 @@ namespace Urp.ArDemo.Editor
                     $"Scene generator still restores a removed legacy asset: {token}");
             }
             Require(
-                setup.Contains("BottleFullAlignedV2")
+                setup.Contains("BottleCleanCapV25")
                 && setup.Contains("BottlePhotogrammetryLit")
                 && setup.Contains("CleanBottleCapLit")
                 && setup.Contains("BottleDepthOccluder")
@@ -461,6 +462,19 @@ namespace Urp.ArDemo.Editor
                 AssetDatabase.LoadAssetAtPath<RestorationObjectProfile>(ProfilePath);
             GameObject cameraObject = new GameObject("Renderer Gate Camera");
             Camera camera = cameraObject.AddComponent<Camera>();
+            camera.clearFlags = CameraClearFlags.SolidColor;
+            camera.backgroundColor = Color.black;
+            camera.nearClipPlane = 0.02f;
+            camera.farClipPlane = 5f;
+            camera.fieldOfView = 60f;
+            RenderTexture validationTarget =
+                new RenderTexture(720, 1280, 24, RenderTextureFormat.ARGB32);
+            camera.targetTexture = validationTarget;
+            GameObject lightObject = new GameObject("Renderer Gate Light");
+            Light validationLight = lightObject.AddComponent<Light>();
+            validationLight.type = LightType.Directional;
+            validationLight.intensity = 1.2f;
+            lightObject.transform.rotation = Quaternion.Euler(35f, -25f, 0f);
             GameObject rootObject = new GameObject("TrackedBottleRoot");
             GameObject alignmentObject = new GameObject("ModelCoordinateAlignment");
             alignmentObject.transform.SetParent(rootObject.transform, false);
@@ -519,15 +533,15 @@ namespace Urp.ArDemo.Editor
                     out Vector3 priorOrbPosition,
                     out Quaternion priorOrbRotation),
                 "Could not convert the visible B prior back to a model pose.");
-            Quaternion alignmentWorldRotationBefore =
-                alignmentObject.transform.rotation;
-            MethodInfo calibrateSessionFrame =
+            Quaternion alignmentLocalRotationBefore =
+                alignmentObject.transform.localRotation;
+            MethodInfo establishRegistration =
                 typeof(OrbImageTrackingController).GetMethod(
-                    "CalibrateSessionCoordinateFrame",
+                    "EstablishRegistration",
                     BindingFlags.Instance | BindingFlags.NonPublic);
-            Require(calibrateSessionFrame != null,
-                "The coarse-alignment B-to-ORB calibration path is missing.");
-            calibrateSessionFrame.Invoke(
+            Require(establishRegistration != null,
+                "The direct full-pose A-to-B registration path is missing.");
+            establishRegistration.Invoke(
                 controller,
                 new object[] { priorOrbPosition, priorOrbRotation });
             Require(
@@ -541,12 +555,12 @@ namespace Urp.ArDemo.Editor
                     rootObject.transform.rotation,
                     priorOrbRotation) < 0.1f
                 && Quaternion.Angle(
-                    alignmentObject.transform.rotation,
-                    alignmentWorldRotationBefore) < 0.1f
+                    alignmentObject.transform.localRotation,
+                    alignmentLocalRotationBefore) < 0.1f
                 && Vector3.Distance(
                     alignmentObject.transform.localPosition,
                     profile.calibration.orbToModelLocalPosition) < 0.0001f,
-                "Session calibration must move the ORB root without rotating the visible B overlay.");
+                "Registration must apply the full PnP pose to the root while preserving the fixed ORB-to-Blender child transform.");
             object[] calibratedPriorArguments = { null };
             Require(
                 (bool)buildPrior.Invoke(controller, calibratedPriorArguments),
@@ -608,21 +622,84 @@ namespace Urp.ArDemo.Editor
                 && AnyEnabled(cap.GetComponentsInChildren<Renderer>(true)),
                 "Entering tracking must show the Blender-aligned B+C pair.");
             Require(
-                AllUseMaterial(
-                    body.GetComponentsInChildren<Renderer>(true),
-                    profile.preAlignmentMaterial)
+                body.GetComponentsInChildren<Renderer>(true)
+                    .Where(renderer =>
+                        !renderer.name.Contains("ReferenceNeckProxyB"))
+                    .All(renderer =>
+                        renderer.sharedMaterials.All(material =>
+                            material == profile.preAlignmentMaterial))
+                && FindDescendant(body, "ReferenceNeckProxyB")
+                    .GetComponentsInChildren<Renderer>(true)
+                    .All(renderer =>
+                        renderer.sharedMaterials.All(material =>
+                            material == profile.repairMaterial))
                 && AllUseMaterial(
                     cap.GetComponentsInChildren<Renderer>(true),
                     profile.repairMaterial),
                 "Pre-alignment must use opaque textured B and the clean white C material.");
             Matrix4x4 bodyBefore = body.localToWorldMatrix;
             Matrix4x4 capLocalBefore = pair.worldToLocalMatrix * cap.localToWorldMatrix;
+            int preAlignmentPixels = CaptureRepairPixels(
+                camera,
+                "prealignment-front",
+                validationTarget);
+            Require(
+                preAlignmentPixels > 10000,
+                $"Opaque B+C pre-alignment render is unexpectedly empty: "
+                + $"{preAlignmentPixels} pixels.");
 
             controller.ShowRepairPresentation();
             Require(
                 !AnyEnabled(body.GetComponentsInChildren<Renderer>(true))
                 && AnyEnabled(cap.GetComponentsInChildren<Renderer>(true)),
                 "Repair stage must disable B Renderers while keeping C visible.");
+            Require(
+                controller.IsRepairActuallyRenderable,
+                "C is enabled but is not projected into the active camera after Start.");
+            Quaternion frontRotation = rootObject.transform.rotation;
+            int frontPixels = CaptureRepairPixels(
+                camera,
+                "front-depth",
+                validationTarget);
+            Renderer[] depthRenderers =
+                GetPrivateField<Renderer[]>(
+                    controller,
+                    "geometricOcclusionRenderers");
+            foreach (Renderer renderer in depthRenderers)
+            {
+                renderer.enabled = false;
+            }
+            int frontWithoutDepthPixels = CaptureRepairPixels(
+                camera,
+                "front-no-depth",
+                validationTarget);
+            foreach (Renderer renderer in depthRenderers)
+            {
+                renderer.enabled = true;
+            }
+            rootObject.transform.rotation =
+                Quaternion.AngleAxis(32f, camera.transform.up) * frontRotation;
+            int obliquePixels = CaptureRepairPixels(
+                camera,
+                "oblique",
+                validationTarget);
+            rootObject.transform.rotation =
+                Quaternion.AngleAxis(-32f, camera.transform.right)
+                * Quaternion.AngleAxis(18f, camera.transform.up)
+                * frontRotation;
+            int topPixels = CaptureRepairPixels(
+                camera,
+                "top",
+                validationTarget);
+            rootObject.transform.rotation = frontRotation;
+            Require(
+                frontPixels > 500
+                && frontPixels >= frontWithoutDepthPixels * 0.65f
+                && obliquePixels > 500
+                && topPixels > 500,
+                $"C-only pixel render failed: front-depth={frontPixels}, "
+                + $"front-no-depth={frontWithoutDepthPixels}, "
+                + $"oblique={obliquePixels}, top={topPixels}.");
             Require(
                 AllUseMaterial(
                     cap.GetComponentsInChildren<Renderer>(true),
@@ -638,7 +715,41 @@ namespace Urp.ArDemo.Editor
 
             UnityEngine.Object.DestroyImmediate(controllerObject);
             UnityEngine.Object.DestroyImmediate(rootObject);
+            UnityEngine.Object.DestroyImmediate(lightObject);
+            camera.targetTexture = null;
+            UnityEngine.Object.DestroyImmediate(validationTarget);
             UnityEngine.Object.DestroyImmediate(cameraObject);
+        }
+
+        private static int CaptureRepairPixels(
+            Camera camera,
+            string viewName,
+            RenderTexture target)
+        {
+            camera.Render();
+            RenderTexture previous = RenderTexture.active;
+            RenderTexture.active = target;
+            Texture2D image = new Texture2D(
+                target.width,
+                target.height,
+                TextureFormat.RGBA32,
+                false);
+            image.ReadPixels(
+                new Rect(0, 0, target.width, target.height),
+                0,
+                0);
+            image.Apply(false);
+            int visiblePixels = image.GetPixels32().Count(pixel =>
+                pixel.r + pixel.g + pixel.b >= 48);
+            string outputDirectory = Path.GetFullPath(
+                "Builds/Validation/v25");
+            Directory.CreateDirectory(outputDirectory);
+            File.WriteAllBytes(
+                Path.Combine(outputDirectory, $"repair-c-{viewName}.png"),
+                image.EncodeToPNG());
+            UnityEngine.Object.DestroyImmediate(image);
+            RenderTexture.active = previous;
+            return visiblePixels;
         }
 
         private static void ValidateGeneratedScene()

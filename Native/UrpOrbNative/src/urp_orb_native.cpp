@@ -17,7 +17,7 @@
 namespace
 {
 constexpr char kModelMagic[8] = {'U', 'R', 'P', '3', 'D', 'M', '1', '\0'};
-constexpr char kBuildVersion[] = "urp-orb-native-2026.07.24-r8-multiview-pose-hsv";
+constexpr char kBuildVersion[] = "urp-orb-native-2026.07.30-r9-dense-pyramid-guided-pose";
 constexpr int kDescriptorBytes = 32;
 constexpr int kModelRecordBytes = 3 * static_cast<int>(sizeof(float)) + kDescriptorBytes;
 
@@ -77,7 +77,19 @@ public:
     OrbTracker(int featureCount, float ratio, int minMatches, int maxWidth)
         : ratio_(ratio), minMatches_(minMatches), maxWidth_(maxWidth)
     {
-        orb_ = cv::ORB::create(std::max(100, featureCount));
+        // Dense low-threshold pyramid improves repeatability on the glossy
+        // cylindrical label when the phone moves closer, farther or oblique.
+        // Descriptor type remains standard 256-bit ORB/Hamming.
+        orb_ = cv::ORB::create(
+            std::max(100, featureCount),
+            1.15f,
+            10,
+            31,
+            0,
+            2,
+            cv::ORB::HARRIS_SCORE,
+            31,
+            7);
         matcher_ = cv::BFMatcher::create(cv::NORM_HAMMING, false);
     }
 

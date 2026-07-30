@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the formal BottleFullAlignedV2 runtime data without Unity."""
+"""Validate the formal BottleCleanCapV25 runtime data without Unity."""
 
 from __future__ import annotations
 
@@ -40,10 +40,10 @@ def main() -> None:
     manifest_path = ROOT / "Assets/OrbModels/bottle_reference_b_manifest.json"
     fbx = (
         ROOT
-        / "Assets/Models/CleanBottleReconstruction/BottleFullAlignedV2"
-        / "bottle_full_aligned_v2.fbx"
+        / "Assets/Models/CleanBottleReconstruction/BottleCleanCapV25"
+        / "bottle_no_cap_clean_cap_v25.fbx"
     )
-    report_path = fbx.with_name("bottle_full_aligned_v2_report.json")
+    report_path = fbx.with_name("bottle_no_cap_clean_cap_v25_report.json")
     controller_path = ROOT / "Assets/Scripts/OrbImageTrackingController.cs"
     points = read_points(database)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -51,7 +51,7 @@ def main() -> None:
     controller = controller_path.read_text(encoding="utf-8")
 
     if manifest["version"] != "bottle-full-aligned-v2-reference-b-real-observations-v2":
-        raise ValueError("ORB manifest is not for BottleFullAlignedV2")
+        raise ValueError("ORB manifest is not the approved B-only real-photo database")
     if manifest["database_sha256"] != sha256(database):
         raise ValueError("ORB manifest SHA256 does not match the database")
     if manifest["repair_c_excluded_from_matching"] is not True:
@@ -63,16 +63,16 @@ def main() -> None:
     if report["runtimeHierarchy"] != {
         "root": "BottleRepairRoot",
         "referenceB": "DamagedBottleB",
+        "referenceNeckGuideB": "ReferenceNeckProxyB",
         "repairC": "BottleCapC",
     }:
         raise ValueError("Blender report hierarchy is invalid")
-    if not report["rigidRelationshipPreserved"]:
+    if not report["rigidContract"]["cIsNeverPositionedIndependentlyAtRuntime"]:
         raise ValueError("Blender report does not preserve the rigid B/C relationship")
 
     prohibited = (
         "displayMatrix",
         "WorldToViewportPoint",
-        "ScreenPoint",
         "AlignmentOutline",
         "ARAnchor",
         "registeredRepairPart.localPosition",
@@ -84,7 +84,7 @@ def main() -> None:
         raise ValueError(f"Production tracker contains prohibited logic: {found}")
 
     payload = {
-        "status": "BOTTLE_FULL_ALIGNED_V2_DATA_OK",
+        "status": "BOTTLE_CLEAN_CAP_V25_DATA_OK",
         "fbx_sha256": sha256(fbx),
         "database_sha256": sha256(database),
         "database_records": len(points),

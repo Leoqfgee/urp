@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render six fixed QA views of the canonical rigid B+C Blender asset."""
+"""Render six fixed QA views of the canonical BottleCleanCapV25 asset."""
 
 from __future__ import annotations
 

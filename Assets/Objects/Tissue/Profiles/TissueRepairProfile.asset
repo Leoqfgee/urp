@@ -43,6 +43,7 @@ MonoBehaviour:
     temporaryLossHoldSeconds: 0.8
     positionSmoothing: 0.3
     rotationSmoothing: 0.25
+  preAlignmentMaterial: {fileID: 0}
   repairMaterial: {fileID: 0}
   referenceDepthOcclusionMaterial: {fileID: 0}
   physicalScaleVerified: 0

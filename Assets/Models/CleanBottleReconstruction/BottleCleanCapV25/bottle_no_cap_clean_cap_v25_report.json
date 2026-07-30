@@ -1,0 +1,115 @@
+{
+  "version": "bottle-no-cap-clean-cap-v25",
+  "runtimeHierarchy": {
+    "root": "BottleRepairRoot",
+    "referenceB": "DamagedBottleB",
+    "referenceNeckGuideB": "ReferenceNeckProxyB",
+    "repairC": "BottleCapC"
+  },
+  "coordinateFrame": {
+    "origin": "bottle mouth centre",
+    "upAxis": "+Y from body to mouth",
+    "printedFrontAxis": "+X",
+    "metersPerModelUnit": 0.17
+  },
+  "referenceB": {
+    "source": "F:\\Meshroom_work\\bottle_full_clean_v2\\split_models\\bottle_no_cap\\texturedMesh.obj",
+    "boundsMin": [
+      -0.2839941382408142,
+      -1.1999999284744263,
+      -0.26533403992652893
+    ],
+    "boundsMax": [
+      0.2144785225391388,
+      0.0,
+      0.22504457831382751
+    ]
+  },
+  "referenceNeckGuideB": {
+    "purpose": "opaque B-only coarse-alignment geometry; hidden with B after Start",
+    "outerDiameterMeters": 0.034,
+    "boundsMin": [
+      -0.15000000596046448,
+      -0.2199999988079071,
+      -0.15000000596046448
+    ],
+    "boundsMax": [
+      0.15000000596046448,
+      0.0,
+      0.15000000596046448
+    ]
+  },
+  "repairC": {
+    "source": "bottle_cap_clean_39x10mm.obj",
+    "outerDiameterMeters": 0.039,
+    "heightMeters": 0.01,
+    "boundsMin": [
+      -0.11537646502256393,
+      -0.05158825218677521,
+      -0.11537646502256393
+    ],
+    "boundsMax": [
+      0.11537646502256393,
+      0.007941186428070068,
+      0.11537646502256393
+    ]
+  },
+  "rigidContract": {
+    "bLocalMatrix": [
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "neckLocalMatrix": [
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "cLocalMatrix": [
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "cIsNeverPositionedIndependentlyAtRuntime": true
+  },
+  "deviceOverlayVerified": false
+}
