@@ -569,9 +569,9 @@ namespace Urp.ArDemo
                     ? activeProfile.repairMaterial
                     : activeProfile.viewerMaterial);
             // B stays in the hierarchy as the tracked rigid reference, but its
-            // noisy photogrammetry surface must not depth-occlude C. The old
-            // depth-only pass cut the clean cap into a floating crescent near
-            // the reconstructed mouth. AR environment depth remains active.
+            // noisy photogrammetry surface must not depth-occlude C. Device
+            // environment depth is also disabled by UrpAppController for this
+            // glossy close-range bottle, because it can swallow C completely.
             SetReferenceHierarchyVisible(false);
             SetRepairHierarchyVisible(true);
         }
@@ -1429,6 +1429,7 @@ namespace Urp.ArDemo
             {
                 if (renderer != null)
                 {
+                    renderer.forceRenderingOff = false;
                     renderer.enabled = enabled;
                 }
             }

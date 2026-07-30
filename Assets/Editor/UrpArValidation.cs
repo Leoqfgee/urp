@@ -445,6 +445,19 @@ namespace Urp.ArDemo.Editor
             Require(
                 !buildMethod.Contains("SetupPrototypeScene()"),
                 "Android build must consume the saved production scene without regenerating it.");
+            Require(
+                buildMethod.Contains("BuildOptions.None")
+                && !buildMethod.Contains("BuildOptions.Development"),
+                "Android build must be a release build without the runtime Display Stats overlay.");
+            string buildIdentityRuntime = File.ReadAllText(
+                "Assets/Scripts/BuildIdentityRuntime.cs");
+            Require(
+                buildIdentityRuntime.Contains("enableRuntimeUI = false"),
+                "Runtime must explicitly disable the URP debug display.");
+            Require(
+                ui.Contains("arOcclusionManager.enabled = false")
+                && !ui.Contains("arOcclusionManager.enabled = true"),
+                "Glossy bottle tracking must not enable unreliable environment depth.");
         }
 
         private static void ValidateRuntimeRendererGate()
@@ -649,6 +662,11 @@ namespace Urp.ArDemo.Editor
                     .Length == 1
                 && UnityEngine.Object.FindObjectsOfType<AROcclusionManager>(true).Length == 1,
                 "Generated scene must contain one light-consistency controller and one AR occlusion manager.");
+            AROcclusionManager bottleOcclusion =
+                UnityEngine.Object.FindObjectOfType<AROcclusionManager>(true);
+            Require(
+                bottleOcclusion != null && !bottleOcclusion.enabled,
+                "Bottle environment-depth manager must remain disabled to keep C visible.");
             Transform trackedRoot = GameObject.Find("TrackedBottleRoot")?.transform;
             Transform alignment = GameObject.Find("ModelCoordinateAlignment")?.transform;
             Require(

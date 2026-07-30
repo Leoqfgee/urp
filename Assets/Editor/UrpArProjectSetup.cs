@@ -93,7 +93,7 @@ namespace Urp.ArDemo.Editor
                 locationPathName = AndroidApkPath,
                 target = BuildTarget.Android,
                 targetGroup = BuildTargetGroup.Android,
-                options = BuildOptions.Development
+                options = BuildOptions.None
             });
             if (report.summary.result != BuildResult.Succeeded)
             {

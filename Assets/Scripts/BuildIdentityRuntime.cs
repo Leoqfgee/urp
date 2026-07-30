@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Rendering;
 using Urp.ArDemo.Generated;
 using Urp.ArDemo.Native;
 
@@ -10,6 +11,11 @@ namespace Urp.ArDemo
 
         private void Awake()
         {
+            // The URP runtime debug UI can otherwise be opened by an accidental
+            // touch gesture in a Development build and cover the AR page with
+            // the "Display Stats" panel. Production APKs do not expose it.
+            DebugManager.instance.enableRuntimeUI = false;
+
             BuildIdentityData identity = BuildIdentity.Current;
             string runtimeNative = NativeOrbTracker.BuildVersion;
             Debug.Log($"[BuildIdentity]\n{identity.ShortText}\nRuntime Native: {runtimeNative}");

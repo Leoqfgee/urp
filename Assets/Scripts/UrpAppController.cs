@@ -510,7 +510,13 @@ namespace Urp.ArDemo
             if (arSession != null) arSession.enabled = true;
             yield return null;
             if (arCameraManager != null) arCameraManager.enabled = true;
-            if (arOcclusionManager != null) arOcclusionManager.enabled = true;
+            // Environment depth is not reliable on the glossy white bottle at
+            // this short range. It classified the cap contact surface as real
+            // foreground and swallowed the whole virtual repair part even
+            // though B tracking was valid. Keep the manager in the scene for
+            // future per-object depth policies, but do not feed that unstable
+            // depth into the bottle-repair composition.
+            if (arOcclusionManager != null) arOcclusionManager.enabled = false;
             if (arCamera != null) arCamera.enabled = true;
             if (arCameraBackground != null) arCameraBackground.enabled = true;
             arActivationRoutine = null;
