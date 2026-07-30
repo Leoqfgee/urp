@@ -379,19 +379,43 @@ namespace Urp.ArDemo
                 cameraTransform.position
                 + cameraTransform.forward * preAlignmentDistanceMeters
                 + cameraTransform.up * preAlignmentMouthHeightMeters;
-            // The registered bottle's printed front faces canonical +X, while
-            // +Y is the neck axis. Map +X toward the camera and keep +Y
-            // upright; mapping local +Z to camera right completes the same
-            // right-handed frame.
-            trackedObjectPoseRoot.rotation = Quaternion.LookRotation(
-                cameraTransform.right,
-                cameraTransform.up);
+            trackedObjectPoseRoot.rotation =
+                CalculatePreAlignmentRotation(cameraTransform);
             trackedObjectPoseRoot.localScale =
                 Vector3.one * calibration.metersPerModelUnit;
             smoothedRootPosition = trackedObjectPoseRoot.position;
             smoothedRootRotation = trackedObjectPoseRoot.rotation;
             hasSmoothedPose = true;
             ShowPreAlignmentPair();
+        }
+
+        private Quaternion CalculatePreAlignmentRotation(Transform cameraTransform)
+        {
+            // The authored mesh uses +X as the printed front and +Y from the
+            // body towards the mouth. Unity's FBX importer keeps an extra
+            // axis-conversion transform (currently -90 degrees around X) on
+            // BottleRepairRoot, so those are not the outer root's +X/+Y axes.
+            // Read the rendered B axes through the complete imported hierarchy
+            // and map them to a front-facing, upright camera-space frame.
+            Vector3 modelFrontInRoot = Vector3.right;
+            Vector3 modelUpInRoot = Vector3.up;
+            if (registeredReferenceModel != null)
+            {
+                modelFrontInRoot = trackedObjectPoseRoot.InverseTransformDirection(
+                    registeredReferenceModel.TransformDirection(Vector3.right));
+                modelUpInRoot = trackedObjectPoseRoot.InverseTransformDirection(
+                    registeredReferenceModel.TransformDirection(Vector3.up));
+            }
+            modelFrontInRoot.Normalize();
+            modelUpInRoot.Normalize();
+
+            Quaternion importedModelFrame = Quaternion.LookRotation(
+                modelFrontInRoot,
+                modelUpInRoot);
+            Quaternion desiredCameraFrame = Quaternion.LookRotation(
+                -cameraTransform.forward,
+                cameraTransform.up);
+            return desiredCameraFrame * Quaternion.Inverse(importedModelFrame);
         }
 
         private bool SetCurrentPosePrior(NativeOrbTracker tracker)

@@ -426,14 +426,6 @@ namespace Urp.ArDemo.Editor
                 && Mathf.Abs(determinant - 1f) < 0.01f
                 && prior[11] > 0f,
                 "The coarse model-to-camera prior is not a proper positive-depth rotation.");
-            Require(
-                Vector3.Dot(
-                    rootObject.transform.TransformDirection(Vector3.right),
-                    -camera.transform.forward) > 0.99f
-                && Vector3.Dot(
-                    rootObject.transform.TransformDirection(Vector3.up),
-                    camera.transform.up) > 0.99f,
-                "Initial B+C pose must show canonical +X label front upright to the camera.");
 
             Transform body =
                 GetPrivateField<Transform>(controller, "registeredReferenceModel");
@@ -441,6 +433,14 @@ namespace Urp.ArDemo.Editor
                 GetPrivateField<Transform>(controller, "registeredRepairPart");
             Transform pair =
                 GetPrivateField<Transform>(controller, "registeredBottlePairRoot");
+            Require(
+                Vector3.Dot(
+                    body.TransformDirection(Vector3.right),
+                    -camera.transform.forward) > 0.99f
+                && Vector3.Dot(
+                    body.TransformDirection(Vector3.up),
+                    camera.transform.up) > 0.99f,
+                "Initial B+C pose must show the imported B mesh front-facing and upright.");
             Require(body.parent == pair && cap.parent == pair,
                 "Runtime changed the Blender-authored B/C parent relationship.");
             Require(
