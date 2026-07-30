@@ -397,15 +397,12 @@ namespace Urp.ArDemo
             // BottleRepairRoot, so those are not the outer root's +X/+Y axes.
             // Read the rendered B axes through the complete imported hierarchy
             // and map them to a front-facing, upright camera-space frame.
-            Vector3 modelFrontInRoot = Vector3.right;
-            Vector3 modelUpInRoot = Vector3.up;
-            if (registeredReferenceModel != null)
-            {
-                modelFrontInRoot = trackedObjectPoseRoot.InverseTransformDirection(
-                    registeredReferenceModel.TransformDirection(Vector3.right));
-                modelUpInRoot = trackedObjectPoseRoot.InverseTransformDirection(
-                    registeredReferenceModel.TransformDirection(Vector3.up));
-            }
+            Quaternion canonicalModelInRoot =
+                GetCanonicalModelRotationInTrackedRoot();
+            Vector3 modelFrontInRoot =
+                canonicalModelInRoot * Vector3.right;
+            Vector3 modelUpInRoot =
+                canonicalModelInRoot * Vector3.up;
             modelFrontInRoot.Normalize();
             modelUpInRoot.Normalize();
 
@@ -416,6 +413,35 @@ namespace Urp.ArDemo
                 -cameraTransform.forward,
                 cameraTransform.up);
             return desiredCameraFrame * Quaternion.Inverse(importedModelFrame);
+        }
+
+        private Quaternion GetCanonicalModelRotationInTrackedRoot()
+        {
+            if (registeredReferenceModel == null || trackedObjectPoseRoot == null)
+            {
+                return Quaternion.identity;
+            }
+
+            Vector3 canonicalUpInRoot =
+                trackedObjectPoseRoot.InverseTransformDirection(
+                    registeredReferenceModel.TransformDirection(Vector3.up));
+            Vector3 canonicalForwardInRoot =
+                trackedObjectPoseRoot.InverseTransformDirection(
+                    registeredReferenceModel.TransformDirection(Vector3.forward));
+            canonicalUpInRoot.Normalize();
+            canonicalForwardInRoot = Vector3.ProjectOnPlane(
+                canonicalForwardInRoot,
+                canonicalUpInRoot).normalized;
+            return Quaternion.LookRotation(
+                canonicalForwardInRoot,
+                canonicalUpInRoot);
+        }
+
+        private Quaternion ConvertModelRotationToTrackedRootRotation(
+            Quaternion canonicalModelWorldRotation)
+        {
+            return canonicalModelWorldRotation
+                * Quaternion.Inverse(GetCanonicalModelRotationInTrackedRoot());
         }
 
         private bool SetCurrentPosePrior(NativeOrbTracker tracker)
@@ -445,8 +471,12 @@ namespace Urp.ArDemo
                 return false;
             }
 
+            Quaternion canonicalModelInRoot =
+                GetCanonicalModelRotationInTrackedRoot();
+            Vector3 canonicalOriginInRoot =
+                canonicalModelInRoot * calibration.objectOriginInModel;
             Vector3 originWorld =
-                modelCoordinateAlignment.TransformPoint(Vector3.zero);
+                trackedObjectPoseRoot.TransformPoint(canonicalOriginInRoot);
             Vector3 originCameraUnity =
                 arCamera.transform.InverseTransformPoint(originWorld);
             Vector3 originCameraCv = new Vector3(
@@ -461,9 +491,12 @@ namespace Urp.ArDemo
             // OpenCvUnityPoseConverter reconstructs Unity orientation from
             // OpenCV up/forward. Reversing that handedness conversion requires
             // the model-right column to be negated here.
-            Vector3 right = -ModelDirectionToCameraCv(Vector3.right);
-            Vector3 up = ModelDirectionToCameraCv(Vector3.up);
-            Vector3 forward = ModelDirectionToCameraCv(Vector3.forward);
+            Vector3 right = -ModelDirectionToCameraCv(
+                canonicalModelInRoot * Vector3.right);
+            Vector3 up = ModelDirectionToCameraCv(
+                canonicalModelInRoot * Vector3.up);
+            Vector3 forward = ModelDirectionToCameraCv(
+                canonicalModelInRoot * Vector3.forward);
             if (right.sqrMagnitude < 0.000001f
                 || up.sqrMagnitude < 0.000001f
                 || forward.sqrMagnitude < 0.000001f)
@@ -487,7 +520,7 @@ namespace Urp.ArDemo
         private Vector3 ModelDirectionToCameraCv(Vector3 modelDirection)
         {
             Vector3 worldDirection =
-                modelCoordinateAlignment.TransformVector(modelDirection);
+                trackedObjectPoseRoot.TransformVector(modelDirection);
             Vector3 cameraDirection =
                 arCamera.transform.InverseTransformVector(worldDirection);
             return new Vector3(
@@ -532,7 +565,11 @@ namespace Urp.ArDemo
             {
                 return;
             }
-            ApplyMaterial(referenceRenderers, activeProfile.viewerMaterial);
+            ApplyMaterial(
+                referenceRenderers,
+                activeProfile.preAlignmentMaterial != null
+                    ? activeProfile.preAlignmentMaterial
+                    : activeProfile.viewerMaterial);
             ApplyMaterial(
                 repairRenderers,
                 activeProfile.repairMaterial != null
@@ -628,6 +665,8 @@ namespace Urp.ArDemo
                     UpdateStatus("已找到自然特征，但三维姿态坐标转换无效。");
                     return;
                 }
+                targetRotation =
+                    ConvertModelRotationToTrackedRootRotation(targetRotation);
                 if (appearanceConsistency != null
                     && best.sampledConfidence > 0f)
                 {

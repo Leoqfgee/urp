@@ -51,6 +51,7 @@ MonoBehaviour:
     temporaryLossHoldSeconds: 2.5
     positionSmoothing: 0.2
     rotationSmoothing: 0.18
+  preAlignmentMaterial: {fileID: 2100000, guid: f3632efd70f9cfc4e9f786f6b83b36e1, type: 2}
   repairMaterial: {fileID: 2100000, guid: 4e2ac76533fd4bba8da1cdb51f07b8d1, type: 2}
   referenceDepthOcclusionMaterial: {fileID: 2100000, guid: 905267fa57b12674a955cad75181f624, type: 2}
   physicalScaleVerified: 1

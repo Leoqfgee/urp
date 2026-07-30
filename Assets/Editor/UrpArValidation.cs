@@ -37,6 +37,8 @@ namespace Urp.ArDemo.Editor
             "Assets/Shaders/BottleDepthOccluder.shader";
         private const string BottleCapMaterialPath =
             "Assets/Materials/CleanBottleCapLit.mat";
+        private const string BottleAlignmentMaterialPath =
+            "Assets/Materials/BottlePhotogrammetryAlignment.mat";
         private const string ControllerPath =
             "Assets/Scripts/OrbImageTrackingController.cs";
         private const string SetupPath =
@@ -196,6 +198,8 @@ namespace Urp.ArDemo.Editor
                 $"Missing B depth occlusion shader: {BottleDepthShaderPath}");
             Require(File.Exists(BottleCapMaterialPath),
                 $"Missing clean C material: {BottleCapMaterialPath}");
+            Require(File.Exists(BottleAlignmentMaterialPath),
+                $"Missing semi-transparent B alignment material: {BottleAlignmentMaterialPath}");
 
             RestorationObjectCatalog catalog =
                 AssetDatabase.LoadAssetAtPath<RestorationObjectCatalog>(CatalogPath);
@@ -234,6 +238,16 @@ namespace Urp.ArDemo.Editor
                 && AssetDatabase.GetAssetPath(profile.repairMaterial)
                     == BottleCapMaterialPath,
                 "B must use the photogrammetry texture and clean C must use its own white material.");
+            Require(
+                profile.preAlignmentMaterial != null
+                && profile.preAlignmentMaterial != profile.viewerMaterial
+                && profile.preAlignmentMaterial.GetTexture("_BaseMap")
+                    == profile.viewerMaterial.GetTexture("_BaseMap")
+                && profile.preAlignmentMaterial.GetFloat("_Surface") > 0.5f
+                && profile.preAlignmentMaterial.GetColor("_BaseColor").a < 0.5f
+                && AssetDatabase.GetAssetPath(profile.preAlignmentMaterial)
+                    == BottleAlignmentMaterialPath,
+                "Pre-alignment B must use the dedicated semi-transparent textured material.");
             Require(
                 profile.referenceDepthOcclusionMaterial != null
                 && profile.referenceDepthOcclusionMaterial.shader != null
@@ -320,6 +334,8 @@ namespace Urp.ArDemo.Editor
                 && controller.Contains("SetCurrentPosePrior")
                 && controller.Contains("ShowRepairPresentation")
                 && controller.Contains("ShowPresentationForCurrentState")
+                && controller.Contains("ConvertModelRotationToTrackedRootRotation")
+                && controller.Contains("GetCanonicalModelRotationInTrackedRoot")
                 && controller.Contains("repairRequested")
                 && controller.Contains("recognitionRunning = true")
                 && controller.Contains("referenceDepthOcclusionMaterial")
@@ -426,6 +442,45 @@ namespace Urp.ArDemo.Editor
                 && Mathf.Abs(determinant - 1f) < 0.01f
                 && prior[11] > 0f,
                 "The coarse model-to-camera prior is not a proper positive-depth rotation.");
+            NativeOrbResult priorPose = new NativeOrbResult
+            {
+                poseValid = 1,
+                tvecX = prior[3],
+                tvecY = prior[7],
+                tvecZ = prior[11],
+                r00 = prior[0],
+                r01 = prior[1],
+                r02 = prior[2],
+                r10 = prior[4],
+                r11 = prior[5],
+                r12 = prior[6],
+                r20 = prior[8],
+                r21 = prior[9],
+                r22 = prior[10]
+            };
+            Require(
+                OpenCvUnityPoseConverter.TryGetObjectPose(
+                    priorPose,
+                    0,
+                    camera,
+                    profile.calibration,
+                    out _,
+                    out Quaternion priorModelRotation),
+                "Could not convert the visible B prior back to a model pose.");
+            MethodInfo convertRootRotation =
+                typeof(OrbImageTrackingController).GetMethod(
+                    "ConvertModelRotationToTrackedRootRotation",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+            Require(convertRootRotation != null,
+                "PnP model-to-imported-root rotation correction is missing.");
+            Quaternion priorRootRotation = (Quaternion)convertRootRotation.Invoke(
+                controller,
+                new object[] { priorModelRotation });
+            Require(
+                Quaternion.Angle(
+                    rootObject.transform.rotation,
+                    priorRootRotation) < 0.1f,
+                "Visible B, guided ORB prior and PnP root pose do not share one coordinate frame.");
 
             Transform body =
                 GetPrivateField<Transform>(controller, "registeredReferenceModel");
@@ -450,11 +505,11 @@ namespace Urp.ArDemo.Editor
             Require(
                 AllUseMaterial(
                     body.GetComponentsInChildren<Renderer>(true),
-                    profile.viewerMaterial)
+                    profile.preAlignmentMaterial)
                 && AllUseMaterial(
                     cap.GetComponentsInChildren<Renderer>(true),
                     profile.repairMaterial),
-                "Pre-alignment must use textured B and the clean white C material.");
+                "Pre-alignment must use translucent textured B and the clean white C material.");
             Matrix4x4 bodyBefore = body.localToWorldMatrix;
             Matrix4x4 capLocalBefore = pair.worldToLocalMatrix * cap.localToWorldMatrix;
 

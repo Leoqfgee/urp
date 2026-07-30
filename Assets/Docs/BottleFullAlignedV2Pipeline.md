@@ -34,6 +34,13 @@ TrackedBottleRoot                 coarse world pose, then accepted A-to-B pose
 Entering the page places B+C once in world space, upright and centred. Recognition
 starts immediately, before Start is pressed. The object is not parented to the
 camera or Canvas. Phone motion therefore changes its perspective naturally.
+The imported FBX keeps an axis-conversion rotation on `BottleRepairRoot`.
+Runtime pose-prior projection and PnP output both compose that same fixed
+conversion, so the visible B mesh, ORB canonical points and `TrackedBottleRoot`
+share one frame. A round-trip validation rejects any build where those rotations
+differ by more than 0.1 degrees. Before registration, B uses a dedicated
+semi-transparent textured material so the real A label and silhouette remain
+visible during coarse overlap.
 
 The production ORB database contains 4,100 filtered records from real open/no-cap
 bottle photographs. It excludes C and excludes rendered-mesh descriptors. Strict

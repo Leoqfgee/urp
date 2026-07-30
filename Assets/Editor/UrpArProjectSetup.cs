@@ -34,6 +34,8 @@ namespace Urp.ArDemo.Editor
             + "Textures/bottle_full_clean_v2_albedo.png";
         private const string BottleSurfaceMaterialPath =
             "Assets/Materials/BottlePhotogrammetryLit.mat";
+        private const string BottleAlignmentMaterialPath =
+            "Assets/Materials/BottlePhotogrammetryAlignment.mat";
         private const string BottleCapMaterialPath =
             "Assets/Materials/CleanBottleCapLit.mat";
         private const string BottleDepthMaterialPath =
@@ -304,6 +306,8 @@ namespace Urp.ArDemo.Editor
                 "Assets/Objects/Tissue/Materials/TissueViewerLit.mat", TissueTexturePath, 0.16f);
             Material bottleSurfaceMaterial = CreateLitMaterial(
                 BottleSurfaceMaterialPath, BottleAlbedoPath, 0.12f, true);
+            Material bottleAlignmentMaterial = CreateTransparentAlignmentMaterial(
+                BottleAlignmentMaterialPath, BottleAlbedoPath);
             Material bottleCapMaterial = CreateLitMaterial(
                 BottleCapMaterialPath, null, 0.28f, true);
             bottleCapMaterial.SetColor(
@@ -361,6 +365,7 @@ namespace Urp.ArDemo.Editor
             EditorUtility.SetDirty(bottleCalibration);
             bottle.calibration = bottleCalibration;
             bottle.viewerMaterial = bottleSurfaceMaterial;
+            bottle.preAlignmentMaterial = bottleAlignmentMaterial;
             bottle.repairMaterial = bottleCapMaterial;
             bottle.referenceDepthOcclusionMaterial = bottleDepthMaterial;
             bottle.defaultViewerEuler = Vector3.zero;
@@ -650,6 +655,29 @@ namespace Urp.ArDemo.Editor
             }
             material.shader = shader;
             material.name = "BottleDepthOccluder";
+            material.SetShaderPassEnabled("ShadowCaster", false);
+            EditorUtility.SetDirty(material);
+            return material;
+        }
+
+        private static Material CreateTransparentAlignmentMaterial(
+            string path, string texturePath)
+        {
+            Material material = CreateLitMaterial(path, texturePath, 0.05f, true);
+            Color tint = new Color(1f, 1f, 1f, 0.38f);
+            material.SetColor("_BaseColor", tint);
+            if (material.HasProperty("_Color"))
+                material.SetColor("_Color", tint);
+            material.SetFloat("_Surface", 1f);
+            material.SetFloat("_Blend", 0f);
+            material.SetFloat("_SrcBlend", (float)BlendMode.SrcAlpha);
+            material.SetFloat("_DstBlend", (float)BlendMode.OneMinusSrcAlpha);
+            material.SetFloat("_SrcBlendAlpha", (float)BlendMode.One);
+            material.SetFloat("_DstBlendAlpha", (float)BlendMode.OneMinusSrcAlpha);
+            material.SetFloat("_ZWrite", 0f);
+            material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            material.SetOverrideTag("RenderType", "Transparent");
+            material.renderQueue = (int)RenderQueue.Transparent;
             material.SetShaderPassEnabled("ShadowCaster", false);
             EditorUtility.SetDirty(material);
             return material;
