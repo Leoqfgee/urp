@@ -155,6 +155,26 @@ namespace Urp.ArDemo
             ProcessCameraFrame();
         }
 
+        private void LateUpdate()
+        {
+            if (!modeEnabled
+                || registeredReferenceModel == null
+                || registeredRepairPart == null)
+            {
+                return;
+            }
+
+            // Renderer state is a hard A/B/C invariant, not a side effect of
+            // whether this frame produced a fresh ORB pose. Once Start has
+            // accepted B, loss/relocalization may hold the last world pose but
+            // must never make C disappear. Only B's renderers are hidden.
+            if (repairRequested && hasEverRegisteredSinceReset)
+            {
+                SetReferenceHierarchyVisible(false);
+                SetRepairHierarchyVisible(true);
+            }
+        }
+
         public void BindStatusText(Text value)
         {
             statusText = value;
@@ -573,6 +593,12 @@ namespace Urp.ArDemo
 
         public void SetRepairHierarchyVisible(bool visible)
         {
+            if (visible
+                && registeredRepairPart != null
+                && !registeredRepairPart.gameObject.activeSelf)
+            {
+                registeredRepairPart.gameObject.SetActive(true);
+            }
             SetRenderersEnabled(repairRenderers, visible);
         }
 

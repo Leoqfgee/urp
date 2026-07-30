@@ -41,10 +41,10 @@ namespace Urp.ArDemo.Generated
     public static class BuildIdentity
     {
         public const string TrackingBuildVersion =
-            "orb-tracking-v26-clean-neck-full-pose-depth-consistency";
+            "orb-tracking-v27-grouped-multiview-rigid-bc";
         public const string CalibrationVersion = "coconut-clean-cap-rigid-registration-v12";
         public const string OrbDatabaseVersion =
-            "bottle-full-aligned-v2-reference-b-real-observations-v2";
+            "bottle-no-cap-grouped-multiview-v27";
 
         private static BuildIdentityData cached;
 

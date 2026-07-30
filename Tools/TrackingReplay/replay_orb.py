@@ -69,12 +69,22 @@ def ratio_best(pairs, ratio: float):
             if len(pair) >= 2 and pair[0].distance < ratio * pair[1].distance]
 
 
-def replay(image_path: Path, model_points: np.ndarray, model_desc: np.ndarray,
-           ratio: float, minimum_matches: int, output: Path) -> Result:
+def prepare_frame(
+    image_path: Path,
+) -> tuple[np.ndarray, np.ndarray, list[cv2.KeyPoint], np.ndarray | None]:
     encoded = np.fromfile(image_path, dtype=np.uint8)
-    image = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
-    if image is None:
+    decoded = cv2.imdecode(encoded, cv2.IMREAD_UNCHANGED)
+    if decoded is None:
         raise ValueError(f"cannot read {image_path}")
+    if decoded.ndim == 3 and decoded.shape[2] == 4:
+        image = decoded[:, :, :3]
+        mask = decoded[:, :, 3]
+    elif decoded.ndim == 2:
+        image = cv2.cvtColor(decoded, cv2.COLOR_GRAY2BGR)
+        mask = None
+    else:
+        image = decoded
+        mask = None
     if image.shape[1] > 640:
         scale = 640.0 / image.shape[1]
         image = cv2.resize(
@@ -82,9 +92,45 @@ def replay(image_path: Path, model_points: np.ndarray, model_desc: np.ndarray,
             (640, max(1, round(image.shape[0] * scale))),
             interpolation=cv2.INTER_AREA,
         )
+        if mask is not None:
+            mask = cv2.resize(
+                mask,
+                (image.shape[1], image.shape[0]),
+                interpolation=cv2.INTER_NEAREST,
+            )
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    orb = cv2.ORB_create(2600)
-    keypoints, frame_desc = orb.detectAndCompute(gray, None)
+    orb = cv2.ORB_create(
+        2600,
+        1.15,
+        10,
+        31,
+        0,
+        2,
+        cv2.ORB_HARRIS_SCORE,
+        31,
+        7,
+    )
+    keypoints, frame_desc = orb.detectAndCompute(gray, mask)
+    return image, gray, keypoints, frame_desc
+
+
+def replay(
+    image_path: Path,
+    model_points: np.ndarray,
+    model_desc: np.ndarray,
+    ratio: float,
+    minimum_matches: int,
+    output: Path | None,
+    prepared: tuple[
+        np.ndarray,
+        np.ndarray,
+        list[cv2.KeyPoint],
+        np.ndarray | None,
+    ] | None = None,
+) -> Result:
+    image, gray, keypoints, frame_desc = (
+        prepare_frame(image_path) if prepared is None else prepared
+    )
     if frame_desc is None or len(keypoints) < 8:
         return Result(str(image_path), len(keypoints), 0, 0, 0, 0, 0, 0,
                       0, 0, 0, "none", 0, 0, 999, 999, False, False,
@@ -191,10 +237,11 @@ def replay(image_path: Path, model_points: np.ndarray, model_desc: np.ndarray,
                 f"unique={len(good)} cells={occupied} inliers={inliers} rms={rms:.2f} {rejection}",
                 (12, 30), cv2.FONT_HERSHEY_SIMPLEX, .58, (0, 0, 255), 2,
                 cv2.LINE_AA)
-    extension = output.suffix or ".jpg"
-    ok, encoded_debug = cv2.imencode(extension, debug)
-    if ok:
-        encoded_debug.tofile(output)
+    if output is not None:
+        extension = output.suffix or ".jpg"
+        ok, encoded_debug = cv2.imencode(extension, debug)
+        if ok:
+            encoded_debug.tofile(output)
     return Result(str(image_path), len(keypoints), len(forward), 0,
                   len(good), occupied, float(coverage[0]), float(coverage[1]),
                   float(spread[0]), float(spread[1]), float(spread[2]), solver,
@@ -207,13 +254,24 @@ def main() -> None:
     parser.add_argument("--frames", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--step", type=int, default=12)
+    parser.add_argument("--frame-modulo", type=int, default=1)
+    parser.add_argument("--frame-residue", type=int, default=0)
     parser.add_argument("--ratio", type=float, default=.72)
     parser.add_argument("--minimum-matches", type=int, default=8)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     points, descriptors = load_model(args.model)
-    frames = sorted(path for path in args.frames.rglob("*")
-                    if path.suffix.lower() in {".jpg", ".jpeg", ".png"})[::max(1, args.step)]
+    frames = [
+        path
+        for index, path in enumerate(
+            sorted(
+                path
+                for path in args.frames.rglob("*")
+                if path.suffix.lower() in {".jpg", ".jpeg", ".png"}
+            )
+        )
+        if index % max(1, args.frame_modulo) == args.frame_residue
+    ][::max(1, args.step)]
     results = [replay(frame, points, descriptors, args.ratio,
                       args.minimum_matches, args.output / f"{frame.stem}_debug.jpg")
                for frame in frames]

@@ -36,7 +36,7 @@ namespace Urp.ArDemo.Editor
             "Assets/Materials/BottlePhotogrammetryLit.mat";
         private const string BottleCapMaterialPath =
             "Assets/Materials/CleanBottleCapLit.mat";
-        private const string AndroidApkPath = "Builds/BottleRepairAR_v26.apk";
+        private const string AndroidApkPath = "Builds/BottleRepairAR_v27.apk";
         private const string BottleReferenceOrbPath =
             "Assets/OrbModels/bottle_reference_b.bytes";
         private const string BottleCalibrationPath =
@@ -140,14 +140,14 @@ namespace Urp.ArDemo.Editor
 
         private static void ConfigureAndroidProject()
         {
-            PlayerSettings.productName = "瓶盖AR修复 v26";
+            PlayerSettings.productName = "瓶盖AR修复 v27";
             PlayerSettings.companyName = "qfgeeee";
-            PlayerSettings.bundleVersion = "4.2.6";
+            PlayerSettings.bundleVersion = "4.2.7";
             PlayerSettings.SetApplicationIdentifier(
                 BuildTargetGroup.Android, "com.qfgeeee.paper52objecttrackingar");
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
-            PlayerSettings.Android.bundleVersionCode = 426;
+            PlayerSettings.Android.bundleVersionCode = 427;
             PlayerSettings.SetScriptingBackend(
                 BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;

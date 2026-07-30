@@ -220,6 +220,70 @@ namespace Urp.ArDemo.Editor
             UnityEngine.Object.DestroyImmediate(cameraObject);
         }
 
+        private static bool TryValidateOrbDatabase(
+            byte[] database,
+            out int records,
+            out int viewGroups,
+            out string databaseFormat)
+        {
+            records = 0;
+            viewGroups = 0;
+            databaseFormat = string.Empty;
+            if (database == null || database.Length < 12)
+            {
+                return false;
+            }
+
+            byte[] magicV1 =
+                { 0x55, 0x52, 0x50, 0x33, 0x44, 0x4D, 0x31, 0x00 };
+            byte[] magicV2 =
+                { 0x55, 0x52, 0x50, 0x33, 0x44, 0x4D, 0x32, 0x00 };
+            records = BitConverter.ToInt32(database, 8);
+            if (database.Take(8).SequenceEqual(magicV1))
+            {
+                viewGroups = 1;
+                databaseFormat = "URP3DM1";
+                return records >= 0
+                    && (long)database.Length == 12L + (long)records * 44L;
+            }
+
+            if (!database.Take(8).SequenceEqual(magicV2)
+                || database.Length < 16)
+            {
+                return false;
+            }
+
+            databaseFormat = "URP3DM2";
+            viewGroups = BitConverter.ToInt32(database, 12);
+            if (records < 0 || viewGroups < 1)
+            {
+                return false;
+            }
+
+            long cursor = 16;
+            long parsedRecords = 0;
+            for (int group = 0; group < viewGroups; group++)
+            {
+                if (cursor + 8L > database.Length)
+                {
+                    return false;
+                }
+                int groupRecords =
+                    BitConverter.ToInt32(database, (int)cursor + 4);
+                if (groupRecords < 0)
+                {
+                    return false;
+                }
+                cursor += 8L + (long)groupRecords * 44L;
+                parsedRecords += groupRecords;
+                if (cursor > database.Length)
+                {
+                    return false;
+                }
+            }
+            return cursor == database.Length && parsedRecords == records;
+        }
+
         private static void ValidateFormalAssets()
         {
             Require(File.Exists(NewPairPath), $"Missing new B+C FBX: {NewPairPath}");
@@ -281,18 +345,24 @@ namespace Urp.ArDemo.Editor
                 "Pre-alignment B+C must use the opaque textured bottle material.");
 
             byte[] database = File.ReadAllBytes(DatabasePath);
+            int records;
+            int viewGroups;
+            string databaseFormat;
             Require(
-                database.Length >= 12
-                && database.Take(8).SequenceEqual(
-                    new byte[] { 0x55, 0x52, 0x50, 0x33, 0x44, 0x4D, 0x31, 0x00 }),
-                "B database has invalid URP3DM1 magic.");
-            int records = BitConverter.ToInt32(database, 8);
+                TryValidateOrbDatabase(
+                    database,
+                    out records,
+                    out viewGroups,
+                    out databaseFormat),
+                "B database has invalid URP3DM1/URP3DM2 structure.");
             Require(
-                records >= 1000 && database.Length == 12 + records * 44,
-                $"B database record count/length is invalid: {records}.");
+                records >= 1000 && viewGroups >= 2,
+                $"B database coverage is insufficient: {records} records, {viewGroups} groups.");
             string manifest = File.ReadAllText(DatabaseManifestPath);
             Require(
-                manifest.Contains("bottle-full-aligned-v2-reference-b-real-observations-v2")
+                manifest.Contains("bottle-no-cap-grouped-multiview-v27")
+                && manifest.Contains($"\"database_format\": \"{databaseFormat}\"")
+                && manifest.Contains($"\"view_group_count\": {viewGroups}")
                 && manifest.Contains("\"rendered_mesh_descriptors_used\": false")
                 && manifest.Contains("bottle_damaged")
                 && manifest.Contains("\"repair_c_excluded_from_matching\": true")
@@ -380,8 +450,11 @@ namespace Urp.ArDemo.Editor
             Require(
                 native.Contains("SetPosePrior")
                 && native.Contains("guidedMatches")
-                && native.Contains("strictSolution")
+                && native.Contains("strictRatioMatches")
                 && native.Contains("guidedSolution")
+                && native.Contains("modelGroups_")
+                && native.Contains("coarseDescriptors_")
+                && native.Contains("kRelocalizationGroupLimit")
                 && native.Contains("SOLVEPNP_SQPNP")
                 && native.Contains("SampleReferenceHsv")
                 && !native.Contains("frameToTarget")
@@ -797,7 +870,7 @@ namespace Urp.ArDemo.Editor
             int visiblePixels = image.GetPixels32().Count(pixel =>
                 pixel.r + pixel.g + pixel.b >= 48);
             string outputDirectory = Path.GetFullPath(
-                "Builds/Validation/v26");
+                "Builds/Validation/v27");
             Directory.CreateDirectory(outputDirectory);
             File.WriteAllBytes(
                 Path.Combine(outputDirectory, $"repair-c-{viewName}.png"),
