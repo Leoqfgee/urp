@@ -584,9 +584,7 @@ namespace Urp.ArDemo
             }
             ApplyMaterial(
                 referenceRenderers,
-                activeProfile.preAlignmentMaterial != null
-                    ? activeProfile.preAlignmentMaterial
-                    : activeProfile.viewerMaterial);
+                activeProfile.viewerMaterial);
             ApplyMaterial(
                 repairRenderers,
                 activeProfile.repairMaterial != null

@@ -35,10 +35,10 @@ namespace Urp.ArDemo.Editor
             + "Textures/bottle_full_clean_v2_albedo.png";
         private const string BottleDepthShaderPath =
             "Assets/Shaders/BottleDepthOccluder.shader";
+        private const string BottleSurfaceMaterialPath =
+            "Assets/Materials/BottlePhotogrammetryLit.mat";
         private const string BottleCapMaterialPath =
             "Assets/Materials/CleanBottleCapLit.mat";
-        private const string BottleAlignmentMaterialPath =
-            "Assets/Materials/BottlePhotogrammetryAlignment.mat";
         private const string ControllerPath =
             "Assets/Scripts/OrbImageTrackingController.cs";
         private const string SetupPath =
@@ -238,9 +238,6 @@ namespace Urp.ArDemo.Editor
                 $"Missing B depth occlusion shader: {BottleDepthShaderPath}");
             Require(File.Exists(BottleCapMaterialPath),
                 $"Missing clean C material: {BottleCapMaterialPath}");
-            Require(File.Exists(BottleAlignmentMaterialPath),
-                $"Missing semi-transparent B alignment material: {BottleAlignmentMaterialPath}");
-
             RestorationObjectCatalog catalog =
                 AssetDatabase.LoadAssetAtPath<RestorationObjectCatalog>(CatalogPath);
             RestorationObjectProfile profile =
@@ -280,14 +277,12 @@ namespace Urp.ArDemo.Editor
                 "B must use the photogrammetry texture and clean C must use its own white material.");
             Require(
                 profile.preAlignmentMaterial != null
-                && profile.preAlignmentMaterial != profile.viewerMaterial
+                && profile.preAlignmentMaterial == profile.viewerMaterial
                 && profile.preAlignmentMaterial.GetTexture("_BaseMap")
                     == profile.viewerMaterial.GetTexture("_BaseMap")
-                && profile.preAlignmentMaterial.GetFloat("_Surface") > 0.5f
-                && profile.preAlignmentMaterial.GetColor("_BaseColor").a < 0.5f
                 && AssetDatabase.GetAssetPath(profile.preAlignmentMaterial)
-                    == BottleAlignmentMaterialPath,
-                "Pre-alignment B must use the dedicated semi-transparent textured material.");
+                    == BottleSurfaceMaterialPath,
+                "Pre-alignment B+C must use the opaque textured bottle material.");
             Require(
                 profile.referenceDepthOcclusionMaterial != null
                 && profile.referenceDepthOcclusionMaterial.shader != null
@@ -619,7 +614,7 @@ namespace Urp.ArDemo.Editor
                 && AllUseMaterial(
                     cap.GetComponentsInChildren<Renderer>(true),
                     profile.repairMaterial),
-                "Pre-alignment must use translucent textured B and the clean white C material.");
+                "Pre-alignment must use opaque textured B and the clean white C material.");
             Matrix4x4 bodyBefore = body.localToWorldMatrix;
             Matrix4x4 capLocalBefore = pair.worldToLocalMatrix * cap.localToWorldMatrix;
 

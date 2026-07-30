@@ -60,7 +60,7 @@ namespace Urp.ArDemo
         public TextAsset trackingReferenceDatabase;
         public RepairCalibrationProfile calibration;
         public TrackingSettings trackingSettings = new TrackingSettings();
-        [Tooltip("Semi-transparent textured B used only before registration so A remains visible.")]
+        [Tooltip("Opaque textured B used before registration for coarse A/B alignment.")]
         public Material preAlignmentMaterial;
         public Material repairMaterial;
         [FormerlySerializedAs("referenceValidationMaterial")]

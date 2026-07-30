@@ -34,13 +34,11 @@ namespace Urp.ArDemo.Editor
             + "Textures/bottle_full_clean_v2_albedo.png";
         private const string BottleSurfaceMaterialPath =
             "Assets/Materials/BottlePhotogrammetryLit.mat";
-        private const string BottleAlignmentMaterialPath =
-            "Assets/Materials/BottlePhotogrammetryAlignment.mat";
         private const string BottleCapMaterialPath =
             "Assets/Materials/CleanBottleCapLit.mat";
         private const string BottleDepthMaterialPath =
             "Assets/Materials/BottleDepthOccluder.mat";
-        private const string AndroidApkPath = "Builds/BottleFullAlignedV2AR.apk";
+        private const string AndroidApkPath = "Builds/BottleRepairAR_v24.apk";
         private const string BottleReferenceOrbPath =
             "Assets/OrbModels/bottle_reference_b.bytes";
         private const string BottleCalibrationPath =
@@ -144,14 +142,14 @@ namespace Urp.ArDemo.Editor
 
         private static void ConfigureAndroidProject()
         {
-            PlayerSettings.productName = "刚性瓶体配准修复";
+            PlayerSettings.productName = "瓶盖AR修复 v24";
             PlayerSettings.companyName = "qfgeeee";
-            PlayerSettings.bundleVersion = "4.2.0";
+            PlayerSettings.bundleVersion = "4.2.4";
             PlayerSettings.SetApplicationIdentifier(
                 BuildTargetGroup.Android, "com.qfgeeee.paper52objecttrackingar");
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
-            PlayerSettings.Android.bundleVersionCode = 420;
+            PlayerSettings.Android.bundleVersionCode = 424;
             PlayerSettings.SetScriptingBackend(
                 BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
@@ -306,8 +304,6 @@ namespace Urp.ArDemo.Editor
                 "Assets/Objects/Tissue/Materials/TissueViewerLit.mat", TissueTexturePath, 0.16f);
             Material bottleSurfaceMaterial = CreateLitMaterial(
                 BottleSurfaceMaterialPath, BottleAlbedoPath, 0.12f, true);
-            Material bottleAlignmentMaterial = CreateTransparentAlignmentMaterial(
-                BottleAlignmentMaterialPath, BottleAlbedoPath);
             Material bottleCapMaterial = CreateLitMaterial(
                 BottleCapMaterialPath, null, 0.28f, true);
             bottleCapMaterial.SetColor(
@@ -366,7 +362,10 @@ namespace Urp.ArDemo.Editor
             EditorUtility.SetDirty(bottleCalibration);
             bottle.calibration = bottleCalibration;
             bottle.viewerMaterial = bottleSurfaceMaterial;
-            bottle.preAlignmentMaterial = bottleAlignmentMaterial;
+            // The user aligns the full-colour B+C mesh, not a translucent
+            // silhouette. Keep the legacy alignment material out of the
+            // production profile.
+            bottle.preAlignmentMaterial = bottleSurfaceMaterial;
             bottle.repairMaterial = bottleCapMaterial;
             bottle.referenceDepthOcclusionMaterial = bottleDepthMaterial;
             bottle.defaultViewerEuler = Vector3.zero;
@@ -656,29 +655,6 @@ namespace Urp.ArDemo.Editor
             }
             material.shader = shader;
             material.name = "BottleDepthOccluder";
-            material.SetShaderPassEnabled("ShadowCaster", false);
-            EditorUtility.SetDirty(material);
-            return material;
-        }
-
-        private static Material CreateTransparentAlignmentMaterial(
-            string path, string texturePath)
-        {
-            Material material = CreateLitMaterial(path, texturePath, 0.05f, true);
-            Color tint = new Color(1f, 1f, 1f, 0.38f);
-            material.SetColor("_BaseColor", tint);
-            if (material.HasProperty("_Color"))
-                material.SetColor("_Color", tint);
-            material.SetFloat("_Surface", 1f);
-            material.SetFloat("_Blend", 0f);
-            material.SetFloat("_SrcBlend", (float)BlendMode.SrcAlpha);
-            material.SetFloat("_DstBlend", (float)BlendMode.OneMinusSrcAlpha);
-            material.SetFloat("_SrcBlendAlpha", (float)BlendMode.One);
-            material.SetFloat("_DstBlendAlpha", (float)BlendMode.OneMinusSrcAlpha);
-            material.SetFloat("_ZWrite", 0f);
-            material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
-            material.SetOverrideTag("RenderType", "Transparent");
-            material.renderQueue = (int)RenderQueue.Transparent;
             material.SetShaderPassEnabled("ShadowCaster", false);
             EditorUtility.SetDirty(material);
             return material;
