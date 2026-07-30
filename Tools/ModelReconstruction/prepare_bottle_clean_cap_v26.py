@@ -4,15 +4,16 @@
 Run with Blender using the already registered B+C blend:
 
   blender --background bottle_no_cap_clean_cap_registered.blend \
-    --python prepare_bottle_clean_cap_v25.py -- \
-    --blend-output bottle_no_cap_clean_cap_v25.blend \
-    --fbx-output bottle_no_cap_clean_cap_v25.fbx \
-    --report-output bottle_no_cap_clean_cap_v25_report.json
+    --python prepare_bottle_clean_cap_v26.py -- \
+    --blend-output bottle_no_cap_clean_cap_v26.blend \
+    --fbx-output bottle_no_cap_clean_cap_v26.fbx \
+    --report-output bottle_no_cap_clean_cap_v26_report.json
 
 The scan remains the authoritative B geometry and coordinate frame.  The clean
-neck is a visual child of B that fills only the missing/noisy mouth region for
-coarse alignment.  It is hidden together with B after registration.  C remains
-the independently authored clean cap and is never repositioned at runtime.
+neck is a visual child of B that restores only the cylindrical bottle-neck
+silhouette that is absent from the noisy scan.  It is hidden together with B
+after registration.  C remains the independently authored clean cap and is
+never repositioned at runtime.
 """
 
 from __future__ import annotations
@@ -56,25 +57,29 @@ def build_lathed_neck() -> bpy.types.Object:
         bpy.data.objects.remove(old, do_unlink=True)
 
     # Canonical asset is Y-up, with the mouth plane at Y=0 and the body below.
-    # Radii are derived from the measured 34 mm thread diameter.  The lower
-    # profile blends into the noisy scan shoulder and the upper rings reproduce
-    # the silhouette that the user aligns to the real open bottle.
+    # The previous guide widened to 51 mm at its lower edge and looked like a
+    # detached funnel.  Keep this replacement within the measured neck/collar
+    # envelope: a 34 mm cylindrical neck, two shallow thread rings and a
+    # 38 mm lower support collar.  C overlaps the upper 8.8 mm exactly as a
+    # screwed-on cap should, while the lower neck remains visible for coarse
+    # B-to-A alignment.
     profile = [
-        (-0.220, 0.150),
-        (-0.195, 0.132),
-        (-0.170, 0.111),
-        (-0.145, 0.101),
-        (-0.128, 0.101),
-        (-0.120, 0.110),
-        (-0.108, 0.110),
-        (-0.100, 0.101),
-        (-0.080, 0.101),
-        (-0.071, 0.108),
-        (-0.059, 0.108),
-        (-0.051, 0.101),
-        (-0.030, 0.101),
-        (-0.022, 0.106),
-        (-0.010, 0.106),
+        (-0.190, 0.112),
+        (-0.178, 0.112),
+        (-0.170, 0.103),
+        (-0.145, 0.103),
+        (-0.137, 0.108),
+        (-0.125, 0.108),
+        (-0.117, 0.101),
+        (-0.095, 0.101),
+        (-0.088, 0.106),
+        (-0.078, 0.106),
+        (-0.070, 0.101),
+        (-0.049, 0.101),
+        (-0.042, 0.106),
+        (-0.032, 0.106),
+        (-0.024, 0.101),
+        (-0.005, 0.101),
         (0.000, 0.100),
     ]
     vertices: list[tuple[float, float, float]] = []
@@ -183,7 +188,7 @@ def main() -> None:
     cap_min, cap_max = local_bounds(cap)
     neck_min, neck_max = local_bounds(neck)
     payload = {
-        "version": "bottle-no-cap-clean-cap-v25",
+        "version": "bottle-no-cap-clean-cap-v26",
         "runtimeHierarchy": {
             "root": root.name,
             "referenceB": body.name,
@@ -219,6 +224,19 @@ def main() -> None:
             "boundsMin": cap_min,
             "boundsMax": cap_max,
         },
+        "capSeating": {
+            "mouthPlaneModelY": 0.0,
+            "capBottomMeters": cap_min[1] * METERS_PER_MODEL_UNIT,
+            "capTopMeters": cap_max[1] * METERS_PER_MODEL_UNIT,
+            "neckTopMeters": neck_max[1] * METERS_PER_MODEL_UNIT,
+            "neckMaximumDiameterMeters": (
+                max(abs(neck_min[0]), abs(neck_max[0])) * 2.0
+                * METERS_PER_MODEL_UNIT
+            ),
+            "capOverlapsNeckAxially": (
+                cap_min[1] <= neck_max[1] and cap_max[1] >= neck_max[1]
+            ),
+        },
         "rigidContract": {
             "bLocalMatrix": [float(value) for row in body.matrix_local for value in row],
             "neckLocalMatrix": [float(value) for row in neck.matrix_local for value in row],
@@ -231,7 +249,7 @@ def main() -> None:
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
-    print("BOTTLE_CLEAN_CAP_V25_OK")
+    print("BOTTLE_CLEAN_CAP_V26_OK")
     print(json.dumps(payload, ensure_ascii=False))
 
 

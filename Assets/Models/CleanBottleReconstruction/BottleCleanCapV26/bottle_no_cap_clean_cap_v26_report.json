@@ -1,5 +1,5 @@
 {
-  "version": "bottle-no-cap-clean-cap-v25",
+  "version": "bottle-no-cap-clean-cap-v26",
   "runtimeHierarchy": {
     "root": "BottleRepairRoot",
     "referenceB": "DamagedBottleB",
@@ -29,14 +29,14 @@
     "purpose": "opaque B-only coarse-alignment geometry; hidden with B after Start",
     "outerDiameterMeters": 0.034,
     "boundsMin": [
-      -0.15000000596046448,
-      -0.2199999988079071,
-      -0.15000000596046448
+      -0.1120000034570694,
+      -0.1899999976158142,
+      -0.1120000034570694
     ],
     "boundsMax": [
-      0.15000000596046448,
+      0.1120000034570694,
       0.0,
-      0.15000000596046448
+      0.1120000034570694
     ]
   },
   "repairC": {
@@ -53,6 +53,14 @@
       0.007941186428070068,
       0.11537646502256393
     ]
+  },
+  "capSeating": {
+    "mouthPlaneModelY": 0.0,
+    "capBottomMeters": -0.008770002871751786,
+    "capTopMeters": 0.0013500016927719116,
+    "neckTopMeters": 0.0,
+    "neckMaximumDiameterMeters": 0.0380800011754036,
+    "capOverlapsNeckAxially": true
   },
   "rigidContract": {
     "bLocalMatrix": [

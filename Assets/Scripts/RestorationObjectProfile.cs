@@ -1,6 +1,5 @@
 using System;
 using UnityEngine;
-using UnityEngine.Serialization;
 using Urp.ArDemo.Calibration;
 
 namespace Urp.ArDemo
@@ -63,10 +62,6 @@ namespace Urp.ArDemo
         [Tooltip("Opaque textured B used before registration for coarse A/B alignment.")]
         public Material preAlignmentMaterial;
         public Material repairMaterial;
-        [FormerlySerializedAs("referenceValidationMaterial")]
-        [Tooltip("Depth-only material for B after Start; B remains in the rigid hierarchy and occludes C without drawing color.")]
-        public Material referenceDepthOcclusionMaterial;
-
         [Header("Physical scale")]
         public bool physicalScaleVerified;
         public PhysicalMeasurement[] physicalMeasurements = Array.Empty<PhysicalMeasurement>();

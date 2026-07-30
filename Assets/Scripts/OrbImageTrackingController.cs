@@ -63,8 +63,8 @@ namespace Urp.ArDemo
         [SerializeField] private float preAlignmentMouthHeightMeters = 0f;
         [Range(0.08f, 0.35f)]
         [SerializeField] private float guidedMatchRadiusFraction = 0.18f;
-        [SerializeField] private float maximumInitialCorrectionMeters = 0.30f;
-        [SerializeField] private float maximumInitialCorrectionDegrees = 60f;
+        [SerializeField] private float maximumInitialCorrectionMeters = 0.18f;
+        [SerializeField] private float maximumInitialCorrectionDegrees = 45f;
 
         [Header("Stable full-pose registration")]
         [SerializeField] private int registrationConfirmationFrames = 8;
@@ -89,7 +89,6 @@ namespace Urp.ArDemo
         private Transform registeredRepairPart;
         private Renderer[] referenceRenderers = Array.Empty<Renderer>();
         private Renderer[] repairRenderers = Array.Empty<Renderer>();
-        private Renderer[] geometricOcclusionRenderers = Array.Empty<Renderer>();
         private RepairCalibrationProfile calibration;
         private bool modeEnabled;
         private bool recognitionRunning;
@@ -212,7 +211,7 @@ namespace Urp.ArDemo
             GameObject instance = Instantiate(
                 profile.registeredBottlePairPrefab,
                 modelCoordinateAlignment);
-            instance.name = "BottleCleanCapV25";
+            instance.name = "BottleCleanCapV26";
             instance.transform.localPosition = Vector3.zero;
             instance.transform.localRotation = Quaternion.identity;
             instance.transform.localScale = Vector3.one;
@@ -274,7 +273,6 @@ namespace Urp.ArDemo
             {
                 appearanceConsistency.BindRepairRenderers(repairRenderers);
             }
-            BuildGeometricOcclusionProxy(profile);
             if (occlusionRoot != null)
             {
                 occlusionRoot.gameObject.SetActive(false);
@@ -301,7 +299,6 @@ namespace Urp.ArDemo
                 trackingState = TrackingState.Idle;
                 SetReferenceHierarchyVisible(false);
                 SetRepairHierarchyVisible(false);
-                SetGeometricOcclusionVisible(false);
                 UpdateStatus(string.Empty);
                 return;
             }
@@ -310,7 +307,6 @@ namespace Urp.ArDemo
                 trackingState = TrackingState.Idle;
                 SetReferenceHierarchyVisible(false);
                 SetRepairHierarchyVisible(false);
-                SetGeometricOcclusionVisible(false);
                 UpdateStatus("尚未选择跟踪对象。");
                 return;
             }
@@ -319,7 +315,6 @@ namespace Urp.ArDemo
                 trackingState = TrackingState.Idle;
                 SetReferenceHierarchyVisible(false);
                 SetRepairHierarchyVisible(false);
-                SetGeometricOcclusionVisible(false);
                 UpdateStatus($"{activeProfile.displayName} 的新模型 B 或三维特征库不可用。");
                 return;
             }
@@ -522,7 +517,7 @@ namespace Urp.ArDemo
             // OpenCV camera coordinates and Unity camera coordinates have
             // opposite handedness. Reflect the model's semantic right axis
             // once when building the proper OpenCV rotation. This is
-            // calibration-driven: v25 printed-front is +X and object-right
+            // calibration-driven: v26 printed-front is +X and object-right
             // is -Z, so hard-coding the raw X column was incorrect.
             Vector3 semanticRight = calibration.RightInModel.normalized;
             Vector3 columnX = ModelDirectionToCameraCv(
@@ -586,11 +581,6 @@ namespace Urp.ArDemo
             SetRenderersEnabled(referenceRenderers, visible);
         }
 
-        private void SetGeometricOcclusionVisible(bool visible)
-        {
-            SetRenderersEnabled(geometricOcclusionRenderers, visible);
-        }
-
         public void ShowRepairPresentation()
         {
             if (activeProfile == null)
@@ -610,7 +600,6 @@ namespace Urp.ArDemo
             // glossy close-range bottle, because it can swallow C completely.
             SetReferenceHierarchyVisible(false);
             SetRepairHierarchyVisible(true);
-            SetGeometricOcclusionVisible(true);
         }
 
         private void ShowPreAlignmentPair()
@@ -634,7 +623,6 @@ namespace Urp.ArDemo
                     : activeProfile.viewerMaterial);
             SetReferenceHierarchyVisible(true);
             SetRepairHierarchyVisible(true);
-            SetGeometricOcclusionVisible(false);
         }
 
         private void ShowPresentationForCurrentState()
@@ -739,10 +727,9 @@ namespace Urp.ArDemo
                         Vector3.Distance(trackedObjectPoseRoot.position, targetPosition);
                     float initialRotationCorrection =
                         Quaternion.Angle(trackedObjectPoseRoot.rotation, targetRotation);
-                    if (initialPositionCorrection > maximumInitialCorrectionMeters
-                        || (sessionCoordinateFrameCalibrated
-                            && initialRotationCorrection
-                                > maximumInitialCorrectionDegrees))
+                    if (!IsInitialPoseCorrectionAcceptable(
+                            targetPosition,
+                            targetRotation))
                     {
                         trackingState = TrackingState.Candidate;
                         UpdateStatus(
@@ -828,6 +815,22 @@ namespace Urp.ArDemo
             {
                 image.Dispose();
             }
+        }
+
+        private bool IsInitialPoseCorrectionAcceptable(
+            Vector3 targetPosition,
+            Quaternion targetRotation)
+        {
+            if (trackedObjectPoseRoot == null)
+            {
+                return false;
+            }
+            return Vector3.Distance(
+                       trackedObjectPoseRoot.position,
+                       targetPosition) <= maximumInitialCorrectionMeters
+                   && Quaternion.Angle(
+                       trackedObjectPoseRoot.rotation,
+                       targetRotation) <= maximumInitialCorrectionDegrees;
         }
 
         private bool PassesPoseQuality(NativeOrbResult result, out string reason)
@@ -1177,7 +1180,6 @@ namespace Urp.ArDemo
             registeredRepairPart = null;
             referenceRenderers = Array.Empty<Renderer>();
             repairRenderers = Array.Empty<Renderer>();
-            geometricOcclusionRenderers = Array.Empty<Renderer>();
         }
 
         private bool ValidateRigidHierarchy(out string reason)
@@ -1387,45 +1389,6 @@ namespace Urp.ArDemo
                 }
             }
             return matches.ToArray();
-        }
-
-        private void BuildGeometricOcclusionProxy(
-            RestorationObjectProfile profile)
-        {
-            geometricOcclusionRenderers = Array.Empty<Renderer>();
-            if (profile == null
-                || profile.referenceDepthOcclusionMaterial == null
-                || registeredBottlePairRoot == null
-                || registeredReferenceModel == null)
-            {
-                return;
-            }
-
-            Transform source = FindDescendant(
-                registeredReferenceModel,
-                "ReferenceNeckProxyB");
-            if (source == null)
-            {
-                return;
-            }
-
-            GameObject depthProxy = Instantiate(
-                source.gameObject,
-                registeredBottlePairRoot);
-            depthProxy.name = "ReferenceNeckDepthOccluder";
-            depthProxy.transform.localPosition = source.localPosition;
-            depthProxy.transform.localRotation = source.localRotation;
-            depthProxy.transform.localScale = source.localScale;
-            geometricOcclusionRenderers =
-                depthProxy.GetComponentsInChildren<Renderer>(true);
-            ApplyMaterial(
-                geometricOcclusionRenderers,
-                profile.referenceDepthOcclusionMaterial);
-            foreach (Renderer renderer in geometricOcclusionRenderers)
-            {
-                PrepareOverlayRenderer(renderer);
-            }
-            SetGeometricOcclusionVisible(false);
         }
 
         private bool IsRepairProjectedIntoCamera()

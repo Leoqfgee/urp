@@ -1,4 +1,4 @@
-# BottleCleanCapV25 AR restoration
+# BottleCleanCap v26 AR restoration
 
 Unity 2022.3.62f2 Android project for rigid A→B→C restoration:
 
@@ -27,7 +27,7 @@ world-space B+C pose and stops following the camera immediately.
 ## Formal assets
 
 - B+C FBX:
-  `Assets/Models/CleanBottleReconstruction/BottleCleanCapV25/bottle_no_cap_clean_cap_v25.fbx`
+  `Assets/Models/CleanBottleReconstruction/BottleCleanCapV26/bottle_no_cap_clean_cap_v26.fbx`
 - B-only ORB database: `Assets/OrbModels/bottle_reference_b.bytes`
 - Calibration: `Assets/Calibration/CoconutBottleRepairCalibration.asset`
 - Scene: `Assets/Scenes/UrpARPrototype.unity`
@@ -40,7 +40,7 @@ world-space B+C pose and stops following the camera immediately.
   `Urp.ArDemo.Editor.UrpArValidation.RunPlayModeSmokeFromCommandLine`
 - Android build:
   `Urp.ArDemo.Editor.UrpArProjectSetup.BuildAndroidFromCommandLine`
-- APK: `Builds/BottleRepairAR_v25.apk`
+- APK: `Builds/BottleRepairAR_v26.apk`
 
 Static validation and an APK do not prove physical A/B registration. Real-device
 acceptance still requires an actual translucent-B-over-A recording followed by

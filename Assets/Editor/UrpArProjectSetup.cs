@@ -25,20 +25,18 @@ namespace Urp.ArDemo.Editor
         private const string ScenePath = "Assets/Scenes/UrpARPrototype.unity";
         private const string FontPath = "Assets/Fonts/NotoSansSC-Regular.otf";
         private const string BottleRegisteredPairPath =
-            "Assets/Models/CleanBottleReconstruction/BottleCleanCapV25/"
-            + "bottle_no_cap_clean_cap_v25.fbx";
+            "Assets/Models/CleanBottleReconstruction/BottleCleanCapV26/"
+            + "bottle_no_cap_clean_cap_v26.fbx";
         private const string BottleThumbnailPath =
             "Assets/Textures/Targets/bottle_full_aligned_v2.png";
         private const string BottleAlbedoPath =
-            "Assets/Models/CleanBottleReconstruction/BottleCleanCapV25/"
+            "Assets/Models/CleanBottleReconstruction/BottleCleanCapV26/"
             + "Textures/bottle_full_clean_v2_albedo.png";
         private const string BottleSurfaceMaterialPath =
             "Assets/Materials/BottlePhotogrammetryLit.mat";
         private const string BottleCapMaterialPath =
             "Assets/Materials/CleanBottleCapLit.mat";
-        private const string BottleDepthMaterialPath =
-            "Assets/Materials/BottleDepthOccluder.mat";
-        private const string AndroidApkPath = "Builds/BottleRepairAR_v25.apk";
+        private const string AndroidApkPath = "Builds/BottleRepairAR_v26.apk";
         private const string BottleReferenceOrbPath =
             "Assets/OrbModels/bottle_reference_b.bytes";
         private const string BottleCalibrationPath =
@@ -142,14 +140,14 @@ namespace Urp.ArDemo.Editor
 
         private static void ConfigureAndroidProject()
         {
-            PlayerSettings.productName = "瓶盖AR修复 v25";
+            PlayerSettings.productName = "瓶盖AR修复 v26";
             PlayerSettings.companyName = "qfgeeee";
-            PlayerSettings.bundleVersion = "4.2.5";
+            PlayerSettings.bundleVersion = "4.2.6";
             PlayerSettings.SetApplicationIdentifier(
                 BuildTargetGroup.Android, "com.qfgeeee.paper52objecttrackingar");
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
-            PlayerSettings.Android.bundleVersionCode = 425;
+            PlayerSettings.Android.bundleVersionCode = 426;
             PlayerSettings.SetScriptingBackend(
                 BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
@@ -308,17 +306,15 @@ namespace Urp.ArDemo.Editor
                 BottleCapMaterialPath, null, 0.28f, true);
             bottleCapMaterial.SetColor(
                 "_BaseColor",
-                new Color(0.96f, 0.96f, 0.94f, 1f));
-            Material bottleDepthMaterial =
-                CreateDepthOcclusionMaterial(BottleDepthMaterialPath);
+                new Color(0.90f, 0.90f, 0.88f, 1f));
             GameObject bottlePair =
                 AssetDatabase.LoadAssetAtPath<GameObject>(BottleRegisteredPairPath);
             if (bottlePair == null)
-                throw new MissingReferenceException("BottleCleanCapV25 FBX import failed.");
+                throw new MissingReferenceException("BottleCleanCapV26 FBX import failed.");
 
             RestorationObjectProfile bottle = LoadOrCreate<RestorationObjectProfile>(
                 BottleProfilePath);
-            bottle.objectId = "bottle_no_cap_clean_cap_v25";
+            bottle.objectId = "bottle_no_cap_clean_cap_v26";
             bottle.displayName = "新重建无盖饮料瓶与瓶盖";
             bottle.shortDescription =
                 "Blender 中刚性对齐的无盖瓶身 B 与干净白色瓶盖 C。";
@@ -348,7 +344,7 @@ namespace Urp.ArDemo.Editor
                 LoadOrCreate<RepairCalibrationProfile>(BottleCalibrationPath);
             bottleCalibration.objectOriginInModel = Vector3.zero;
             bottleCalibration.mouthCenterInModel = Vector3.zero;
-            // The Blender v25 canonical frame is +Y up and the printed label
+            // The Blender v26 canonical frame is +Y up and the printed label
             // faces +X.  Therefore object-right is -Z.  This same frame is
             // used by the ORB database, PnP conversion and B+C rendering.
             bottleCalibration.mouthRightInModel = new Vector3(0f, 0f, -0.1f);
@@ -370,7 +366,6 @@ namespace Urp.ArDemo.Editor
             // production profile.
             bottle.preAlignmentMaterial = bottleSurfaceMaterial;
             bottle.repairMaterial = bottleCapMaterial;
-            bottle.referenceDepthOcclusionMaterial = bottleDepthMaterial;
             bottle.defaultViewerEuler = Vector3.zero;
             bottle.viewerMargin = 0.18f;
             bottle.trackingSettings.minimumGoodMatches = 10;
@@ -455,7 +450,6 @@ namespace Urp.ArDemo.Editor
             tissue.calibration = tissueCalibration;
             tissue.viewerMaterial = tissueMaterial;
             tissue.repairMaterial = null;
-            tissue.referenceDepthOcclusionMaterial = null;
             tissue.defaultViewerEuler = new Vector3(-90f, 0f, 0f);
             tissue.viewerMargin = 0.20f;
             tissue.physicalScaleVerified = false;
@@ -640,25 +634,6 @@ namespace Urp.ArDemo.Editor
             if (!string.IsNullOrEmpty(texturePath))
                 material.SetTexture("_BaseMap",
                     AssetDatabase.LoadAssetAtPath<Texture2D>(texturePath));
-            EditorUtility.SetDirty(material);
-            return material;
-        }
-
-        private static Material CreateDepthOcclusionMaterial(string path)
-        {
-            Shader shader = Shader.Find("URP AR/Bottle Depth Occluder");
-            if (shader == null)
-                throw new InvalidOperationException(
-                    "URP AR/Bottle Depth Occluder shader is missing.");
-            Material material = AssetDatabase.LoadAssetAtPath<Material>(path);
-            if (material == null)
-            {
-                material = new Material(shader);
-                AssetDatabase.CreateAsset(material, path);
-            }
-            material.shader = shader;
-            material.name = "BottleDepthOccluder";
-            material.SetShaderPassEnabled("ShadowCaster", false);
             EditorUtility.SetDirty(material);
             return material;
         }

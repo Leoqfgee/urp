@@ -13,7 +13,7 @@ used only as one iterative seed), refined with LM, and ranked by inliers,
 inlier ratio and reprojection error. The accepted pose still requires spatial
 coverage, positive depth and bounded RMS/maximum reprojection error.
 
-The v25 build uses a 10-level ORB pyramid (1.15 scale factor) and a low FAST
+The v26 build uses a 10-level ORB pyramid (1.15 scale factor) and a low FAST
 threshold so label features remain repeatable under scale and oblique-view
 changes. After registration, guided matching is constrained to a tighter
 projected neighbourhood; global strict matches remain available for

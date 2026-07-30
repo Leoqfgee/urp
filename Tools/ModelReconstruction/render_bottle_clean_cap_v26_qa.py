@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render six fixed QA views of the canonical BottleCleanCapV25 asset."""
+"""Render six fixed QA views of the canonical BottleCleanCap asset."""
 
 from __future__ import annotations
 
@@ -63,11 +63,14 @@ def main() -> None:
     scene.camera = camera
 
     target = Vector((0.0, -0.56, 0.0))
+    # The canonical report defines printed-front as +X.  The former QA script
+    # called the +Z barcode view "front", which hid a real orientation error
+    # during review even though runtime used +X correctly.
     views = {
-        "front": Vector((0.0, -0.48, 2.35)),
-        "back": Vector((0.0, -0.48, -2.35)),
-        "left": Vector((-2.35, -0.48, 0.0)),
-        "right": Vector((2.35, -0.48, 0.0)),
+        "front": Vector((2.35, -0.48, 0.0)),
+        "back": Vector((-2.35, -0.48, 0.0)),
+        "left": Vector((0.0, -0.48, 2.35)),
+        "right": Vector((0.0, -0.48, -2.35)),
         "top": Vector((0.0, 2.05, 0.35)),
         "oblique": Vector((1.55, 0.35, 1.75)),
     }
@@ -108,8 +111,11 @@ def main() -> None:
         })
 
     payload = {
-        "version": "bottle-full-aligned-v2-qa",
-        "hierarchy": "BottleRepairRoot/DamagedBottleB + BottleCapC",
+        "version": "bottle-no-cap-clean-cap-v26-qa",
+        "hierarchy": (
+            "BottleRepairRoot/DamagedBottleB/ReferenceNeckProxyB "
+            "+ BottleCapC"
+        ),
         "bodyLocalMatrix": [float(value) for row in body.matrix_local for value in row],
         "capLocalMatrix": [float(value) for row in cap.matrix_local for value in row],
         "views": rendered,

@@ -1,4 +1,4 @@
-# BottleCleanCapV25 A→B→C contract
+# BottleCleanCap v26 A→B→C contract
 
 ## Asset mapping and rigid registration
 
@@ -9,7 +9,7 @@
   `F:\Au\暑期任务\bottle0720\processed_20260721\clean_cap`.
 
 The production Blender source is
-`F:\Meshroom_work\bottle_full_clean_v2\split_models\bottle_no_cap_clean_cap_v25.blend`.
+`F:\Meshroom_work\bottle_full_clean_v2\split_models\bottle_no_cap_clean_cap_v26.blend`.
 Its FBX sibling is the app source. The canonical frame is Y-up, the printed
 label front faces +X, the bottle-mouth plane and centre are `(0, 0, 0)`, and B
 extends toward negative Y. C's inner roof
@@ -19,7 +19,7 @@ inner diameter leaves 0.2 mm radial clearance around the measured 34 mm neck.
 B and C are baked into this common frame. Their local position and rotation are
 zero and local scale is one. The exact source-to-canonical matrix, dimensions,
 hash and B/C transforms are stored in
-`bottle_no_cap_clean_cap_v25_report.json`.
+`bottle_no_cap_clean_cap_v26_report.json`.
 
 ## Runtime pose chain
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the formal BottleCleanCapV25 runtime data without Unity."""
+"""Validate the formal BottleCleanCap v26 runtime data without Unity."""
 
 from __future__ import annotations
 
@@ -40,10 +40,10 @@ def main() -> None:
     manifest_path = ROOT / "Assets/OrbModels/bottle_reference_b_manifest.json"
     fbx = (
         ROOT
-        / "Assets/Models/CleanBottleReconstruction/BottleCleanCapV25"
-        / "bottle_no_cap_clean_cap_v25.fbx"
+        / "Assets/Models/CleanBottleReconstruction/BottleCleanCapV26"
+        / "bottle_no_cap_clean_cap_v26.fbx"
     )
-    report_path = fbx.with_name("bottle_no_cap_clean_cap_v25_report.json")
+    report_path = fbx.with_name("bottle_no_cap_clean_cap_v26_report.json")
     controller_path = ROOT / "Assets/Scripts/OrbImageTrackingController.cs"
     points = read_points(database)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -67,6 +67,13 @@ def main() -> None:
         "repairC": "BottleCapC",
     }:
         raise ValueError("Blender report hierarchy is invalid")
+    if report.get("version") != "bottle-no-cap-clean-cap-v26":
+        raise ValueError("Blender report is not the v26 clean-neck registration")
+    seating = report.get("capSeating", {})
+    if not seating.get("capOverlapsNeckAxially"):
+        raise ValueError("BottleCapC is not seated over the cylindrical neck")
+    if seating.get("neckMaximumDiameterMeters", 1.0) > 0.04:
+        raise ValueError("ReferenceNeckProxyB is still an oversized funnel")
     if not report["rigidContract"]["cIsNeverPositionedIndependentlyAtRuntime"]:
         raise ValueError("Blender report does not preserve the rigid B/C relationship")
 
@@ -84,7 +91,7 @@ def main() -> None:
         raise ValueError(f"Production tracker contains prohibited logic: {found}")
 
     payload = {
-        "status": "BOTTLE_CLEAN_CAP_V25_DATA_OK",
+        "status": "BOTTLE_CLEAN_CAP_V26_DATA_OK",
         "fbx_sha256": sha256(fbx),
         "database_sha256": sha256(database),
         "database_records": len(points),

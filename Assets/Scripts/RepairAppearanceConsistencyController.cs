@@ -33,6 +33,7 @@ namespace Urp.ArDemo
         private Color sceneCorrection = Color.white;
         private Color referenceCorrection = Color.white;
         private Color smoothedCorrection = Color.white;
+        private Color repairBaseColor = Color.white;
         private bool hasSceneCorrection;
         private bool hasReferenceCorrection;
         private float referenceConfidence;
@@ -43,6 +44,18 @@ namespace Urp.ArDemo
         public void BindRepairRenderers(Renderer[] renderers)
         {
             repairRenderers = renderers ?? Array.Empty<Renderer>();
+            foreach (Renderer renderer in repairRenderers)
+            {
+                Material material = renderer != null
+                    ? renderer.sharedMaterial
+                    : null;
+                if (material != null && material.HasProperty(BaseColorId))
+                {
+                    repairBaseColor = material.GetColor(BaseColorId);
+                    repairBaseColor.a = 1f;
+                    break;
+                }
+            }
             ApplyCorrection();
         }
 
@@ -194,7 +207,13 @@ namespace Urp.ArDemo
                     continue;
                 }
                 renderer.GetPropertyBlock(propertyBlock);
-                propertyBlock.SetColor(BaseColorId, smoothedCorrection);
+                propertyBlock.SetColor(
+                    BaseColorId,
+                    new Color(
+                        repairBaseColor.r * smoothedCorrection.r,
+                        repairBaseColor.g * smoothedCorrection.g,
+                        repairBaseColor.b * smoothedCorrection.b,
+                        1f));
                 renderer.SetPropertyBlock(propertyBlock);
             }
         }
