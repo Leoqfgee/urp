@@ -25,18 +25,18 @@ namespace Urp.ArDemo.Editor
         private const string ScenePath = "Assets/Scenes/UrpARPrototype.unity";
         private const string FontPath = "Assets/Fonts/NotoSansSC-Regular.otf";
         private const string BottleRegisteredPairPath =
-            "Assets/Models/CleanBottleReconstruction/BottleCleanCapV29/"
-            + "bottle_no_cap_clean_cap_v29.fbx";
+            "Assets/Models/CleanBottleReconstruction/BottleCleanCapV30/"
+            + "bottle_no_cap_clean_cap_v30.fbx";
         private const string BottleThumbnailPath =
             "Assets/Textures/Targets/bottle_full_aligned_v2.png";
         private const string BottleAlbedoPath =
-            "Assets/Models/CleanBottleReconstruction/BottleCleanCapV29/"
+            "Assets/Models/CleanBottleReconstruction/BottleCleanCapV30/"
             + "Textures/bottle_full_clean_v2_albedo.png";
         private const string BottleSurfaceMaterialPath =
             "Assets/Materials/BottlePhotogrammetryLit.mat";
         private const string BottleCapMaterialPath =
             "Assets/Materials/CleanBottleCapLit.mat";
-        private const string AndroidApkPath = "Builds/BottleRepairAR_v29.apk";
+        private const string AndroidApkPath = "Builds/BottleRepairAR_v30.apk";
         private const string BottleReferenceOrbPath =
             "Assets/OrbModels/bottle_reference_b.bytes";
         private const string BottleCalibrationPath =
@@ -140,14 +140,14 @@ namespace Urp.ArDemo.Editor
 
         private static void ConfigureAndroidProject()
         {
-            PlayerSettings.productName = "瓶盖AR修复 v29";
+            PlayerSettings.productName = "瓶盖AR修复 v30";
             PlayerSettings.companyName = "qfgeeee";
-            PlayerSettings.bundleVersion = "4.2.9";
+            PlayerSettings.bundleVersion = "4.3.0";
             PlayerSettings.SetApplicationIdentifier(
                 BuildTargetGroup.Android, "com.qfgeeee.paper52objecttrackingar");
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
-            PlayerSettings.Android.bundleVersionCode = 429;
+            PlayerSettings.Android.bundleVersionCode = 430;
             PlayerSettings.SetScriptingBackend(
                 BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
@@ -310,11 +310,11 @@ namespace Urp.ArDemo.Editor
             GameObject bottlePair =
                 AssetDatabase.LoadAssetAtPath<GameObject>(BottleRegisteredPairPath);
             if (bottlePair == null)
-                throw new MissingReferenceException("BottleCleanCapV29 FBX import failed.");
+                throw new MissingReferenceException("BottleCleanCapV30 FBX import failed.");
 
             RestorationObjectProfile bottle = LoadOrCreate<RestorationObjectProfile>(
                 BottleProfilePath);
-            bottle.objectId = "bottle_no_cap_clean_cap_v29";
+            bottle.objectId = "bottle_no_cap_clean_cap_v30";
             bottle.displayName = "新重建无盖饮料瓶与瓶盖";
             bottle.shortDescription =
                 "Blender 中刚性对齐的无盖瓶身 B 与干净白色瓶盖 C。";
@@ -343,11 +343,13 @@ namespace Urp.ArDemo.Editor
             RepairCalibrationProfile bottleCalibration =
                 LoadOrCreate<RepairCalibrationProfile>(BottleCalibrationPath);
             bottleCalibration.objectOriginInModel = Vector3.zero;
-            bottleCalibration.mouthCenterInModel = Vector3.zero;
-            // The Blender v29 tracking datum is the physical bottle-mouth
-            // centre at Y=0. The 10 mm B-only neck guide extends downward from
-            // that plane and C overlaps it at the same origin. Runtime never
-            // adds a neck/cap lift or positions C separately.
+            bottleCalibration.mouthCenterInModel =
+                new Vector3(0f, 0.05882353f, 0f);
+            // The Blender v30 tracking datum remains the residual B shoulder
+            // cut at Y=0. The photographed 10 mm neck extends upward to the
+            // physical mouth at Y=0.05882353 model units. C's authored inner
+            // roof is fixed to that mouth plane. Runtime never adds another
+            // neck/cap lift or positions C separately.
             // The canonical frame is +Y up and the printed label
             // faces +X.  Therefore object-right is -Z.  This same frame is
             // used by the ORB database, PnP conversion and B+C rendering.

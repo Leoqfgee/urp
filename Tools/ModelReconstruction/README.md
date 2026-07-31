@@ -1,11 +1,11 @@
-# BottleCleanCap v29 production assets
+# BottleCleanCap v30 production assets
 
 The only production bottle geometry is the rigid Blender-authored pair from:
 
 `F:\Meshroom_work\bottle_full_clean_v2\split_models`
 
-Unity uses `bottle_no_cap_clean_cap_v29.fbx` under
-`Assets/Models/CleanBottleReconstruction/BottleCleanCapV29`. The hierarchy is:
+Unity uses `bottle_no_cap_clean_cap_v30.fbx` under
+`Assets/Models/CleanBottleReconstruction/BottleCleanCapV30`. The hierarchy is:
 
 ```text
 BottleRepairRoot
@@ -28,6 +28,6 @@ stored at `Assets/OrbModels/bottle_reference_b.bytes`; its manifest records the
 source, bounds, hash, and supplied failure-frame replay evidence.
 
 The copied Meshroom atlas is
-`Assets/Models/CleanBottleReconstruction/BottleCleanCapV29/Textures/bottle_full_clean_v2_albedo.png`.
+`Assets/Models/CleanBottleReconstruction/BottleCleanCapV30/Textures/bottle_full_clean_v2_albedo.png`.
 Unity assigns it to B. C and the B-only neck guide use the separate clean white
 material.

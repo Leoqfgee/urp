@@ -20,7 +20,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def point_at(obj: bpy.types.Object, target: Vector) -> None:
-    # This asset is canonical Y-up (mouth at Y=0, body toward negative Y).
+    # This asset is canonical Y-up (shoulder cut at Y=0, mouth above it, and
+    # body toward negative Y).
     # Blender's to_track_quat uses its conventional Z-up frame and can roll a
     # near-horizontal camera by 180 degrees here, so construct a Y-up camera
     # basis explicitly.
@@ -110,8 +111,18 @@ def main() -> None:
             "cameraLocation": [float(value) for value in location],
         })
 
+    # Also publish the exact B geometry used for A-to-B registration.  The
+    # normal six views include C and therefore hide most of the short neck.
+    cap.hide_render = True
+    camera.location = views["front"]
+    point_at(camera, target)
+    b_only_output = args.output / "reference-b-front.png"
+    scene.render.filepath = str(b_only_output)
+    bpy.ops.render.render(write_still=True)
+    cap.hide_render = False
+
     payload = {
-        "version": "bottle-no-cap-clean-cap-v29-qa",
+        "version": "bottle-no-cap-clean-cap-v30-qa",
         "hierarchy": (
             "BottleRepairRoot/DamagedBottleB/ReferenceNeckProxyB "
             "+ BottleCapC"
@@ -119,6 +130,7 @@ def main() -> None:
         "bodyLocalMatrix": [float(value) for row in body.matrix_local for value in row],
         "capLocalMatrix": [float(value) for row in cap.matrix_local for value in row],
         "views": rendered,
+        "referenceBFrontImage": b_only_output.name,
         "deviceOverlayVerified": False,
     }
     (args.output / "views.json").write_text(

@@ -76,17 +76,17 @@ def main() -> None:
     manifest_path = ROOT / "Assets/OrbModels/bottle_reference_b_manifest.json"
     fbx = (
         ROOT
-        / "Assets/Models/CleanBottleReconstruction/BottleCleanCapV29"
-        / "bottle_no_cap_clean_cap_v29.fbx"
+        / "Assets/Models/CleanBottleReconstruction/BottleCleanCapV30"
+        / "bottle_no_cap_clean_cap_v30.fbx"
     )
-    report_path = fbx.with_name("bottle_no_cap_clean_cap_v29_report.json")
+    report_path = fbx.with_name("bottle_no_cap_clean_cap_v30_report.json")
     controller_path = ROOT / "Assets/Scripts/OrbImageTrackingController.cs"
     points, group_count, database_format = read_points(database)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     report = json.loads(report_path.read_text(encoding="utf-8"))
     controller = controller_path.read_text(encoding="utf-8")
 
-    if manifest["version"] != "bottle-no-cap-grouped-multiview-v29":
+    if manifest["version"] != "bottle-no-cap-grouped-multiview-v30":
         raise ValueError("ORB manifest is not the approved grouped B-only database")
     if manifest.get("database_format") != database_format:
         raise ValueError("ORB manifest database format does not match the binary")
@@ -107,14 +107,22 @@ def main() -> None:
         "repairC": "BottleCapC",
     }:
         raise ValueError("Blender report hierarchy is invalid")
-    if report.get("version") != "bottle-no-cap-clean-cap-v29":
-        raise ValueError("Blender report is not the v29 compact-neck registration")
-    if report.get("coordinateFrame", {}).get("physicalMouthCentreModel") != [0.0, 0.0, 0.0]:
-        raise ValueError("The v29 physical mouth is not the canonical Y=0 plane")
+    if report.get("version") != "bottle-no-cap-clean-cap-v30":
+        raise ValueError("Blender report is not the v30 short-neck registration")
+    mouth = report.get("coordinateFrame", {}).get("physicalMouthCentreModel")
+    expected_mouth_y = 0.010 / 0.17
+    if (
+        not isinstance(mouth, list)
+        or len(mouth) != 3
+        or abs(mouth[0]) > 1e-6
+        or abs(mouth[1] - expected_mouth_y) > 1e-6
+        or abs(mouth[2]) > 1e-6
+    ):
+        raise ValueError("The v30 physical mouth is not 10 mm above the B cut")
     if abs(report["rigidContract"]["neckLocalMatrix"][7]) > 1e-5:
         raise ValueError("ReferenceNeckProxyB does not share the mouth origin")
     if abs(report["rigidContract"]["cLocalMatrix"][7]) > 1e-5:
-        raise ValueError("BottleCapC does not share the mouth origin")
+        raise ValueError("BottleCapC object transform is not identity")
     seating = report.get("capSeating", {})
     if abs(seating.get("neckHeightMeters", 0.0) - 0.010) > 0.0001:
         raise ValueError("ReferenceNeckProxyB is not 10 mm high")
@@ -141,7 +149,7 @@ def main() -> None:
         raise ValueError(f"Production tracker contains prohibited logic: {found}")
 
     payload = {
-        "status": "BOTTLE_CLEAN_CAP_V29_DATA_OK",
+        "status": "BOTTLE_CLEAN_CAP_V30_DATA_OK",
         "fbx_sha256": sha256(fbx),
         "database_sha256": sha256(database),
         "database_records": len(points),

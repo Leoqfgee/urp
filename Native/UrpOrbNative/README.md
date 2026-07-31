@@ -27,7 +27,7 @@ sampled descriptors per view and shortlists the best 24 groups. Full matching
 and PnP then run only on those groups. This preserves the dense viewpoint
 coverage without scanning every full keyframe on the phone.
 
-The v29 build retains the 10-level ORB pyramid (1.15 scale factor) and low FAST
+The v30 build retains the 10-level ORB pyramid (1.15 scale factor) and low FAST
 threshold so label features remain repeatable under scale and oblique-view
 changes. After registration, guided matching is constrained to a tighter
 projected neighbourhood; global strict matches remain available for

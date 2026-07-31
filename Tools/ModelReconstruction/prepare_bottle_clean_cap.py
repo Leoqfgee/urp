@@ -5,9 +5,9 @@ Run with Blender using the already registered B+C blend:
 
   blender --background bottle_no_cap_clean_cap_registered.blend \
     --python prepare_bottle_clean_cap.py -- \
-    --blend-output bottle_no_cap_clean_cap_v29.blend \
-    --fbx-output bottle_no_cap_clean_cap_v29.fbx \
-    --report-output bottle_no_cap_clean_cap_v29_report.json
+    --blend-output bottle_no_cap_clean_cap_v30.blend \
+    --fbx-output bottle_no_cap_clean_cap_v30.fbx \
+    --report-output bottle_no_cap_clean_cap_v30_report.json
 
 The scan remains the authoritative B geometry and coordinate frame.  The clean
 neck is a visual child of B that restores only the cylindrical bottle-neck
@@ -57,27 +57,27 @@ def build_lathed_neck() -> bpy.types.Object:
     if old is not None:
         bpy.data.objects.remove(old, do_unlink=True)
 
-    # Canonical asset is Y-up and the approved source registration defines the
-    # physical mouth plane at Y=0. Device evidence proved that extending
-    # the guide to 32.3 mm created an artificial long neck.  The real neck and
-    # the clean cap are both about 10 mm high, and the cap screws around the
-    # neck instead of being stacked above it.  Build a 10 mm guide immediately
-    # below the mouth plane.  The clean cap keeps the original Blender
-    # registration at Y=0 and therefore overlaps almost the entire guide.
+    # Canonical asset is Y-up.  The scan's Y=0 plane is the residual shoulder
+    # cut, not the physical mouth.  Device evidence shows a short neck between
+    # that cut and the mouth: approximately the same 10 mm height as the clean
+    # cap.  Rebuild that neck upward from the cut.  Its profile follows the
+    # photographed bottle: narrow stem at the shoulder, a broad lower tamper
+    # ring, a short straight threaded wall, and a smaller upper lip.
     h = NECK_HEIGHT_MODEL_UNITS
     profile = [
-        (-1.000 * h, 0.112),
-        (-0.920 * h, 0.112),
-        (-0.850 * h, 0.103),
-        (-0.650 * h, 0.103),
-        (-0.590 * h, 0.108),
-        (-0.470 * h, 0.108),
-        (-0.410 * h, 0.101),
-        (-0.250 * h, 0.101),
-        (-0.190 * h, 0.106),
-        (-0.090 * h, 0.106),
-        (-0.040 * h, 0.101),
-        (0.000, 0.100),
+        (0.000 * h, 0.086),
+        (0.100 * h, 0.086),
+        (0.160 * h, 0.101),
+        (0.190 * h, 0.112),
+        (0.350 * h, 0.112),
+        (0.410 * h, 0.101),
+        (0.560 * h, 0.101),
+        (0.600 * h, 0.108),
+        (0.710 * h, 0.108),
+        (0.770 * h, 0.101),
+        (0.820 * h, 0.107),
+        (0.940 * h, 0.107),
+        (1.000 * h, 0.100),
     ]
     vertices: list[tuple[float, float, float]] = []
     faces: list[tuple[int, ...]] = []
@@ -152,6 +152,12 @@ def main() -> None:
     neck.location = Vector((0.0, 0.0, 0.0))
     neck.rotation_euler = Vector((0.0, 0.0, 0.0))
     neck.scale = Vector((1.0, 1.0, 1.0))
+    # C was authored with its inner roof at mesh-local Y=0. Bake the lift into
+    # its vertices rather than the object transform. Unity's FBX importer
+    # otherwise converts a Blender object +Y translation into prefab-local -Z
+    # while keeping these meshes Y-up, which visibly shifts C sideways.
+    for vertex in cap.data.vertices:
+        vertex.co.y += NECK_HEIGHT_MODEL_UNITS
     cap.location = Vector((0.0, 0.0, 0.0))
     cap.rotation_euler = Vector((0.0, 0.0, 0.0))
     cap.scale = Vector((1.0, 1.0, 1.0))
@@ -208,7 +214,7 @@ def main() -> None:
         neck_local_max[2],
     ]
     payload = {
-        "version": "bottle-no-cap-clean-cap-v29",
+        "version": "bottle-no-cap-clean-cap-v30",
         "runtimeHierarchy": {
             "root": root.name,
             "referenceB": body.name,
@@ -216,10 +222,10 @@ def main() -> None:
             "repairC": cap.name,
         },
         "coordinateFrame": {
-            "origin": "physical bottle mouth centre",
+            "origin": "residual B shoulder cut datum",
             "physicalMouthCentreModel": [
                 0.0,
-                0.0,
+                NECK_HEIGHT_MODEL_UNITS,
                 0.0,
             ],
             "upAxis": "+Y from body to mouth",
@@ -251,7 +257,7 @@ def main() -> None:
         },
         "capSeating": {
             "bCutDatumModelY": 0.0,
-            "mouthPlaneModelY": 0.0,
+            "mouthPlaneModelY": NECK_HEIGHT_MODEL_UNITS,
             "neckHeightMeters": (
                 (neck_max[1] - neck_min[1]) * METERS_PER_MODEL_UNIT
             ),
@@ -266,7 +272,7 @@ def main() -> None:
                 * METERS_PER_MODEL_UNIT
             ),
             "capOverlapsNeckAxially": (
-                cap_min[1] <= neck_max[1] and cap_max[1] >= neck_max[1]
+                cap_min[1] <= neck_max[1] and cap_max[1] >= neck_min[1]
             ),
         },
         "rigidContract": {
@@ -281,7 +287,7 @@ def main() -> None:
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
-    print("BOTTLE_CLEAN_CAP_V29_OK")
+    print("BOTTLE_CLEAN_CAP_V30_OK")
     print(json.dumps(payload, ensure_ascii=False))
 
 

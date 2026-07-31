@@ -1,4 +1,4 @@
-# BottleCleanCap v29 A→B→C contract
+# BottleCleanCap v30 A→B→C contract
 
 ## Asset mapping and rigid registration
 
@@ -8,15 +8,17 @@
 - C is the approved clean 39 mm × 10 mm `BottleCapC`.
 
 The production Blender source is
-`F:\Meshroom_work\bottle_full_clean_v2\split_models\bottle_no_cap_clean_cap_v29.blend`.
+`F:\Meshroom_work\bottle_full_clean_v2\split_models\bottle_no_cap_clean_cap_v30.blend`.
 Its FBX sibling is the app source. The canonical tracking frame is Y-up, the
-printed label front faces +X, and the physical mouth centre is `(0, 0, 0)`.
+printed label front faces +X, and the residual B shoulder cut is `(0, 0, 0)`.
 
-The B-only reference neck is 10.00 mm high. C is 10.12 mm high from its mesh
-bounds. Both use the mouth-centre origin with identity rotation and unit scale,
-so C axially overlaps the neck instead of being stacked above it. C extends
-8.77 mm below the mouth plane and only 1.35 mm above it. The exact transforms
-and dimensions are stored in `bottle_no_cap_clean_cap_v29_report.json`.
+The B-only reference neck rises 10.00 mm from that cut to the physical mouth.
+Its lathed profile follows the supplied real photograph: a narrow shoulder
+stem, broad lower tamper ring, short threaded wall, and smaller upper lip. C is
+10.12 mm high from its mesh bounds. Its inner roof is fixed to the raised mouth
+plane at model Y `0.05882353`, so C overlaps the neck instead of being stacked
+above it. The exact transforms and dimensions are stored in
+`bottle_no_cap_clean_cap_v30_report.json`.
 
 ## Runtime pose chain
 
@@ -36,7 +38,7 @@ object is not parented to the camera or Canvas.
 ORB matches real open/no-cap bottle photographs to B-only 3D points. PnP is
 the camera-geometry step that converts those 2D/3D correspondences to the
 complete six-degree-of-freedom A-to-B pose; it is not a competing tracking
-algorithm. The v29 native tracker retains the user-aligned world-pose prior,
+algorithm. The v30 native tracker retains the user-aligned world-pose prior,
 penalizes candidates beyond 20 degrees, and rejects candidates beyond
 100 degrees to avoid the cylindrical front/back ambiguity.
 
