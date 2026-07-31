@@ -1,6 +1,6 @@
 # URP AR production scope
 
-The formal bottle restoration asset is BottleCleanCap v30. Its Blender and FBX
+The formal bottle restoration asset is BottleCleanCap v31. Its Blender and FBX
 hierarchy is:
 
 ```text
@@ -22,5 +22,5 @@ The project generator must never recreate the removed cyan outline, manual box,
 screen-space placement, display-matrix pose correction, old registered FBX, or
 old preview scenes.
 
-See `BottleCleanCapV30Pipeline.md` for the asset contract and truthful
+See `BottleCleanCapV31Pipeline.md` for the asset contract and truthful
 real-device validation boundary.

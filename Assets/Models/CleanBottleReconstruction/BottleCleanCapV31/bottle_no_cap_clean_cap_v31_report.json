@@ -1,5 +1,5 @@
 {
-  "version": "bottle-no-cap-clean-cap-v30",
+  "version": "bottle-no-cap-clean-cap-v31",
   "runtimeHierarchy": {
     "root": "BottleRepairRoot",
     "referenceB": "DamagedBottleB",
@@ -10,7 +10,7 @@
     "origin": "residual B shoulder cut datum",
     "physicalMouthCentreModel": [
       0.0,
-      0.058823529411764705,
+      0.11764705882352941,
       0.0
     ],
     "upAxis": "+Y from body to mouth",
@@ -34,14 +34,14 @@
     "purpose": "opaque B-only coarse-alignment geometry; hidden with B after Start",
     "outerDiameterMeters": 0.034,
     "boundsMin": [
-      -0.1120000034570694,
+      -0.11100000143051147,
       0.0,
-      -0.1120000034570694
+      -0.11100000143051147
     ],
     "boundsMax": [
-      0.1120000034570694,
-      0.05882352963089943,
-      0.1120000034570694
+      0.11100000143051147,
+      0.11764705926179886,
+      0.11100000143051147
     ]
   },
   "repairC": {
@@ -50,24 +50,24 @@
     "heightMeters": 0.01,
     "boundsMin": [
       -0.11537646502256393,
-      0.007235277444124222,
+      0.06605880707502365,
       -0.11537646502256393
     ],
     "boundsMax": [
       0.11537646502256393,
-      0.0667647123336792,
+      0.12558823823928833,
       0.11537646502256393
     ]
   },
   "capSeating": {
     "bCutDatumModelY": 0.0,
-    "mouthPlaneModelY": 0.058823529411764705,
-    "neckHeightMeters": 0.010000000037252904,
-    "capHeightMetersFromBounds": 0.010120003931224347,
-    "capBottomMeters": 0.0012299971655011178,
-    "capTopMeters": 0.011350001096725465,
-    "neckTopMeters": 0.010000000037252904,
-    "neckMaximumDiameterMeters": 0.0380800011754036,
+    "mouthPlaneModelY": 0.11764705882352941,
+    "neckHeightMeters": 0.020000000074505808,
+    "capHeightMetersFromBounds": 0.010120003297924996,
+    "capBottomMeters": 0.011229997202754022,
+    "capTopMeters": 0.021350000500679017,
+    "neckTopMeters": 0.020000000074505808,
+    "neckMaximumDiameterMeters": 0.0377400004863739,
     "capOverlapsNeckAxially": true
   },
   "rigidContract": {

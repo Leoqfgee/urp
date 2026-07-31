@@ -21,17 +21,17 @@ namespace Urp.ArDemo.Editor
         private const string ProfilePath =
             "Assets/Objects/CoconutBottle/Profiles/CoconutBottleRepairProfile.asset";
         private const string NewPairPath =
-            "Assets/Models/CleanBottleReconstruction/BottleCleanCapV30/"
-            + "bottle_no_cap_clean_cap_v30.fbx";
+            "Assets/Models/CleanBottleReconstruction/BottleCleanCapV31/"
+            + "bottle_no_cap_clean_cap_v31.fbx";
         private const string NewPairReportPath =
-            "Assets/Models/CleanBottleReconstruction/BottleCleanCapV30/"
-            + "bottle_no_cap_clean_cap_v30_report.json";
+            "Assets/Models/CleanBottleReconstruction/BottleCleanCapV31/"
+            + "bottle_no_cap_clean_cap_v31_report.json";
         private const string DatabasePath =
             "Assets/OrbModels/bottle_reference_b.bytes";
         private const string DatabaseManifestPath =
             "Assets/OrbModels/bottle_reference_b_manifest.json";
         private const string BottleAlbedoPath =
-            "Assets/Models/CleanBottleReconstruction/BottleCleanCapV30/"
+            "Assets/Models/CleanBottleReconstruction/BottleCleanCapV31/"
             + "Textures/bottle_full_clean_v2_albedo.png";
         private const string BottleSurfaceMaterialPath =
             "Assets/Materials/BottlePhotogrammetryLit.mat";
@@ -308,11 +308,11 @@ namespace Urp.ArDemo.Editor
                 && catalog.objects.Count(item => item == profile) == 1,
                 "The formal catalog must contain the new bottle profile exactly once.");
             Require(
-                profile.objectId == "bottle_no_cap_clean_cap_v30",
+                profile.objectId == "bottle_no_cap_clean_cap_v31",
                 "The formal bottle profile still has the legacy object id.");
             Require(
                 AssetDatabase.GetAssetPath(profile.registeredBottlePairPrefab) == NewPairPath,
-                "registeredBottlePairPrefab does not point to BottleCleanCapV30.");
+                "registeredBottlePairPrefab does not point to BottleCleanCapV31.");
             Require(
                 profile.trackingReferencePrefab == profile.registeredBottlePairPrefab
                 && profile.damagedViewerPrefab == profile.registeredBottlePairPrefab
@@ -360,7 +360,7 @@ namespace Urp.ArDemo.Editor
                 $"B database coverage is insufficient: {records} records, {viewGroups} groups.");
             string manifest = File.ReadAllText(DatabaseManifestPath);
             Require(
-                manifest.Contains("bottle-no-cap-grouped-multiview-v30")
+                manifest.Contains("bottle-no-cap-grouped-multiview-v31")
                 && manifest.Contains($"\"database_format\": \"{databaseFormat}\"")
                 && manifest.Contains($"\"view_group_count\": {viewGroups}")
                 && manifest.Contains("\"rendered_mesh_descriptors_used\": false")
@@ -370,11 +370,11 @@ namespace Urp.ArDemo.Editor
                 "B database manifest does not describe the real-photo B-only pipeline.");
             string report = File.ReadAllText(NewPairReportPath);
             Require(
-                report.Contains("bottle-no-cap-clean-cap-v30")
+                report.Contains("bottle-no-cap-clean-cap-v31")
                 && report.Contains("bottle_cap_clean_39x10mm.obj")
                 && report.Contains("\"physicalMouthCentreModel\"")
-                && report.Contains("\"mouthPlaneModelY\": 0.058823529")
-                && report.Contains("\"neckHeightMeters\": 0.01")
+                && report.Contains("\"mouthPlaneModelY\": 0.117647058")
+                && report.Contains("\"neckHeightMeters\": 0.02")
                 && report.Contains("\"referenceNeckGuideB\"")
                 && report.Contains("\"cIsNeverPositionedIndependentlyAtRuntime\": true"),
                 "Blender report does not describe the approved clean 39x10mm cap.");
@@ -408,7 +408,7 @@ namespace Urp.ArDemo.Editor
                 && Quaternion.Angle(neck.localRotation, Quaternion.identity) < 0.05f
                 && Vector3.Distance(cap.localScale, Vector3.one) < 0.001f
                 && Vector3.Distance(neck.localScale, Vector3.one) < 0.001f,
-                "The imported v30 geometry lost the 10 mm shoulder-to-mouth registration. "
+                "The imported v31 geometry lost the 20 mm shoulder-to-mouth registration. "
                 + $"capLift={capLiftInPair}, neckLift={neckLiftInPair}, "
                 + $"rootScale={root.localScale}.");
             Bounds neckBounds = CalculateLocalMeshBounds(root, neck);
@@ -419,12 +419,12 @@ namespace Urp.ArDemo.Editor
             float capToNeckHeightRatio = capBounds.size.y / neckBounds.size.y;
             Require(
                 neckBounds.size.y > 0.00001f
-                && Mathf.Abs(capToNeckHeightRatio - 1.012f) < 0.03f
+                && Mathf.Abs(capToNeckHeightRatio - 0.506f) < 0.03f
                 && Mathf.Abs(neckBounds.min.y) < 0.00002f
                 && neckBounds.max.y > 0f
                 && capBounds.min.y > neckBounds.min.y
                 && capBounds.min.y < neckBounds.max.y,
-                "The imported v30 neck/cap dimensions no longer match the photographed "
+                "The imported v31 neck/cap dimensions no longer match the photographed "
                 + "overlapping Blender registration. "
                 + $"neck={neckBounds.size.y:F6}, cap={capBounds.size.y:F6}, "
                 + $"ratio={capToNeckHeightRatio:F4}, "
@@ -525,7 +525,7 @@ namespace Urp.ArDemo.Editor
                     $"Scene generator still restores a removed legacy asset: {token}");
             }
             Require(
-                setup.Contains("BottleCleanCapV30")
+                setup.Contains("BottleCleanCapV31")
                 && setup.Contains("BottlePhotogrammetryLit")
                 && setup.Contains("CleanBottleCapLit")
                 && setup.Contains("AROcclusionManager")
@@ -917,7 +917,7 @@ namespace Urp.ArDemo.Editor
                 + Mathf.Abs(pixel.g - background.g)
                 + Mathf.Abs(pixel.b - background.b) >= 12);
             string outputDirectory = Path.GetFullPath(
-                "Builds/Validation/v30");
+                "Builds/Validation/v31");
             Directory.CreateDirectory(outputDirectory);
             File.WriteAllBytes(
                 Path.Combine(outputDirectory, $"repair-c-{viewName}.png"),

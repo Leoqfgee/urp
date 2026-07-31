@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: CoconutBottleRepairCalibration
   m_EditorClassIdentifier: 
   objectOriginInModel: {x: 0, y: 0, z: 0}
-  mouthCenterInModel: {x: 0, y: 0.05882353, z: 0}
+  mouthCenterInModel: {x: 0, y: 0.11764706, z: 0}
   mouthRightInModel: {x: 0, y: 0, z: -0.1}
   mouthFrontInModel: {x: 0.1, y: 0, z: 0}
   neckAxisPointInModel: {x: 0, y: -0.2, z: 0}

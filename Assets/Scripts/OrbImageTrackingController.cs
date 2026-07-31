@@ -231,7 +231,7 @@ namespace Urp.ArDemo
             GameObject instance = Instantiate(
                 profile.registeredBottlePairPrefab,
                 modelCoordinateAlignment);
-            instance.name = "BottleCleanCapV30";
+            instance.name = "BottleCleanCapV31";
             instance.transform.localPosition = Vector3.zero;
             instance.transform.localRotation = Quaternion.identity;
             instance.transform.localScale = Vector3.one;
@@ -537,7 +537,7 @@ namespace Urp.ArDemo
             // OpenCV camera coordinates and Unity camera coordinates have
             // opposite handedness. Reflect the model's semantic right axis
             // once when building the proper OpenCV rotation. This is
-            // calibration-driven: v30 printed-front is +X and object-right
+            // calibration-driven: v31 printed-front is +X and object-right
             // is -Z, so hard-coding the raw X column was incorrect.
             Vector3 semanticRight = calibration.RightInModel.normalized;
             Vector3 columnX = ModelDirectionToCameraCv(
@@ -868,11 +868,19 @@ namespace Urp.ArDemo
                     + "尚不足以确认完整三维姿态。";
                 return false;
             }
+            bool strongConsensus =
+                result.poseInliers >= 18
+                && result.inlierRatio >= 0.70f
+                && result.reprojectionError <= 2.5f
+                && result.reprojectionMax <= 7.0f;
             if (result.poseValid == 0)
             {
                 reason =
                     $"三维姿态尚未通过：内点 {result.poseInliers}/"
-                    + $"{result.uniqueMatches}。请保持瓶身清晰并缓慢移动手机。";
+                    + $"{result.uniqueMatches}，拒绝码 {result.rejectionCode}，"
+                    + $"覆盖 {result.coverageX:P0}/{result.coverageY:P0}，"
+                    + $"网格 {result.occupiedGridCells}，"
+                    + $"误差 {result.reprojectionError:F2}px。";
                 return false;
             }
             int requiredInliers = Mathf.Max(
@@ -887,9 +895,14 @@ namespace Urp.ArDemo
                     + $"{minimumInlierRatio:P0}。";
                 return false;
             }
-            if (result.coverageX < minimumCoverageX
-                || result.coverageY < minimumCoverageY
-                || result.occupiedGridCells < 4)
+            float requiredCoverageX =
+                strongConsensus ? 0.020f : minimumCoverageX;
+            float requiredCoverageY =
+                strongConsensus ? 0.080f : minimumCoverageY;
+            int requiredGridCells = strongConsensus ? 3 : 4;
+            if (result.coverageX < requiredCoverageX
+                || result.coverageY < requiredCoverageY
+                || result.occupiedGridCells < requiredGridCells)
             {
                 reason =
                     $"匹配分布不足：水平 {result.coverageX:P0}，"

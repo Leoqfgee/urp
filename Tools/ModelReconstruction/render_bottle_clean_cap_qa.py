@@ -122,7 +122,7 @@ def main() -> None:
     cap.hide_render = False
 
     payload = {
-        "version": "bottle-no-cap-clean-cap-v30-qa",
+        "version": "bottle-no-cap-clean-cap-v31-qa",
         "hierarchy": (
             "BottleRepairRoot/DamagedBottleB/ReferenceNeckProxyB "
             "+ BottleCapC"

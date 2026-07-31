@@ -18,7 +18,7 @@ namespace
 {
 constexpr char kModelMagicV1[8] = {'U', 'R', 'P', '3', 'D', 'M', '1', '\0'};
 constexpr char kModelMagicV2[8] = {'U', 'R', 'P', '3', 'D', 'M', '2', '\0'};
-constexpr char kBuildVersion[] = "urp-orb-native-2026.07.30-r12-prior-constrained-multiview";
+constexpr char kBuildVersion[] = "urp-orb-native-2026.07.31-r13-strong-consensus-spatial-gate";
 constexpr int kDescriptorBytes = 32;
 constexpr int kModelRecordBytes = 3 * static_cast<int>(sizeof(float)) + kDescriptorBytes;
 constexpr int kCoarseDescriptorsPerGroup = 40;
@@ -621,6 +621,24 @@ public:
                     chosen.uniqueMatches * requiredInlierRatio)),
                 6,
                 10);
+            // A front-facing cylindrical bottle concentrates repeatable label
+            // features in a narrow vertical band.  v30 rejected real-device
+            // solutions even at 30/30 and 37/39 inliers because the generic
+            // coverage gate was evaluated before considering that very strong
+            // consensus.  Keep the strict gate for weak poses, but allow a
+            // narrower distribution when the PnP solution itself is dense,
+            // low-error and overwhelmingly consistent.
+            const bool strongConsensus =
+                chosen.poseInliers >= 18
+                && chosen.inlierRatio >= 0.70f
+                && chosen.reprojectionError <= 2.5f
+                && chosen.reprojectionMax <= 7.0f;
+            const float requiredCoverageX =
+                strongConsensus ? 0.020f : (locallyGuided ? 0.035f : 0.05f);
+            const float requiredCoverageY =
+                strongConsensus ? 0.080f : (locallyGuided ? 0.10f : 0.16f);
+            const int requiredGridCells =
+                strongConsensus ? 3 : (locallyGuided ? 3 : 4);
             if (chosen.tvec.at<double>(2) <= 0.0)
                 result->rejectionCode = kNegativeDepth;
             else if (chosen.poseInliers < requiredPoseInliers)
@@ -630,9 +648,9 @@ public:
             else if (chosen.reprojectionError > 3.0f
                 || chosen.reprojectionMax > 8.0f)
                 result->rejectionCode = kHighReprojectionError;
-            else if (chosen.coverageX < (locallyGuided ? 0.035f : 0.05f)
-                || chosen.coverageY < (locallyGuided ? 0.10f : 0.16f)
-                || chosen.occupiedGridCells < (locallyGuided ? 3 : 4))
+            else if (chosen.coverageX < requiredCoverageX
+                || chosen.coverageY < requiredCoverageY
+                || chosen.occupiedGridCells < requiredGridCells)
                 result->rejectionCode = kInsufficientSpatialDistribution;
             else if (chosen.poseInliers < 8
                 && (chosen.reprojectionError > 1.75f

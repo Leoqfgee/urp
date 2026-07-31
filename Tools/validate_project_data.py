@@ -76,17 +76,19 @@ def main() -> None:
     manifest_path = ROOT / "Assets/OrbModels/bottle_reference_b_manifest.json"
     fbx = (
         ROOT
-        / "Assets/Models/CleanBottleReconstruction/BottleCleanCapV30"
-        / "bottle_no_cap_clean_cap_v30.fbx"
+        / "Assets/Models/CleanBottleReconstruction/BottleCleanCapV31"
+        / "bottle_no_cap_clean_cap_v31.fbx"
     )
-    report_path = fbx.with_name("bottle_no_cap_clean_cap_v30_report.json")
+    report_path = fbx.with_name("bottle_no_cap_clean_cap_v31_report.json")
     controller_path = ROOT / "Assets/Scripts/OrbImageTrackingController.cs"
+    native_path = ROOT / "Native/UrpOrbNative/src/urp_orb_native.cpp"
     points, group_count, database_format = read_points(database)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     report = json.loads(report_path.read_text(encoding="utf-8"))
     controller = controller_path.read_text(encoding="utf-8")
+    native = native_path.read_text(encoding="utf-8")
 
-    if manifest["version"] != "bottle-no-cap-grouped-multiview-v30":
+    if manifest["version"] != "bottle-no-cap-grouped-multiview-v31":
         raise ValueError("ORB manifest is not the approved grouped B-only database")
     if manifest.get("database_format") != database_format:
         raise ValueError("ORB manifest database format does not match the binary")
@@ -107,10 +109,10 @@ def main() -> None:
         "repairC": "BottleCapC",
     }:
         raise ValueError("Blender report hierarchy is invalid")
-    if report.get("version") != "bottle-no-cap-clean-cap-v30":
-        raise ValueError("Blender report is not the v30 short-neck registration")
+    if report.get("version") != "bottle-no-cap-clean-cap-v31":
+        raise ValueError("Blender report is not the v31 full-neck registration")
     mouth = report.get("coordinateFrame", {}).get("physicalMouthCentreModel")
-    expected_mouth_y = 0.010 / 0.17
+    expected_mouth_y = 0.020 / 0.17
     if (
         not isinstance(mouth, list)
         or len(mouth) != 3
@@ -118,14 +120,14 @@ def main() -> None:
         or abs(mouth[1] - expected_mouth_y) > 1e-6
         or abs(mouth[2]) > 1e-6
     ):
-        raise ValueError("The v30 physical mouth is not 10 mm above the B cut")
+        raise ValueError("The v31 physical mouth is not 20 mm above the B cut")
     if abs(report["rigidContract"]["neckLocalMatrix"][7]) > 1e-5:
         raise ValueError("ReferenceNeckProxyB does not share the mouth origin")
     if abs(report["rigidContract"]["cLocalMatrix"][7]) > 1e-5:
         raise ValueError("BottleCapC object transform is not identity")
     seating = report.get("capSeating", {})
-    if abs(seating.get("neckHeightMeters", 0.0) - 0.010) > 0.0001:
-        raise ValueError("ReferenceNeckProxyB is not 10 mm high")
+    if abs(seating.get("neckHeightMeters", 0.0) - 0.020) > 0.0001:
+        raise ValueError("ReferenceNeckProxyB is not 20 mm high")
     if abs(seating.get("capHeightMetersFromBounds", 0.0) - 0.01012) > 0.0002:
         raise ValueError("BottleCapC is not approximately 10 mm high")
     if not seating.get("capOverlapsNeckAxially"):
@@ -147,9 +149,13 @@ def main() -> None:
     found = [token for token in prohibited if token in controller]
     if found:
         raise ValueError(f"Production tracker contains prohibited logic: {found}")
+    if "strongConsensus" not in controller:
+        raise ValueError("Managed tracker lacks the v31 strong-consensus spatial gate")
+    if "strongConsensus" not in native or "0.020f" not in native or "0.080f" not in native:
+        raise ValueError("Native tracker lacks the v31 strong-consensus spatial gate")
 
     payload = {
-        "status": "BOTTLE_CLEAN_CAP_V30_DATA_OK",
+        "status": "BOTTLE_CLEAN_CAP_V31_DATA_OK",
         "fbx_sha256": sha256(fbx),
         "database_sha256": sha256(database),
         "database_records": len(points),

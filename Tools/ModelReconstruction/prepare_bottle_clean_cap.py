@@ -5,9 +5,9 @@ Run with Blender using the already registered B+C blend:
 
   blender --background bottle_no_cap_clean_cap_registered.blend \
     --python prepare_bottle_clean_cap.py -- \
-    --blend-output bottle_no_cap_clean_cap_v30.blend \
-    --fbx-output bottle_no_cap_clean_cap_v30.fbx \
-    --report-output bottle_no_cap_clean_cap_v30_report.json
+    --blend-output bottle_no_cap_clean_cap_v31.blend \
+    --fbx-output bottle_no_cap_clean_cap_v31.fbx \
+    --report-output bottle_no_cap_clean_cap_v31_report.json
 
 The scan remains the authoritative B geometry and coordinate frame.  The clean
 neck is a visual child of B that restores only the cylindrical bottle-neck
@@ -32,8 +32,11 @@ METERS_PER_MODEL_UNIT = 0.17
 NECK_OUTER_DIAMETER_METERS = 0.034
 CAP_OUTER_DIAMETER_METERS = 0.039
 CAP_HEIGHT_METERS = 0.010
+SHOULDER_CUT_TO_MOUTH_METERS = 0.020
 SEGMENTS = 96
-NECK_HEIGHT_MODEL_UNITS = CAP_HEIGHT_METERS / METERS_PER_MODEL_UNIT
+NECK_HEIGHT_MODEL_UNITS = (
+    SHOULDER_CUT_TO_MOUTH_METERS / METERS_PER_MODEL_UNIT
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -59,24 +62,25 @@ def build_lathed_neck() -> bpy.types.Object:
 
     # Canonical asset is Y-up.  The scan's Y=0 plane is the residual shoulder
     # cut, not the physical mouth.  Device evidence shows a short neck between
-    # that cut and the mouth: approximately the same 10 mm height as the clean
-    # cap.  Rebuild that neck upward from the cut.  Its profile follows the
-    # photographed bottle: narrow stem at the shoulder, a broad lower tamper
-    # ring, a short straight threaded wall, and a smaller upper lip.
+    # that cut and the mouth.  v30 modelled only the upper threaded 10 mm and
+    # consequently left C one cap-height below the real mouth in device
+    # evidence.  The real silhouette has another short stem between the
+    # shoulder and tamper ring.  Rebuild the full 20 mm rise: lower stem first,
+    # then the roughly 10 mm threaded section that the clean cap encloses.
     h = NECK_HEIGHT_MODEL_UNITS
     profile = [
         (0.000 * h, 0.086),
-        (0.100 * h, 0.086),
-        (0.160 * h, 0.101),
-        (0.190 * h, 0.112),
-        (0.350 * h, 0.112),
-        (0.410 * h, 0.101),
-        (0.560 * h, 0.101),
-        (0.600 * h, 0.108),
-        (0.710 * h, 0.108),
-        (0.770 * h, 0.101),
-        (0.820 * h, 0.107),
-        (0.940 * h, 0.107),
+        (0.230 * h, 0.086),
+        (0.270 * h, 0.099),
+        (0.300 * h, 0.111),
+        (0.430 * h, 0.111),
+        (0.470 * h, 0.100),
+        (0.610 * h, 0.100),
+        (0.650 * h, 0.107),
+        (0.730 * h, 0.107),
+        (0.770 * h, 0.100),
+        (0.820 * h, 0.106),
+        (0.940 * h, 0.106),
         (1.000 * h, 0.100),
     ]
     vertices: list[tuple[float, float, float]] = []
@@ -214,7 +218,7 @@ def main() -> None:
         neck_local_max[2],
     ]
     payload = {
-        "version": "bottle-no-cap-clean-cap-v30",
+        "version": "bottle-no-cap-clean-cap-v31",
         "runtimeHierarchy": {
             "root": root.name,
             "referenceB": body.name,
@@ -287,7 +291,7 @@ def main() -> None:
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
-    print("BOTTLE_CLEAN_CAP_V30_OK")
+    print("BOTTLE_CLEAN_CAP_V31_OK")
     print(json.dumps(payload, ensure_ascii=False))
 
 
