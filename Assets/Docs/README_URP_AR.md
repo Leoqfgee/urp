@@ -1,26 +1,14 @@
-# URP AR production scope
+# URP AR production scope v32
 
-The formal bottle restoration asset is BottleCleanCap v31. Its Blender and FBX
-hierarchy is:
+The only formal bottle restoration asset is `BottleFullAlignedV2`. Runtime
+solves A-to-B only. B and C remain rigid children of the same tracked root.
 
-```text
-BottleRepairRoot
-├── DamagedBottleB
-│   └── ReferenceNeckProxyB
-└── BottleCapC
-```
+Before Start, the app shows the opaque, front-facing B+C pair and begins bottle
+recognition. After a stable A-to-B pose is accepted, Start hides only B
+Renderers. C stays enabled and inherits every translation and rotation of B.
 
-Runtime solves only A→B. `TrackedBottleRoot` receives every accepted PnP
-translation and rotation; B and C remain under one rigid object-coordinate
-hierarchy. Entering the page shows B+C at one temporary world-space coarse
-pose. The user aligns B to A by moving the phone and presses Start. Guided
-natural-feature matching plus multi-point PnP refine B. After the stable-frame
-gate the runtime automatically disables only B Renderers while C remains
-enabled.
+The scene generator must not recreate the removed cyan outline, manual box,
+screen-space placement, single-mouth-point projection, independent C anchor,
+old grouped database, or old bottle-model copies.
 
-The project generator must never recreate the removed cyan outline, manual box,
-screen-space placement, display-matrix pose correction, old registered FBX, or
-old preview scenes.
-
-See `BottleCleanCapV31Pipeline.md` for the asset contract and truthful
-real-device validation boundary.
+See `BottleFullAlignedV2Pipeline.md` for the full asset and validation contract.

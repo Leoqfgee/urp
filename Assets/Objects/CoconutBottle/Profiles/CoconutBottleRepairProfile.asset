@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7155bfc119d520b4f8912cd4f4e7b4eb, type: 3}
   m_Name: CoconutBottleRepairProfile
   m_EditorClassIdentifier: 
-  objectId: bottle_no_cap_clean_cap_v31
+  objectId: bottle_full_aligned_v2_v32
   displayName: "\u65B0\u91CD\u5EFA\u65E0\u76D6\u996E\u6599\u74F6\u4E0E\u74F6\u76D6"
   shortDescription: "Blender \u4E2D\u521A\u6027\u5BF9\u9F50\u7684\u65E0\u76D6\u74F6\u8EAB
     B \u4E0E\u5E72\u51C0\u767D\u8272\u74F6\u76D6 C\u3002"
@@ -29,24 +29,24 @@ MonoBehaviour:
     AR \u5149\u7167\u4F30\u8BA1\u5E73\u6ED1\u6821\u6B63\u3002"
   missingPartName: "\u74F6\u76D6 C"
   thumbnail: {fileID: 2800000, guid: 70a83d4f40433854ba58459b45fe6eb6, type: 3}
-  damagedViewerPrefab: {fileID: 919132149155446097, guid: 14ed501c58286ad47be02a2857bfee9e, type: 3}
-  completeViewerPrefab: {fileID: 919132149155446097, guid: 14ed501c58286ad47be02a2857bfee9e, type: 3}
+  damagedViewerPrefab: {fileID: 919132149155446097, guid: 927dfa0ba1fe2304a841089a0e61e2c6, type: 3}
+  completeViewerPrefab: {fileID: 919132149155446097, guid: 927dfa0ba1fe2304a841089a0e61e2c6, type: 3}
   viewerMaterial: {fileID: 2100000, guid: e497a3cc2235ddb4a969ad53bb1da4df, type: 2}
   defaultViewerEuler: {x: 0, y: 0, z: 0}
   viewerMargin: 0.18
-  registeredBottlePairPrefab: {fileID: 919132149155446097, guid: 14ed501c58286ad47be02a2857bfee9e, type: 3}
-  trackingReferencePrefab: {fileID: 919132149155446097, guid: 14ed501c58286ad47be02a2857bfee9e, type: 3}
+  registeredBottlePairPrefab: {fileID: 919132149155446097, guid: 927dfa0ba1fe2304a841089a0e61e2c6, type: 3}
+  trackingReferencePrefab: {fileID: 919132149155446097, guid: 927dfa0ba1fe2304a841089a0e61e2c6, type: 3}
   trackingReferenceDatabase: {fileID: 4900000, guid: d03d8d9ae31558b45a904aab6d4b738c, type: 3}
   calibration: {fileID: 11400000, guid: e7d3920b1d5f71b47b94a88c936e56bc, type: 2}
   trackingSettings:
-    minimumGoodMatches: 10
-    minimumPoseInliers: 8
-    minimumInlierRatio: 0.4
+    minimumGoodMatches: 8
+    minimumPoseInliers: 6
+    minimumInlierRatio: 0.35
     maximumReprojectionErrorPixels: 3
     maximumReprojectionMaxPixels: 8
     minimumCoverageX: 0.05
-    minimumCoverageY: 0.14
-    registrationConfirmationFrames: 7
+    minimumCoverageY: 0.1
+    registrationConfirmationFrames: 5
     registrationPositionToleranceMeters: 0.025
     registrationRotationToleranceDegrees: 8
     temporaryLossHoldSeconds: 2.5
@@ -54,6 +54,7 @@ MonoBehaviour:
     rotationSmoothing: 0.18
   preAlignmentMaterial: {fileID: 2100000, guid: e497a3cc2235ddb4a969ad53bb1da4df, type: 2}
   repairMaterial: {fileID: 2100000, guid: 4e2ac76533fd4bba8da1cdb51f07b8d1, type: 2}
+  referenceDepthOcclusionMaterial: {fileID: 0}
   physicalScaleVerified: 1
   physicalMeasurements:
   - label: "\u74F6\u53E3\u87BA\u7EB9\u6700\u5916\u4FA7\u76F4\u5F84"

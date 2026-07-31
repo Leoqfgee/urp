@@ -50,13 +50,7 @@ namespace Urp.ArDemo.Calibration
             forwardCamera.Normalize();
             Vector3 rightCamera = Vector3.Cross(upCamera, forwardCamera).normalized;
             forwardCamera = Vector3.Cross(rightCamera, upCamera).normalized;
-            Quaternion observedFrame =
-                Quaternion.LookRotation(forwardCamera, upCamera);
-            Quaternion semanticFrameInModel = Quaternion.LookRotation(
-                calibration.ForwardInModel,
-                calibration.UpInModel);
-            Quaternion cameraRotation =
-                observedFrame * Quaternion.Inverse(semanticFrameInModel);
+            Quaternion cameraRotation = Quaternion.LookRotation(forwardCamera, upCamera);
             worldPosition = arCamera.transform.TransformPoint(originCameraUnity);
             worldRotation = arCamera.transform.rotation * cameraRotation;
             return IsFinite(worldPosition) && IsFinite(worldRotation)

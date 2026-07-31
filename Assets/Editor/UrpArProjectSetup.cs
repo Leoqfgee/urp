@@ -25,18 +25,18 @@ namespace Urp.ArDemo.Editor
         private const string ScenePath = "Assets/Scenes/UrpARPrototype.unity";
         private const string FontPath = "Assets/Fonts/NotoSansSC-Regular.otf";
         private const string BottleRegisteredPairPath =
-            "Assets/Models/CleanBottleReconstruction/BottleCleanCapV31/"
-            + "bottle_no_cap_clean_cap_v31.fbx";
+            "Assets/Models/CleanBottleReconstruction/BottleFullAlignedV2/"
+            + "bottle_full_aligned_v2.fbx";
         private const string BottleThumbnailPath =
             "Assets/Textures/Targets/bottle_full_aligned_v2.png";
         private const string BottleAlbedoPath =
-            "Assets/Models/CleanBottleReconstruction/BottleCleanCapV31/"
+            "Assets/Models/CleanBottleReconstruction/BottleFullAlignedV2/"
             + "Textures/bottle_full_clean_v2_albedo.png";
         private const string BottleSurfaceMaterialPath =
             "Assets/Materials/BottlePhotogrammetryLit.mat";
         private const string BottleCapMaterialPath =
             "Assets/Materials/CleanBottleCapLit.mat";
-        private const string AndroidApkPath = "Builds/BottleRepairAR_v31.apk";
+        private const string AndroidApkPath = "Builds/BottleRepairAR_v32.apk";
         private const string BottleReferenceOrbPath =
             "Assets/OrbModels/bottle_reference_b.bytes";
         private const string BottleCalibrationPath =
@@ -140,14 +140,14 @@ namespace Urp.ArDemo.Editor
 
         private static void ConfigureAndroidProject()
         {
-            PlayerSettings.productName = "瓶盖AR修复 v31";
+            PlayerSettings.productName = "瓶盖AR修复 v32";
             PlayerSettings.companyName = "qfgeeee";
-            PlayerSettings.bundleVersion = "4.3.1";
+            PlayerSettings.bundleVersion = "4.3.2";
             PlayerSettings.SetApplicationIdentifier(
                 BuildTargetGroup.Android, "com.qfgeeee.paper52objecttrackingar");
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
-            PlayerSettings.Android.bundleVersionCode = 431;
+            PlayerSettings.Android.bundleVersionCode = 432;
             PlayerSettings.SetScriptingBackend(
                 BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
@@ -306,15 +306,15 @@ namespace Urp.ArDemo.Editor
                 BottleCapMaterialPath, null, 0.28f, true);
             bottleCapMaterial.SetColor(
                 "_BaseColor",
-                new Color(0.90f, 0.90f, 0.88f, 1f));
+                new Color(0.96f, 0.96f, 0.94f, 1f));
             GameObject bottlePair =
                 AssetDatabase.LoadAssetAtPath<GameObject>(BottleRegisteredPairPath);
             if (bottlePair == null)
-                throw new MissingReferenceException("BottleCleanCapV31 FBX import failed.");
+                throw new MissingReferenceException("BottleFullAlignedV2 FBX import failed.");
 
             RestorationObjectProfile bottle = LoadOrCreate<RestorationObjectProfile>(
                 BottleProfilePath);
-            bottle.objectId = "bottle_no_cap_clean_cap_v31";
+            bottle.objectId = "bottle_full_aligned_v2_v32";
             bottle.displayName = "新重建无盖饮料瓶与瓶盖";
             bottle.shortDescription =
                 "Blender 中刚性对齐的无盖瓶身 B 与干净白色瓶盖 C。";
@@ -343,19 +343,14 @@ namespace Urp.ArDemo.Editor
             RepairCalibrationProfile bottleCalibration =
                 LoadOrCreate<RepairCalibrationProfile>(BottleCalibrationPath);
             bottleCalibration.objectOriginInModel = Vector3.zero;
-            bottleCalibration.mouthCenterInModel =
-                new Vector3(0f, 0.11764706f, 0f);
-            // The Blender v31 tracking datum remains the residual B shoulder
-            // cut at Y=0. Device evidence showed that v30 represented only
-            // the upper threaded 10 mm and left C one cap-height below the
-            // real mouth. The full shoulder-cut-to-mouth rise is 20 mm, while
-            // C encloses its upper half. Runtime never adds another neck/cap
-            // lift or positions C separately.
-            // The canonical frame is +Y up and the printed label
-            // faces +X.  Therefore object-right is -Z.  This same frame is
-            // used by the ORB database, PnP conversion and B+C rendering.
-            bottleCalibration.mouthRightInModel = new Vector3(0f, 0f, -0.1f);
-            bottleCalibration.mouthFrontInModel = new Vector3(0.1f, 0f, 0f);
+            // Restore the last device-proven v22 coordinate contract as one
+            // complete set. The B reconstruction, the 4100 real-photo ORB
+            // records and the registered Blender B+C asset all use this
+            // mouth-centred frame. Do not mix it with the later grouped-v27
+            // database or the v31 shoulder-cut frame.
+            bottleCalibration.mouthCenterInModel = Vector3.zero;
+            bottleCalibration.mouthRightInModel = new Vector3(0.1f, 0f, 0f);
+            bottleCalibration.mouthFrontInModel = new Vector3(0f, 0f, 0.1f);
             bottleCalibration.neckAxisPointInModel = new Vector3(0f, -0.2f, 0f);
             bottleCalibration.metersPerModelUnit = 0.17f;
             bottleCalibration.physicalScaleVerified = true;
@@ -375,14 +370,14 @@ namespace Urp.ArDemo.Editor
             bottle.repairMaterial = bottleCapMaterial;
             bottle.defaultViewerEuler = Vector3.zero;
             bottle.viewerMargin = 0.18f;
-            bottle.trackingSettings.minimumGoodMatches = 10;
-            bottle.trackingSettings.minimumPoseInliers = 8;
-            bottle.trackingSettings.minimumInlierRatio = 0.40f;
+            bottle.trackingSettings.minimumGoodMatches = 8;
+            bottle.trackingSettings.minimumPoseInliers = 6;
+            bottle.trackingSettings.minimumInlierRatio = 0.35f;
             bottle.trackingSettings.maximumReprojectionErrorPixels = 3.0f;
             bottle.trackingSettings.maximumReprojectionMaxPixels = 8.0f;
             bottle.trackingSettings.minimumCoverageX = 0.05f;
-            bottle.trackingSettings.minimumCoverageY = 0.14f;
-            bottle.trackingSettings.registrationConfirmationFrames = 7;
+            bottle.trackingSettings.minimumCoverageY = 0.10f;
+            bottle.trackingSettings.registrationConfirmationFrames = 5;
             bottle.trackingSettings.registrationPositionToleranceMeters = 0.025f;
             bottle.trackingSettings.registrationRotationToleranceDegrees = 8f;
             bottle.trackingSettings.temporaryLossHoldSeconds = 2.5f;

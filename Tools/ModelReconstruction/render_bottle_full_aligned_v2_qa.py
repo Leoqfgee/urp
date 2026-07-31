@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render fixed QA views of the canonical BottleCleanCap asset."""
+"""Render six fixed QA views of the canonical rigid B+C Blender asset."""
 
 from __future__ import annotations
 
@@ -20,8 +20,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def point_at(obj: bpy.types.Object, target: Vector) -> None:
-    # This asset is canonical Y-up (shoulder cut at Y=0, mouth above it, and
-    # body toward negative Y).
+    # This asset is canonical Y-up (mouth at Y=0, body toward negative Y).
     # Blender's to_track_quat uses its conventional Z-up frame and can roll a
     # near-horizontal camera by 180 degrees here, so construct a Y-up camera
     # basis explicitly.
@@ -58,20 +57,17 @@ def main() -> None:
     scene.view_settings.look = "AgX - Medium High Contrast"
 
     camera_data = bpy.data.cameras.new("BottleBCQACameraData")
-    camera_data.lens = 52.0
+    camera_data.lens = 58.0
     camera = bpy.data.objects.new("BottleBCQACamera", camera_data)
     bpy.context.collection.objects.link(camera)
     scene.camera = camera
 
     target = Vector((0.0, -0.56, 0.0))
-    # The canonical report defines printed-front as +X.  The former QA script
-    # called the +Z barcode view "front", which hid a real orientation error
-    # during review even though runtime used +X correctly.
     views = {
-        "front": Vector((2.65, -0.48, 0.0)),
-        "back": Vector((-2.65, -0.48, 0.0)),
-        "left": Vector((0.0, -0.48, 2.65)),
-        "right": Vector((0.0, -0.48, -2.65)),
+        "front": Vector((0.0, -0.48, 2.35)),
+        "back": Vector((0.0, -0.48, -2.35)),
+        "left": Vector((-2.35, -0.48, 0.0)),
+        "right": Vector((2.35, -0.48, 0.0)),
         "top": Vector((0.0, 2.05, 0.35)),
         "oblique": Vector((1.55, 0.35, 1.75)),
     }
@@ -111,26 +107,12 @@ def main() -> None:
             "cameraLocation": [float(value) for value in location],
         })
 
-    # Also publish the exact B geometry used for A-to-B registration.  The
-    # normal six views include C and therefore hide most of the short neck.
-    cap.hide_render = True
-    camera.location = views["front"]
-    point_at(camera, target)
-    b_only_output = args.output / "reference-b-front.png"
-    scene.render.filepath = str(b_only_output)
-    bpy.ops.render.render(write_still=True)
-    cap.hide_render = False
-
     payload = {
-        "version": "bottle-no-cap-clean-cap-v31-qa",
-        "hierarchy": (
-            "BottleRepairRoot/DamagedBottleB/ReferenceNeckProxyB "
-            "+ BottleCapC"
-        ),
+        "version": "bottle-full-aligned-v2-qa",
+        "hierarchy": "BottleRepairRoot/DamagedBottleB + BottleCapC",
         "bodyLocalMatrix": [float(value) for row in body.matrix_local for value in row],
         "capLocalMatrix": [float(value) for row in cap.matrix_local for value in row],
         "views": rendered,
-        "referenceBFrontImage": b_only_output.name,
         "deviceOverlayVerified": False,
     }
     (args.output / "views.json").write_text(
