@@ -111,7 +111,7 @@ def main() -> None:
         })
 
     payload = {
-        "version": "bottle-no-cap-clean-cap-v28-qa",
+        "version": "bottle-no-cap-clean-cap-v29-qa",
         "hierarchy": (
             "BottleRepairRoot/DamagedBottleB/ReferenceNeckProxyB "
             "+ BottleCapC"

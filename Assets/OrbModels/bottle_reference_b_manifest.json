@@ -1,5 +1,5 @@
 {
-  "version": "bottle-no-cap-grouped-multiview-v28",
+  "version": "bottle-no-cap-grouped-multiview-v29",
   "logic": "ORB descriptors are detected on real no-cap bottle photographs. Exact ORB keypoints are tracked by forward/backward optical flow across calibrated neighbouring views, triangulated into the same B reconstruction frame, and stored by source viewpoint. The native tracker retrieves likely view groups, solves B pose per group, rejects front/back-ambiguous candidates that disagree with the user-aligned world-pose prior, and keeps C rigidly attached to B.",
   "database": "Assets\\OrbModels\\bottle_reference_b.bytes",
   "database_format": "URP3DM2",
@@ -52,7 +52,7 @@
     "unconstrained_max_rotation_error_degrees": 174.776,
     "prior_constrained_flipped_frame_error_degrees": 0.189,
     "reject_or_hold_when_no_candidate_within_degrees": 100.0,
-    "evidence": "Builds\\Validation\\v28-orientation-audit.json",
+    "evidence": "Builds\\Validation\\v29-orientation-audit.json",
     "note": "The prior constraint resolves the observed near-180-degree cylindrical front/back ambiguity. Offline orientation audit is not physical-device overlay proof."
   },
   "reference_objects": [

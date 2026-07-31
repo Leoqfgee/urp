@@ -5,9 +5,9 @@ Run with Blender using the already registered B+C blend:
 
   blender --background bottle_no_cap_clean_cap_registered.blend \
     --python prepare_bottle_clean_cap.py -- \
-    --blend-output bottle_no_cap_clean_cap_v28.blend \
-    --fbx-output bottle_no_cap_clean_cap_v28.fbx \
-    --report-output bottle_no_cap_clean_cap_v28_report.json
+    --blend-output bottle_no_cap_clean_cap_v29.blend \
+    --fbx-output bottle_no_cap_clean_cap_v29.fbx \
+    --report-output bottle_no_cap_clean_cap_v29_report.json
 
 The scan remains the authoritative B geometry and coordinate frame.  The clean
 neck is a visual child of B that restores only the cylindrical bottle-neck
@@ -33,7 +33,7 @@ NECK_OUTER_DIAMETER_METERS = 0.034
 CAP_OUTER_DIAMETER_METERS = 0.039
 CAP_HEIGHT_METERS = 0.010
 SEGMENTS = 96
-NECK_AND_CAP_LIFT_MODEL_Y = 0.190
+NECK_HEIGHT_MODEL_UNITS = CAP_HEIGHT_METERS / METERS_PER_MODEL_UNIT
 
 
 def parse_args() -> argparse.Namespace:
@@ -57,34 +57,26 @@ def build_lathed_neck() -> bpy.types.Object:
     if old is not None:
         bpy.data.objects.remove(old, do_unlink=True)
 
-    # Canonical asset is Y-up.  The residual scan's highest reliable B surface
-    # is the neck cut datum at Y=0; it is not the physical mouth.  Device v27
-    # evidence showed the former negative-Y guide collapsed into the shoulder
-    # and put both the visible neck and C about 32 mm too low.  Build the same
-    # measured profile from the B cut upward to Y=0.190, then seat C at its top.
-    # The previous guide widened to 51 mm at its lower edge and looked like a
-    # detached funnel.  Keep this replacement within the measured neck/collar
-    # envelope: a 34 mm cylindrical neck, two shallow thread rings and a
-    # 38 mm lower support collar.  C overlaps the upper 8.8 mm exactly as a
-    # screwed-on cap should, while the lower neck remains visible for coarse
-    # B-to-A alignment.
+    # Canonical asset is Y-up and the approved source registration defines the
+    # physical mouth plane at Y=0. Device evidence proved that extending
+    # the guide to 32.3 mm created an artificial long neck.  The real neck and
+    # the clean cap are both about 10 mm high, and the cap screws around the
+    # neck instead of being stacked above it.  Build a 10 mm guide immediately
+    # below the mouth plane.  The clean cap keeps the original Blender
+    # registration at Y=0 and therefore overlaps almost the entire guide.
+    h = NECK_HEIGHT_MODEL_UNITS
     profile = [
-        (-0.190, 0.112),
-        (-0.178, 0.112),
-        (-0.170, 0.103),
-        (-0.145, 0.103),
-        (-0.137, 0.108),
-        (-0.125, 0.108),
-        (-0.117, 0.101),
-        (-0.095, 0.101),
-        (-0.088, 0.106),
-        (-0.078, 0.106),
-        (-0.070, 0.101),
-        (-0.049, 0.101),
-        (-0.042, 0.106),
-        (-0.032, 0.106),
-        (-0.024, 0.101),
-        (-0.005, 0.101),
+        (-1.000 * h, 0.112),
+        (-0.920 * h, 0.112),
+        (-0.850 * h, 0.103),
+        (-0.650 * h, 0.103),
+        (-0.590 * h, 0.108),
+        (-0.470 * h, 0.108),
+        (-0.410 * h, 0.101),
+        (-0.250 * h, 0.101),
+        (-0.190 * h, 0.106),
+        (-0.090 * h, 0.106),
+        (-0.040 * h, 0.101),
         (0.000, 0.100),
     ]
     vertices: list[tuple[float, float, float]] = []
@@ -157,10 +149,10 @@ def main() -> None:
     neck = build_lathed_neck()
     neck.parent = body
     neck.matrix_parent_inverse = Matrix.Identity(4)
-    neck.location = Vector((0.0, NECK_AND_CAP_LIFT_MODEL_Y, 0.0))
+    neck.location = Vector((0.0, 0.0, 0.0))
     neck.rotation_euler = Vector((0.0, 0.0, 0.0))
     neck.scale = Vector((1.0, 1.0, 1.0))
-    cap.location = Vector((0.0, NECK_AND_CAP_LIFT_MODEL_Y, 0.0))
+    cap.location = Vector((0.0, 0.0, 0.0))
     cap.rotation_euler = Vector((0.0, 0.0, 0.0))
     cap.scale = Vector((1.0, 1.0, 1.0))
 
@@ -197,26 +189,26 @@ def main() -> None:
     neck_local_min, neck_local_max = local_bounds(neck)
     cap_min = [
         cap_local_min[0],
-        cap_local_min[1] + NECK_AND_CAP_LIFT_MODEL_Y,
+        cap_local_min[1],
         cap_local_min[2],
     ]
     cap_max = [
         cap_local_max[0],
-        cap_local_max[1] + NECK_AND_CAP_LIFT_MODEL_Y,
+        cap_local_max[1],
         cap_local_max[2],
     ]
     neck_min = [
         neck_local_min[0],
-        neck_local_min[1] + NECK_AND_CAP_LIFT_MODEL_Y,
+        neck_local_min[1],
         neck_local_min[2],
     ]
     neck_max = [
         neck_local_max[0],
-        neck_local_max[1] + NECK_AND_CAP_LIFT_MODEL_Y,
+        neck_local_max[1],
         neck_local_max[2],
     ]
     payload = {
-        "version": "bottle-no-cap-clean-cap-v28",
+        "version": "bottle-no-cap-clean-cap-v29",
         "runtimeHierarchy": {
             "root": root.name,
             "referenceB": body.name,
@@ -224,13 +216,13 @@ def main() -> None:
             "repairC": cap.name,
         },
         "coordinateFrame": {
-            "origin": "residual B neck cut datum",
+            "origin": "physical bottle mouth centre",
             "physicalMouthCentreModel": [
                 0.0,
-                NECK_AND_CAP_LIFT_MODEL_Y,
+                0.0,
                 0.0,
             ],
-            "upAxis": "+Y from body cut to physical mouth",
+            "upAxis": "+Y from body to mouth",
             "printedFrontAxis": "+X",
             "metersPerModelUnit": METERS_PER_MODEL_UNIT,
         },
@@ -259,7 +251,13 @@ def main() -> None:
         },
         "capSeating": {
             "bCutDatumModelY": 0.0,
-            "mouthPlaneModelY": NECK_AND_CAP_LIFT_MODEL_Y,
+            "mouthPlaneModelY": 0.0,
+            "neckHeightMeters": (
+                (neck_max[1] - neck_min[1]) * METERS_PER_MODEL_UNIT
+            ),
+            "capHeightMetersFromBounds": (
+                (cap_max[1] - cap_min[1]) * METERS_PER_MODEL_UNIT
+            ),
             "capBottomMeters": cap_min[1] * METERS_PER_MODEL_UNIT,
             "capTopMeters": cap_max[1] * METERS_PER_MODEL_UNIT,
             "neckTopMeters": neck_max[1] * METERS_PER_MODEL_UNIT,
@@ -283,7 +281,7 @@ def main() -> None:
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
-    print("BOTTLE_CLEAN_CAP_V28_OK")
+    print("BOTTLE_CLEAN_CAP_V29_OK")
     print(json.dumps(payload, ensure_ascii=False))
 
 

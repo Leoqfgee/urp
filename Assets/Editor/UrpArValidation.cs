@@ -21,17 +21,17 @@ namespace Urp.ArDemo.Editor
         private const string ProfilePath =
             "Assets/Objects/CoconutBottle/Profiles/CoconutBottleRepairProfile.asset";
         private const string NewPairPath =
-            "Assets/Models/CleanBottleReconstruction/BottleCleanCapV28/"
-            + "bottle_no_cap_clean_cap_v28.fbx";
+            "Assets/Models/CleanBottleReconstruction/BottleCleanCapV29/"
+            + "bottle_no_cap_clean_cap_v29.fbx";
         private const string NewPairReportPath =
-            "Assets/Models/CleanBottleReconstruction/BottleCleanCapV28/"
-            + "bottle_no_cap_clean_cap_v28_report.json";
+            "Assets/Models/CleanBottleReconstruction/BottleCleanCapV29/"
+            + "bottle_no_cap_clean_cap_v29_report.json";
         private const string DatabasePath =
             "Assets/OrbModels/bottle_reference_b.bytes";
         private const string DatabaseManifestPath =
             "Assets/OrbModels/bottle_reference_b_manifest.json";
         private const string BottleAlbedoPath =
-            "Assets/Models/CleanBottleReconstruction/BottleCleanCapV28/"
+            "Assets/Models/CleanBottleReconstruction/BottleCleanCapV29/"
             + "Textures/bottle_full_clean_v2_albedo.png";
         private const string BottleSurfaceMaterialPath =
             "Assets/Materials/BottlePhotogrammetryLit.mat";
@@ -308,11 +308,11 @@ namespace Urp.ArDemo.Editor
                 && catalog.objects.Count(item => item == profile) == 1,
                 "The formal catalog must contain the new bottle profile exactly once.");
             Require(
-                profile.objectId == "bottle_no_cap_clean_cap_v28",
+                profile.objectId == "bottle_no_cap_clean_cap_v29",
                 "The formal bottle profile still has the legacy object id.");
             Require(
                 AssetDatabase.GetAssetPath(profile.registeredBottlePairPrefab) == NewPairPath,
-                "registeredBottlePairPrefab does not point to BottleCleanCapV28.");
+                "registeredBottlePairPrefab does not point to BottleCleanCapV29.");
             Require(
                 profile.trackingReferencePrefab == profile.registeredBottlePairPrefab
                 && profile.damagedViewerPrefab == profile.registeredBottlePairPrefab
@@ -360,7 +360,7 @@ namespace Urp.ArDemo.Editor
                 $"B database coverage is insufficient: {records} records, {viewGroups} groups.");
             string manifest = File.ReadAllText(DatabaseManifestPath);
             Require(
-                manifest.Contains("bottle-no-cap-grouped-multiview-v28")
+                manifest.Contains("bottle-no-cap-grouped-multiview-v29")
                 && manifest.Contains($"\"database_format\": \"{databaseFormat}\"")
                 && manifest.Contains($"\"view_group_count\": {viewGroups}")
                 && manifest.Contains("\"rendered_mesh_descriptors_used\": false")
@@ -370,10 +370,11 @@ namespace Urp.ArDemo.Editor
                 "B database manifest does not describe the real-photo B-only pipeline.");
             string report = File.ReadAllText(NewPairReportPath);
             Require(
-                report.Contains("bottle-no-cap-clean-cap-v28")
+                report.Contains("bottle-no-cap-clean-cap-v29")
                 && report.Contains("bottle_cap_clean_39x10mm.obj")
                 && report.Contains("\"physicalMouthCentreModel\"")
-                && report.Contains("\"mouthPlaneModelY\": 0.19")
+                && report.Contains("\"mouthPlaneModelY\": 0.0")
+                && report.Contains("\"neckHeightMeters\": 0.01")
                 && report.Contains("\"referenceNeckGuideB\"")
                 && report.Contains("\"cIsNeverPositionedIndependentlyAtRuntime\": true"),
                 "Blender report does not describe the approved clean 39x10mm cap.");
@@ -401,15 +402,28 @@ namespace Urp.ArDemo.Editor
                 pair.transform.InverseTransformPoint(neck.position)
                 - pair.transform.InverseTransformPoint(root.position);
             Require(
-                Mathf.Abs(capLiftInPair.magnitude - 0.19f) < 0.0002f
+                capLiftInPair.magnitude < 0.0002f
                 && Vector3.Distance(capLiftInPair, neckLiftInPair) < 0.0001f
                 && Quaternion.Angle(cap.localRotation, Quaternion.identity) < 0.05f
                 && Quaternion.Angle(neck.localRotation, Quaternion.identity) < 0.05f
                 && Vector3.Distance(cap.localScale, Vector3.one) < 0.001f
                 && Vector3.Distance(neck.localScale, Vector3.one) < 0.001f,
-                "The imported v28 geometry lost the Blender-authored raised neck/cap. "
+                "The imported v29 geometry lost the shared mouth-plane neck/cap origin. "
                 + $"capLift={capLiftInPair}, neckLift={neckLiftInPair}, "
                 + $"rootScale={root.localScale}.");
+            Bounds neckBounds = CalculateLocalMeshBounds(root, neck);
+            Bounds capBounds = CalculateLocalMeshBounds(root, cap);
+            float capToNeckHeightRatio = capBounds.size.y / neckBounds.size.y;
+            Require(
+                neckBounds.size.y > 0.00001f
+                && Mathf.Abs(capToNeckHeightRatio - 1.012f) < 0.03f
+                && Mathf.Abs(neckBounds.max.y) < 0.0002f
+                && capBounds.min.y < neckBounds.max.y,
+                "The imported v29 neck/cap dimensions no longer match the compact "
+                + "overlapping Blender registration. "
+                + $"neck={neckBounds.size.y:F6}, cap={capBounds.size.y:F6}, "
+                + $"ratio={capToNeckHeightRatio:F4}, "
+                + $"neckTop={neckBounds.max.y:F5}, capBottom={capBounds.min.y:F5}.");
             Require(
                 body.GetComponentsInChildren<Renderer>(true).Length > 0
                 && cap.GetComponentsInChildren<Renderer>(true).Length > 0,
@@ -505,7 +519,7 @@ namespace Urp.ArDemo.Editor
                     $"Scene generator still restores a removed legacy asset: {token}");
             }
             Require(
-                setup.Contains("BottleCleanCapV28")
+                setup.Contains("BottleCleanCapV29")
                 && setup.Contains("BottlePhotogrammetryLit")
                 && setup.Contains("CleanBottleCapLit")
                 && setup.Contains("AROcclusionManager")
@@ -782,10 +796,10 @@ namespace Urp.ArDemo.Editor
                 "Runtime changed the Blender-authored B/C parent relationship.");
             Require(
                 Mathf.Abs(
-                    Vector3.Distance(body.position, cap.position) - 0.0323f)
+                    Vector3.Distance(body.position, cap.position))
                     < 0.0002f,
-                "Imported C no longer retains the Blender-authored 32.3 mm "
-                + $"lift from B. Runtime distance={Vector3.Distance(body.position, cap.position):F5}m.");
+                "Imported C no longer shares B's Blender-authored mouth origin. "
+                + $"Runtime distance={Vector3.Distance(body.position, cap.position):F5}m.");
             Require(
                 AnyEnabled(body.GetComponentsInChildren<Renderer>(true))
                 && AnyEnabled(cap.GetComponentsInChildren<Renderer>(true)),
@@ -897,7 +911,7 @@ namespace Urp.ArDemo.Editor
                 + Mathf.Abs(pixel.g - background.g)
                 + Mathf.Abs(pixel.b - background.b) >= 12);
             string outputDirectory = Path.GetFullPath(
-                "Builds/Validation/v28");
+                "Builds/Validation/v29");
             Directory.CreateDirectory(outputDirectory);
             File.WriteAllBytes(
                 Path.Combine(outputDirectory, $"repair-c-{viewName}.png"),
@@ -1002,6 +1016,37 @@ namespace Urp.ArDemo.Editor
             return transform.localPosition.sqrMagnitude < 0.000001f
                 && Quaternion.Angle(transform.localRotation, Quaternion.identity) < 0.001f
                 && Vector3.Distance(transform.localScale, Vector3.one) < 0.0001f;
+        }
+
+        private static Bounds CalculateLocalMeshBounds(
+            Transform coordinateRoot,
+            Transform branch)
+        {
+            bool initialized = false;
+            Bounds bounds = default;
+            foreach (MeshFilter filter in branch.GetComponentsInChildren<MeshFilter>(true))
+            {
+                if (filter.sharedMesh == null)
+                {
+                    continue;
+                }
+                foreach (Vector3 vertex in filter.sharedMesh.vertices)
+                {
+                    Vector3 point = coordinateRoot.InverseTransformPoint(
+                        filter.transform.TransformPoint(vertex));
+                    if (!initialized)
+                    {
+                        bounds = new Bounds(point, Vector3.zero);
+                        initialized = true;
+                    }
+                    else
+                    {
+                        bounds.Encapsulate(point);
+                    }
+                }
+            }
+            Require(initialized, $"{branch.name} has no imported mesh vertices.");
+            return bounds;
         }
 
         private static bool IsFinite(Quaternion value)

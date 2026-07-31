@@ -231,7 +231,7 @@ namespace Urp.ArDemo
             GameObject instance = Instantiate(
                 profile.registeredBottlePairPrefab,
                 modelCoordinateAlignment);
-            instance.name = "BottleCleanCapV28";
+            instance.name = "BottleCleanCapV29";
             instance.transform.localPosition = Vector3.zero;
             instance.transform.localRotation = Quaternion.identity;
             instance.transform.localScale = Vector3.one;
@@ -537,7 +537,7 @@ namespace Urp.ArDemo
             // OpenCV camera coordinates and Unity camera coordinates have
             // opposite handedness. Reflect the model's semantic right axis
             // once when building the proper OpenCV rotation. This is
-            // calibration-driven: v28 printed-front is +X and object-right
+            // calibration-driven: v29 printed-front is +X and object-right
             // is -Z, so hard-coding the raw X column was incorrect.
             Vector3 semanticRight = calibration.RightInModel.normalized;
             Vector3 columnX = ModelDirectionToCameraCv(
