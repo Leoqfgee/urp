@@ -13,10 +13,10 @@ MonoBehaviour:
   m_Name: CoconutBottleRepairCalibration
   m_EditorClassIdentifier: 
   objectOriginInModel: {x: 0, y: 0, z: 0}
-  mouthCenterInModel: {x: 0, y: 0, z: 0}
-  mouthRightInModel: {x: 0.1, y: 0, z: 0}
-  mouthFrontInModel: {x: 0, y: 0, z: 0.1}
-  neckAxisPointInModel: {x: 0, y: -0.2, z: 0}
+  mouthCenterInModel: {x: 0, y: 0.05882353, z: 0}
+  mouthRightInModel: {x: 0.1, y: 0.05882353, z: 0}
+  mouthFrontInModel: {x: 0, y: 0.05882353, z: 0.1}
+  neckAxisPointInModel: {x: 0, y: -0.14117648, z: 0}
   metersPerModelUnit: 0.17
   physicalScaleVerified: 1
   expectedPhysicalNeckDiameter: 0.034

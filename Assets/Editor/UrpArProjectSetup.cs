@@ -36,7 +36,7 @@ namespace Urp.ArDemo.Editor
             "Assets/Materials/BottlePhotogrammetryLit.mat";
         private const string BottleCapMaterialPath =
             "Assets/Materials/CleanBottleCapLit.mat";
-        private const string AndroidApkPath = "Builds/BottleRepairAR_v32.apk";
+        private const string AndroidApkPath = "Builds/BottleRepairAR_v33.apk";
         private const string BottleReferenceOrbPath =
             "Assets/OrbModels/bottle_reference_b.bytes";
         private const string BottleCalibrationPath =
@@ -82,7 +82,7 @@ namespace Urp.ArDemo.Editor
             AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
             CleanStaleSimulationTempAssets();
             Directory.CreateDirectory("Builds");
-            DeletePreviousTargetApk();
+            DeleteSupersededBuildArtifacts();
             BuildReport report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
             {
                 scenes = new[] { ScenePath },
@@ -98,15 +98,65 @@ namespace Urp.ArDemo.Editor
             BuildIdentityGenerator.VerifyApk(AndroidApkPath, identity);
             BuildIdentityGenerator.VerifyNativePluginInApk(AndroidApkPath);
             Debug.Log($"[BuildIdentity] APK SHA256: {BuildIdentityGenerator.Sha256(AndroidApkPath)}");
+            DeleteBurstDebugArtifacts();
         }
 
-        private static void DeletePreviousTargetApk()
+        private static void DeleteSupersededBuildArtifacts()
         {
-            string apk = Path.GetFullPath(AndroidApkPath);
-            if (File.Exists(apk))
+            string buildsRoot =
+                Path.GetFullPath("Builds") + Path.DirectorySeparatorChar;
+            string targetApk = Path.GetFullPath(AndroidApkPath);
+            foreach (string candidate in
+                     Directory.GetFiles("Builds", "BottleRepairAR_v*.apk"))
             {
-                Debug.Log($"Deleting previous target APK: {apk}");
-                File.Delete(apk);
+                string fullPath = Path.GetFullPath(candidate);
+                if (fullPath.StartsWith(
+                        buildsRoot,
+                        StringComparison.OrdinalIgnoreCase)
+                    && !fullPath.Equals(
+                        targetApk,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    Debug.Log($"Deleting superseded APK: {fullPath}");
+                    File.Delete(fullPath);
+                }
+            }
+            foreach (string candidate in Directory.GetDirectories(
+                         "Builds",
+                         "*_BurstDebugInformation_DoNotShip"))
+            {
+                string fullPath = Path.GetFullPath(candidate);
+                if (fullPath.StartsWith(
+                        buildsRoot,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    Debug.Log($"Deleting superseded build diagnostics: {fullPath}");
+                    Directory.Delete(fullPath, true);
+                }
+            }
+            if (File.Exists(targetApk))
+            {
+                Debug.Log($"Deleting previous target APK: {targetApk}");
+                File.Delete(targetApk);
+            }
+        }
+
+        private static void DeleteBurstDebugArtifacts()
+        {
+            string buildsRoot =
+                Path.GetFullPath("Builds") + Path.DirectorySeparatorChar;
+            foreach (string candidate in Directory.GetDirectories(
+                         "Builds",
+                         "*_BurstDebugInformation_DoNotShip"))
+            {
+                string fullPath = Path.GetFullPath(candidate);
+                if (fullPath.StartsWith(
+                        buildsRoot,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    Debug.Log($"Deleting non-shipping build diagnostics: {fullPath}");
+                    Directory.Delete(fullPath, true);
+                }
             }
         }
 
@@ -140,14 +190,14 @@ namespace Urp.ArDemo.Editor
 
         private static void ConfigureAndroidProject()
         {
-            PlayerSettings.productName = "瓶盖AR修复 v32";
+            PlayerSettings.productName = "瓶盖AR修复 v33";
             PlayerSettings.companyName = "qfgeeee";
-            PlayerSettings.bundleVersion = "4.3.2";
+            PlayerSettings.bundleVersion = "4.3.3";
             PlayerSettings.SetApplicationIdentifier(
                 BuildTargetGroup.Android, "com.qfgeeee.paper52objecttrackingar");
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
-            PlayerSettings.Android.bundleVersionCode = 432;
+            PlayerSettings.Android.bundleVersionCode = 433;
             PlayerSettings.SetScriptingBackend(
                 BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
@@ -314,7 +364,7 @@ namespace Urp.ArDemo.Editor
 
             RestorationObjectProfile bottle = LoadOrCreate<RestorationObjectProfile>(
                 BottleProfilePath);
-            bottle.objectId = "bottle_full_aligned_v2_v32";
+            bottle.objectId = "bottle_full_aligned_v2_v33";
             bottle.displayName = "新重建无盖饮料瓶与瓶盖";
             bottle.shortDescription =
                 "Blender 中刚性对齐的无盖瓶身 B 与干净白色瓶盖 C。";
@@ -343,15 +393,18 @@ namespace Urp.ArDemo.Editor
             RepairCalibrationProfile bottleCalibration =
                 LoadOrCreate<RepairCalibrationProfile>(BottleCalibrationPath);
             bottleCalibration.objectOriginInModel = Vector3.zero;
-            // Restore the last device-proven v22 coordinate contract as one
-            // complete set. The B reconstruction, the 4100 real-photo ORB
-            // records and the registered Blender B+C asset all use this
-            // mouth-centred frame. Do not mix it with the later grouped-v27
-            // database or the v31 shoulder-cut frame.
-            bottleCalibration.mouthCenterInModel = Vector3.zero;
-            bottleCalibration.mouthRightInModel = new Vector3(0.1f, 0f, 0f);
-            bottleCalibration.mouthFrontInModel = new Vector3(0f, 0f, 0.1f);
-            bottleCalibration.neckAxisPointInModel = new Vector3(0f, -0.2f, 0f);
+            // ORB/PnP keeps the v32 scan coordinate frame and its origin at
+            // the damaged shoulder cut.  Blender restores the photographed
+            // 10 mm neck above that datum; C is baked around the resulting
+            // physical mouth and never receives a runtime offset.
+            bottleCalibration.mouthCenterInModel =
+                new Vector3(0f, 0.05882353f, 0f);
+            bottleCalibration.mouthRightInModel =
+                new Vector3(0.1f, 0.05882353f, 0f);
+            bottleCalibration.mouthFrontInModel =
+                new Vector3(0f, 0.05882353f, 0.1f);
+            bottleCalibration.neckAxisPointInModel =
+                new Vector3(0f, -0.14117647f, 0f);
             bottleCalibration.metersPerModelUnit = 0.17f;
             bottleCalibration.physicalScaleVerified = true;
             bottleCalibration.expectedPhysicalNeckDiameter = 0.034f;

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the restored BottleFullAlignedV2 v32 runtime data without Unity."""
+"""Validate the single BottleFullAlignedV2 v33 runtime data without Unity."""
 
 from __future__ import annotations
 
@@ -84,29 +84,33 @@ def main() -> None:
     if provenance.get("complete_bottle_or_cap_images_used") is not False:
         raise ValueError("The B database must exclude complete-bottle/cap images")
     if manifest.get("device_overlay_verified") is not False:
-        raise ValueError("Device overlay cannot be marked verified without v32 evidence")
+        raise ValueError("Device overlay cannot be marked verified without device evidence")
 
-    if report.get("version") != "bottle-no-cap-clean-cap-rigid-registration-v3":
-        raise ValueError("Blender report is not the approved rigid registration")
+    if report.get("version") != "bottle-full-aligned-v2-rigid-neck-cap-v33":
+        raise ValueError("Blender report is not the v33 rigid registration")
     if report.get("runtimeHierarchy") != {
         "root": "BottleRepairRoot",
         "referenceB": "DamagedBottleB",
+        "referenceNeckB": "ReferenceNeckProxyB",
         "repairC": "BottleCapC",
     }:
         raise ValueError("Blender report hierarchy is invalid")
     if report.get("rigidRelationshipPreserved") is not True:
         raise ValueError("Blender report does not preserve B+C rigidity")
-    if report.get("sourceSharedTransform", {}).get("mouthCenter") != [0.0, 0.0, 0.0]:
-        raise ValueError("The restored B+C mouth-centred coordinate frame is invalid")
     assert_identity(report["referenceB"], "DamagedBottleB")
+    assert_identity(report["referenceNeckB"], "ReferenceNeckProxyB")
     assert_identity(report["repairC"], "BottleCapC")
     registration = report.get("registration", {})
-    if abs(registration.get("mouthPlaneY", 1.0)) > 1e-7:
-        raise ValueError("The Blender mouth plane is not at the shared origin")
-    if abs(registration.get("capBottomBelowMouthMeters", 0.0) - 0.00877) > 0.0001:
-        raise ValueError("BottleCapC no longer seats over the bottle mouth")
-    if abs(registration.get("capTopAboveMouthMeters", 0.0) - 0.00135) > 0.0001:
-        raise ValueError("BottleCapC top/mouth relationship changed")
+    if abs(registration.get("mouthPlaneModelY", 0.0) - 0.0588235294) > 1e-6:
+        raise ValueError("The physical mouth is not 10 mm above the scan cut")
+    if abs(registration.get("neckHeightMetersFromBounds", 0.0) - 0.010) > 0.0001:
+        raise ValueError("ReferenceNeckProxyB is not the photographed 10 mm neck")
+    if abs(registration.get("capHeightMetersFromBounds", 0.0) - 0.01012) > 0.0002:
+        raise ValueError("BottleCapC height changed")
+    if registration.get("capOverlapsNeckAxially") is not True:
+        raise ValueError("BottleCapC no longer seats over the B neck")
+    if report["repairC"]["boundsMin"][1] <= 0.0:
+        raise ValueError("BottleCapC is still embedded below the damaged scan cut")
     if registration.get("bToCLocalPosition") != [0.0, 0.0, 0.0]:
         raise ValueError("B-to-C local position changed")
 
@@ -144,7 +148,7 @@ def main() -> None:
         raise ValueError("Scene generator does not bind only BottleFullAlignedV2")
 
     payload = {
-        "status": "BOTTLE_FULL_ALIGNED_V32_DATA_OK",
+        "status": "BOTTLE_FULL_ALIGNED_V33_DATA_OK",
         "fbx_sha256": sha256(fbx),
         "database_sha256": sha256(database),
         "database_records": len(points),
@@ -153,7 +157,8 @@ def main() -> None:
         "database_bounds_min": points.min(axis=0).tolist(),
         "database_bounds_max": points.max(axis=0).tolist(),
         "repair_c_excluded_from_matching": True,
-        "cap_seated_over_mouth": True,
+        "reference_neck_height_meters": 0.010,
+        "cap_seated_over_neck": True,
         "device_overlay_verified": False,
     }
     print(json.dumps(payload, ensure_ascii=False, indent=2))

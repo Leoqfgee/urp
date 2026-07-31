@@ -10,13 +10,15 @@ Unity uses the byte-identical `bottle_full_aligned_v2.fbx` under
 ```text
 BottleRepairRoot
   DamagedBottleB
+    ReferenceNeckProxyB
   BottleCapC
 ```
 
-`prepare_bottle_full_aligned_v2.py` applies one shared canonical transform to B
-and C, places the mouth seam at the origin, and bakes both child transforms to
-identity. `render_bottle_full_aligned_v2_qa.py` renders the six required QA
-views without changing that relationship.
+`prepare_bottle_full_aligned_v2.py` keeps the approved scan cut at model Y=0,
+adds the photographed 10 mm neck as part of B, and bakes C's matching 10 mm
+lift into its vertices. B and C transforms remain identity.
+`render_bottle_full_aligned_v2_qa.py` renders the six required QA views without
+changing that relationship.
 
 The production ORB database is not generated from Blender renders. It contains
 filtered SfM observations and ORB descriptors from the real open/no-cap bottle

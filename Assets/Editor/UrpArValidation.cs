@@ -243,7 +243,7 @@ namespace Urp.ArDemo.Editor
                 && catalog.objects.Count(item => item == profile) == 1,
                 "The formal catalog must contain the new bottle profile exactly once.");
             Require(
-                profile.objectId == "bottle_full_aligned_v2_v32",
+                profile.objectId == "bottle_full_aligned_v2_v33",
                 "The formal bottle profile still has the legacy object id.");
             Require(
                 AssetDatabase.GetAssetPath(profile.registeredBottlePairPrefab) == NewPairPath,
@@ -259,7 +259,9 @@ namespace Urp.ArDemo.Editor
             Require(
                 profile.calibration != null
                 && profile.calibration.HasValidFrame
-                && Mathf.Abs(profile.calibration.metersPerModelUnit - 0.17f) < 0.0001f,
+                && Mathf.Abs(profile.calibration.metersPerModelUnit - 0.17f) < 0.0001f
+                && Mathf.Abs(
+                    profile.calibration.mouthCenterInModel.y - 0.05882353f) < 0.0001f,
                 "The new canonical B frame or physical scale is invalid.");
             Require(
                 profile.viewerMaterial != null
@@ -298,27 +300,31 @@ namespace Urp.ArDemo.Editor
                 "B database manifest does not describe the real-photo B-only pipeline.");
             string report = File.ReadAllText(NewPairReportPath);
             Require(
-                report.Contains("bottle-no-cap-clean-cap-rigid-registration-v3")
+                report.Contains("bottle-full-aligned-v2-rigid-neck-cap-v33")
                 && report.Contains("bottle_cap_clean_39x10mm.obj")
-                && report.Contains("\"radialClearanceMeters\": 0.0001999999999999974")
+                && report.Contains("\"heightMeters\": 0.01")
+                && report.Contains("\"mouthPlaneModelY\": 0.058823529411764705")
+                && report.Contains("\"capOverlapsNeckAxially\": true")
                 && report.Contains("\"rigidRelationshipPreserved\": true"),
-                "Blender report does not describe the approved clean 39x10mm cap.");
+                "Blender report does not describe the approved 10 mm neck and clean cap.");
 
             GameObject pairPrefab =
                 AssetDatabase.LoadAssetAtPath<GameObject>(NewPairPath);
             GameObject pair = PrefabUtility.InstantiatePrefab(pairPrefab) as GameObject;
             Require(pair != null, "Could not instantiate the new B+C FBX.");
             Transform body = FindDescendant(pair.transform, "DamagedBottleB");
+            Transform neck = FindDescendant(pair.transform, "ReferenceNeckProxyB");
             Transform cap = FindDescendant(pair.transform, "BottleCapC");
             Transform root = FindDescendant(pair.transform, "BottleRepairRoot");
-            Require(body != null && cap != null && root != null,
-                "New FBX is missing BottleRepairRoot/DamagedBottleB/BottleCapC. "
+            Require(body != null && neck != null && cap != null && root != null,
+                "New FBX is missing BottleRepairRoot/DamagedBottleB/"
+                + "ReferenceNeckProxyB/BottleCapC. "
                 + $"Imported transforms: {string.Join(", ", pair.GetComponentsInChildren<Transform>(true).Select(item => item.name))}");
             Require(
-                body.parent == root && cap.parent == root,
-                "B and C are not fixed siblings under BottleRepairRoot.");
-            Require(IsIdentity(body) && IsIdentity(cap),
-                "Blender B/C local transforms were not baked to identity.");
+                body.parent == root && neck.parent == body && cap.parent == root,
+                "The neck is not part of B or B/C are not rigid siblings.");
+            Require(IsIdentity(body) && IsIdentity(neck) && IsIdentity(cap),
+                "Blender B/neck/C local transforms were not baked to identity.");
             Require(
                 body.GetComponentsInChildren<Renderer>(true).Length > 0
                 && cap.GetComponentsInChildren<Renderer>(true).Length > 0,
@@ -420,7 +426,7 @@ namespace Urp.ArDemo.Editor
                 "public static void BuildAndroidFromCommandLine()",
                 StringComparison.Ordinal);
             int buildEnd = setup.IndexOf(
-                "private static void DeletePreviousTargetApk()",
+                "private static void DeleteSupersededBuildArtifacts()",
                 buildStart + 1,
                 StringComparison.Ordinal);
             string buildMethod = setup.Substring(buildStart, buildEnd - buildStart);
@@ -609,6 +615,25 @@ namespace Urp.ArDemo.Editor
                 "C local relationship changed while hiding B.");
             Require(MatrixApproximately(bodyBefore, body.localToWorldMatrix),
                 "B transform changed while hiding its Renderers.");
+            if (SystemInfo.graphicsDeviceType != GraphicsDeviceType.Null)
+            {
+                Renderer[] capRenderers =
+                    cap.GetComponentsInChildren<Renderer>(true);
+                int repairPixels =
+                    CountRepairPixelDifference(camera, capRenderers);
+                Require(
+                    repairPixels >= 32,
+                    "C is enabled but does not produce visible colour pixels after B is hidden.");
+                Debug.Log(
+                    $"REPAIR_C_PIXEL_VISIBILITY_OK pixels={repairPixels} "
+                    + "stage=C-only-after-B-renderers-hidden");
+            }
+            else
+            {
+                Debug.Log(
+                    "REPAIR_C_PIXEL_VISIBILITY_SKIPPED graphicsDevice=Null; "
+                    + "run this validator without -nographics for colour evidence.");
+            }
 
             UnityEngine.Object.DestroyImmediate(controllerObject);
             UnityEngine.Object.DestroyImmediate(rootObject);
@@ -735,7 +760,86 @@ namespace Urp.ArDemo.Editor
             return renderers.Any(renderer =>
                 renderer != null
                 && renderer.enabled
+                && !renderer.forceRenderingOff
                 && renderer.gameObject.activeInHierarchy);
+        }
+
+        private static int CountRepairPixelDifference(
+            Camera camera,
+            Renderer[] capRenderers)
+        {
+            const int Size = 512;
+            RenderTexture target = RenderTexture.GetTemporary(
+                Size,
+                Size,
+                24,
+                RenderTextureFormat.ARGB32);
+            Texture2D readback = new Texture2D(
+                Size,
+                Size,
+                TextureFormat.RGBA32,
+                false);
+            RenderTexture previousActive = RenderTexture.active;
+            RenderTexture previousTarget = camera.targetTexture;
+            CameraClearFlags previousClearFlags = camera.clearFlags;
+            Color previousBackground = camera.backgroundColor;
+            try
+            {
+                camera.clearFlags = CameraClearFlags.SolidColor;
+                camera.backgroundColor = Color.black;
+                camera.targetTexture = target;
+                Color32[] withRepair = CapturePixels(camera, target, readback, Size);
+                foreach (Renderer renderer in capRenderers)
+                {
+                    renderer.enabled = false;
+                    renderer.forceRenderingOff = true;
+                }
+                Color32[] withoutRepair = CapturePixels(
+                    camera,
+                    target,
+                    readback,
+                    Size);
+                foreach (Renderer renderer in capRenderers)
+                {
+                    renderer.forceRenderingOff = false;
+                    renderer.enabled = true;
+                }
+                int changedPixels = 0;
+                for (int index = 0; index < withRepair.Length; index++)
+                {
+                    int difference =
+                        Mathf.Abs(withRepair[index].r - withoutRepair[index].r)
+                        + Mathf.Abs(withRepair[index].g - withoutRepair[index].g)
+                        + Mathf.Abs(withRepair[index].b - withoutRepair[index].b);
+                    if (difference >= 12)
+                    {
+                        changedPixels++;
+                    }
+                }
+                return changedPixels;
+            }
+            finally
+            {
+                camera.targetTexture = previousTarget;
+                camera.clearFlags = previousClearFlags;
+                camera.backgroundColor = previousBackground;
+                RenderTexture.active = previousActive;
+                UnityEngine.Object.DestroyImmediate(readback);
+                RenderTexture.ReleaseTemporary(target);
+            }
+        }
+
+        private static Color32[] CapturePixels(
+            Camera camera,
+            RenderTexture target,
+            Texture2D readback,
+            int size)
+        {
+            camera.Render();
+            RenderTexture.active = target;
+            readback.ReadPixels(new Rect(0, 0, size, size), 0, 0);
+            readback.Apply();
+            return readback.GetPixels32();
         }
 
         private static bool AllUseMaterial(Renderer[] renderers, Material material)

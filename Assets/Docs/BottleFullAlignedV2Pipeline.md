@@ -1,29 +1,29 @@
-# BottleFullAlignedV2 v32 A-to-B-to-C contract
+# BottleFullAlignedV2 v33 A-to-B-to-C contract
 
 ## Formal assets
 
 - A is the real open bottle seen by the phone.
-- B is `DamagedBottleB`, reconstructed from the open/no-cap bottle photographs.
+- B is `DamagedBottleB` plus its clean 10 mm `ReferenceNeckProxyB`.
 - C is the approved clean 39 x 10 mm `BottleCapC`.
 
 The production Blender source is
-`F:\Meshroom_work\bottle_full_clean_v2\split_models\bottle_no_cap_clean_cap_registered.blend`.
-The Unity FBX is
-`Assets/Models/CleanBottleReconstruction/BottleFullAlignedV2/bottle_full_aligned_v2.fbx`.
-
-The Blender hierarchy is fixed:
+`F:\Meshroom_work\bottle_full_clean_v2\split_models\bottle_full_aligned_v2_v33.blend`.
+Unity keeps the formal FBX at
+`Assets/Models/CleanBottleReconstruction/BottleFullAlignedV2/bottle_full_aligned_v2.fbx`
+so its Unity GUID remains stable.
 
 ```text
 BottleRepairRoot
 ├── DamagedBottleB
+│   └── ReferenceNeckProxyB
 └── BottleCapC
 ```
 
-B and C use one mouth-centred coordinate frame. Both child transforms are
-baked to identity. The measured cap encloses the mouth plane by 8.77 mm and
-extends 1.35 mm above it. Unity never moves, rotates, or scales C separately.
-The exact source transforms, dimensions, source hashes, and cap seating are in
-`bottle_full_aligned_v2_report.json`.
+The Meshroom scan ends at the damaged shoulder cut, which remains model `Y=0`
+for the existing ORB feature database. Blender restores the photographed
+10 mm neck above that datum. C's corresponding 10 mm lift is baked into its
+vertices; B and C object transforms remain identity and Unity never positions,
+rotates, or scales C independently.
 
 ## Runtime tracking
 
@@ -32,51 +32,38 @@ TrackedBottleRoot                 accepted A-to-B world pose
 └── ModelCoordinateAlignment      fixed ORB-to-Blender calibration
     └── BottleRepairRoot          Blender-authored rigid pair
         ├── DamagedBottleB        opaque before Start; Renderer off after lock
+        │   └── ReferenceNeckProxyB
         └── BottleCapC            always inherits the complete B pose
 ```
 
 Recognition starts when the tracking page opens. Before Start, the opaque B+C
-pair is shown upright, front-facing, and centred so the user can move the phone
-until B roughly overlaps A. Start does not create or reposition C. It requests
-the repair presentation; once A-to-B tracking is stable, only the B Renderers
-are disabled and C remains enabled under the same tracked hierarchy.
+pair is upright, front-facing, and centred for coarse alignment. Start does not
+create or reposition C. Once A-to-B tracking is stable, only the B renderers
+(including its neck) are disabled. C remains in the same rigid hierarchy.
 
-The v32 baseline restores the complete coordinate contract from commit
-`bcb344b`, the last revision with supplied physical-device evidence of both
-registration and cap visibility. This includes:
-
-- the 4,100-record URP3DM1 database built from real open-bottle observations;
-- the matching native ORB and multi-point pose solver;
-- the managed OpenCV-to-Unity pose conversion;
-- the mouth-centred Blender B+C asset and calibration axes.
-
-These components must not be mixed with the later grouped database or
-shoulder-cut/full-neck coordinate experiments.
-
-ORB supplies natural-feature correspondences. Multi-point camera geometry then
-uses the known 3D B coordinates to recover the six-degree-of-freedom A-to-B
-pose. C is excluded from recognition.
+ORB supplies natural-feature correspondences from real open-bottle photos.
+The multi-point pose solver converts those 2D-to-3D correspondences into the
+six-degree-of-freedom A-to-B pose; C is excluded from recognition.
 
 ## Consistency
 
-- Geometric consistency: B and C remain rigid siblings and only their common
-  tracked root receives pose updates.
-- Illumination consistency: accepted B inliers and AR Foundation light
-  estimates drive the C material gradually; they do not alter pose.
-- Occlusion consistency: B's visible surface is disabled after lock while AR
-  Foundation environment depth remains enabled on supported devices.
-- Stability: the accepted pose uses consecutive-frame confirmation,
-  reprojection checks, spatial coverage, deadbands, and bounded drift
-  correction. There is no screen-space anchor or independent C tracking.
+- Geometry: only `TrackedBottleRoot` receives pose updates.
+- Illumination: accepted B samples and AR Foundation light estimates adjust
+  C's material gradually without changing pose.
+- Occlusion: B can participate in validation/depth, but after lock its colour
+  renderer is disabled while supported AR environment depth remains available.
+- Stability: temporal confirmation, reprojection error, spatial coverage,
+  deadbands, and bounded corrections gate accepted pose updates.
+
+The editor regression now renders the repair stage into a `RenderTexture` and
+fails when C is merely enabled in the hierarchy but produces no colour pixels.
 
 ## Verification boundary
 
-Static validation, offline replay, Play Mode, and a successful APK build prove
-the asset and code contract only. They do not prove physical overlay. v32 is
-accepted on-device only after:
+Static validation, six-view Blender QA, Play Mode, and APK build prove the asset
+and code contract. They do not prove physical overlay. Device success requires:
 
-1. B remains over A while the phone moves through front, oblique, and top views.
-2. After Start, B disappears and C remains seated on the real mouth through the
-   same movements.
+1. B stays over A through front, oblique, and top views.
+2. After Start, B disappears and C remains seated through the same motion.
 
-Until those recordings exist, `device_overlay_verified` remains `false`.
+Until device recordings prove both, `device_overlay_verified` remains `false`.

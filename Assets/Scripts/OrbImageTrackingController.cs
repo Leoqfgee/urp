@@ -1414,6 +1414,7 @@ namespace Urp.ArDemo
 
         private static void PrepareOverlayRenderer(Renderer renderer)
         {
+            renderer.forceRenderingOff = false;
             renderer.shadowCastingMode =
                 UnityEngine.Rendering.ShadowCastingMode.Off;
             renderer.receiveShadows = false;
@@ -1430,6 +1431,11 @@ namespace Urp.ArDemo
                 if (renderer != null)
                 {
                     renderer.enabled = enabled;
+                    // enabled alone is not a rendering guarantee: imported
+                    // renderers can retain forceRenderingOff from an earlier
+                    // depth/diagnostic pass.  C must always return to the
+                    // ordinary colour pass when B is hidden.
+                    renderer.forceRenderingOff = !enabled;
                 }
             }
         }
@@ -1444,6 +1450,7 @@ namespace Urp.ArDemo
             {
                 if (renderer != null
                     && renderer.enabled
+                    && !renderer.forceRenderingOff
                     && renderer.gameObject.activeInHierarchy)
                 {
                     return true;
