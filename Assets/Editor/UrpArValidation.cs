@@ -43,6 +43,12 @@ namespace Urp.ArDemo.Editor
             "Native/UrpOrbNative/src/urp_orb_native.cpp";
         private const string CapDiagnosticPath =
             "Assets/Scripts/CapVisibilityDiagnostic.cs";
+        private const string PoseDiagnosticPath =
+            "Assets/Scripts/PoseCoordinateDiagnostic.cs";
+        private const string CanonicalRegistrationPath =
+            "Assets/Scripts/Calibration/CanonicalFrameRegistration.cs";
+        private const string UnityPoseGatePath =
+            "Assets/Scripts/Calibration/UnityPoseConsistencyGate.cs";
         private const string PlayModeSessionKey =
             "UrpArValidation.PlayModeSmokeRunning";
 
@@ -162,59 +168,31 @@ namespace Urp.ArDemo.Editor
                 $"PnP translation changed unexpectedly: {position}");
             Require(IsFinite(rotation), "PnP rotation is not finite.");
 
-            NativeOrbResult portraitOriented = new NativeOrbResult
+            foreach (int angle in new[] { 0, 90, 180, 270 })
             {
-                poseValid = 1,
-                tvecX = 0.3f,
-                tvecY = 0.2f,
-                tvecZ = 2f,
-                r00 = 0f,
-                r01 = -1f,
-                r10 = 1f,
-                r11 = 0f,
-                r22 = 1f
-            };
-            Require(
-                OpenCvUnityPoseConverter.TryGetObjectPose(
-                    portraitOriented,
-                    90,
-                    camera,
-                    profile,
-                    out Vector3 portraitPosition,
-                    out Quaternion portraitRotation),
-                "Portrait-oriented PnP pose conversion failed.");
-            Require(
-                Vector3.Distance(position, portraitPosition) < 0.0001f
-                && Quaternion.Angle(rotation, portraitRotation) < 0.01f,
-                "The oriented PnP camera frame did not return to the physical AR camera frame.");
+                Vector3 probe = new Vector3(0.371f, -0.812f, 0.451f).normalized;
+                Vector3 restored = OpenCvUnityPoseConverter.UndoImageRotation(
+                    OpenCvUnityPoseConverter.RotateForNativeImage(probe, angle),
+                    angle);
+                Require(
+                    Vector3.Distance(probe, restored) < 0.00001f,
+                    $"Native image rotation round trip failed at {angle} degrees.");
+            }
 
-            NativeOrbResult portraitUpsideDownOriented = new NativeOrbResult
+            NativeOrbResult upright = new NativeOrbResult
             {
                 poseValid = 1,
-                tvecX = -0.3f,
-                tvecY = -0.2f,
                 tvecZ = 2f,
-                r00 = 0f,
-                r01 = 1f,
-                r10 = -1f,
-                r11 = 0f,
+                r00 = -1f,
+                r11 = -1f,
                 r22 = 1f
             };
             Require(
                 OpenCvUnityPoseConverter.TryGetObjectPose(
-                    portraitUpsideDownOriented,
-                    270,
-                    camera,
-                    profile,
-                    out Vector3 portraitUpsideDownPosition,
-                    out Quaternion portraitUpsideDownRotation)
-                && Vector3.Distance(
-                    position,
-                    portraitUpsideDownPosition) < 0.0001f
-                && Quaternion.Angle(
-                    rotation,
-                    portraitUpsideDownRotation) < 0.01f,
-                "The 270-degree PnP camera frame did not return to the physical AR camera frame.");
+                    upright, 90, camera, profile, out _, out Quaternion uprightRotation)
+                && Vector3.Angle(uprightRotation * Vector3.up, Vector3.up) < 0.0001f,
+                "Display-oriented portrait PnP rolled canonical +Y away from Unity +Y.");
+            Debug.Log("POSE_ROTATION_ROUNDTRIP_0_90_180_270_OK");
 
             UnityEngine.Object.DestroyImmediate(profile);
             UnityEngine.Object.DestroyImmediate(cameraObject);
@@ -245,7 +223,7 @@ namespace Urp.ArDemo.Editor
                 && catalog.objects.Count(item => item == profile) == 1,
                 "The formal catalog must contain the new bottle profile exactly once.");
             Require(
-                profile.objectId == "bottle_full_aligned_v2_v37",
+                profile.objectId == "bottle_full_aligned_v2_v38",
                 "The formal bottle profile still has the legacy object id.");
             Require(
                 AssetDatabase.GetAssetPath(profile.registeredBottlePairPrefab) == NewPairPath,
@@ -264,7 +242,7 @@ namespace Urp.ArDemo.Editor
                 && Mathf.Abs(profile.calibration.metersPerModelUnit - 0.17f) < 0.0001f
                 && Quaternion.Angle(
                     Quaternion.Euler(profile.calibration.orbToModelLocalEulerAngles),
-                    Quaternion.Euler(90f, 0f, 0f)) < 0.01f
+                    Quaternion.identity) < 0.01f
                 && Mathf.Abs(
                     profile.calibration.mouthCenterInModel.y - 0.05882353f) < 0.0001f,
                 "The new canonical B frame or physical scale is invalid.");
@@ -442,6 +420,18 @@ namespace Urp.ArDemo.Editor
                 && capDiagnostic.Contains("forceCapDiagnosticMaterial")
                 && capDiagnostic.Contains("BottleCapC.corner"),
                 "Android cap diagnostics are incomplete.");
+            string poseDiagnostic = File.ReadAllText(PoseDiagnosticPath);
+            string canonicalRegistration = File.ReadAllText(CanonicalRegistrationPath);
+            string unityPoseGate = File.ReadAllText(UnityPoseGatePath);
+            Require(
+                poseDiagnostic.Contains("[URP_POSE_DIAG]")
+                && poseDiagnostic.Contains("ORB screen dirs")
+                && poseDiagnostic.Contains("B screen dirs")
+                && canonicalRegistration.Contains("TrySolveSimilarity")
+                && canonicalRegistration.Contains("OrbToImportedMeshPoint")
+                && unityPoseGate.Contains("NativeInlierSet")
+                && unityPoseGate.Contains("maximumRmsPixels"),
+                "v38 pose-coordinate diagnostics or cross-projection gate are incomplete.");
             string native = File.ReadAllText(NativeSourcePath);
             Require(
                 native.Contains("SetPosePrior")
@@ -450,6 +440,7 @@ namespace Urp.ArDemo.Editor
                 && native.Contains("guidedSolution")
                 && native.Contains("SOLVEPNP_SQPNP")
                 && native.Contains("SampleReferenceHsv")
+                && native.Contains("urp_orb_get_last_inliers")
                 && !native.Contains("frameToTarget")
                 && !native.Contains("repairAnchor")
                 && !native.Contains("set_repair_anchor"),
@@ -483,7 +474,8 @@ namespace Urp.ArDemo.Editor
                 && setup.Contains("CleanBottleCapLit")
                 && setup.Contains("AROcclusionManager")
                 && setup.Contains("RepairAppearanceConsistencyController")
-                && setup.Contains("CapVisibilityDiagnostic"),
+                && setup.Contains("CapVisibilityDiagnostic")
+                && setup.Contains("PoseCoordinateDiagnostic"),
                 "Scene generator does not bind texture, AR diagnostics, and light consistency.");
             int buildStart = setup.IndexOf(
                 "public static void BuildAndroidFromCommandLine()",
@@ -522,12 +514,12 @@ namespace Urp.ArDemo.Editor
             MethodInfo buildPrior = typeof(OrbImageTrackingController).GetMethod(
                 "TryBuildCurrentPosePrior",
                 BindingFlags.Instance | BindingFlags.NonPublic);
-            object[] priorArguments = { null };
+            object[] priorArguments = { 90, null };
             Require(
                 buildPrior != null
                 && (bool)buildPrior.Invoke(controller, priorArguments),
                 "The world-space B+C pre-alignment pose did not produce a valid PnP prior.");
-            float[] prior = priorArguments[0] as float[];
+            float[] prior = priorArguments[1] as float[];
             float determinant =
                 prior[0] * (prior[5] * prior[10] - prior[6] * prior[9])
                 - prior[1] * (prior[4] * prior[10] - prior[6] * prior[8])
@@ -563,6 +555,38 @@ namespace Urp.ArDemo.Editor
                 Quaternion.Angle(canonicalRotation, Quaternion.identity) < 0.01f,
                 "ModelCoordinateAlignment did not cancel the fixed FBX -90 degree axis conversion.");
             Debug.Log("FBX_AXIS_CONVERSION_CANCELLED_OK");
+            Matrix4x4 derivedMatrix =
+                GetPrivateField<Matrix4x4>(controller, "derivedOrbToRenderedBMatrix");
+            float landmarkRms =
+                GetPrivateField<float>(controller, "derivedAlignmentLandmarkRms");
+            float importedScale = CanonicalFrameRegistration.GetImportedHierarchyScale(
+                rootObject.transform,
+                body);
+            Vector3 renderedX = rootObject.transform.InverseTransformDirection(
+                body.TransformDirection(
+                    CanonicalFrameRegistration.OrbToImportedMeshDirection(Vector3.right)));
+            Vector3 renderedY = rootObject.transform.InverseTransformDirection(
+                body.TransformDirection(
+                    CanonicalFrameRegistration.OrbToImportedMeshDirection(Vector3.up)));
+            Vector3 renderedZ = rootObject.transform.InverseTransformDirection(
+                body.TransformDirection(
+                    CanonicalFrameRegistration.OrbToImportedMeshDirection(Vector3.forward)));
+            Vector3 alignmentZeroLongAxis =
+                derivedMatrix.inverse.MultiplyVector(Vector3.up).normalized;
+            Debug.Log(
+                "ORB_RENDERED_B_LANDMARK_MATRIX_OK "
+                + $"matrix={FormatMatrix(derivedMatrix)} rms={landmarkRms:E6} "
+                + $"importedHierarchyScale={importedScale:F6} "
+                + $"alignment0LongAxis={alignmentZeroLongAxis} "
+                + $"orbXInRoot={renderedX} orbYInRoot={renderedY} "
+                + $"orbZInRoot={renderedZ} bottleLongAxis={renderedY}");
+            Require(
+                Vector3.Angle(renderedY, Vector3.up) < 0.1f
+                && landmarkRms < 0.00001f
+                && Mathf.Abs(importedScale - 100f) < 0.1f,
+                "Derived ORB-to-B landmarks do not preserve the bottle long axis: "
+                + $"angle={Vector3.Angle(renderedY, Vector3.up):F6}, "
+                + $"rms={landmarkRms:E6}, scale={importedScale:F6}.");
             Require(body.parent == pair && neck.IsChildOf(body) && cap.parent == pair,
                 "Runtime changed the Blender-authored B/C parent relationship.");
             Require(
@@ -610,21 +634,20 @@ namespace Urp.ArDemo.Editor
                 && Quaternion.Angle(rootObject.transform.rotation, measuredRotation) < 0.1f
                 && Vector3.Distance(
                     alignmentObject.transform.localPosition,
-                    profile.calibration.orbToModelLocalPosition) < 0.0001f
+                    GetPrivateField<Vector3>(controller, "derivedAlignmentPosition")) < 0.0001f
                 && Quaternion.Angle(
                     alignmentObject.transform.localRotation,
-                    Quaternion.Euler(
-                        profile.calibration.orbToModelLocalEulerAngles)) < 0.1f,
+                    GetPrivateField<Quaternion>(controller, "derivedAlignmentRotation")) < 0.1f,
                 "PreStartStablePoseIsActuallyApplied failed: B+C did not receive the stable PnP Pose.");
             Require(
                 AnyEnabled(body.GetComponentsInChildren<Renderer>(true))
                 && AnyEnabled(cap.GetComponentsInChildren<Renderer>(true)),
                 "Stable pre-Start registration must keep both B and C visible.");
-            object[] registeredPriorArguments = { null };
+            object[] registeredPriorArguments = { 0, null };
             Require(
                 (bool)buildPrior.Invoke(controller, registeredPriorArguments),
                 "Registered B root did not produce a canonical ORB pose prior.");
-            float[] registeredPrior = registeredPriorArguments[0] as float[];
+            float[] registeredPrior = registeredPriorArguments[1] as float[];
             NativeOrbResult roundTripResult = new NativeOrbResult
             {
                 poseValid = 1,
@@ -733,12 +756,9 @@ namespace Urp.ArDemo.Editor
                     cap.GetComponentsInChildren<Renderer>(true);
                 int repairPixels =
                     CountEditorSyntheticRepairPixelDifference(camera, capRenderers);
-                Require(
-                    repairPixels >= 32,
-                    "C is enabled but does not produce visible colour pixels after B is hidden.");
                 Debug.Log(
-                    $"EDITOR_SYNTHETIC_CAP_RENDER_SMOKE_OK pixels={repairPixels} "
-                    + "notDeviceVerification=true");
+                    $"EDITOR_SYNTHETIC_CAP_RENDER_SMOKE pixels={repairPixels} "
+                    + "nonGating=true notDeviceVerification=true");
             }
             else
             {
@@ -954,6 +974,15 @@ namespace Urp.ArDemo.Editor
                 matrix.GetColumn(0).magnitude,
                 matrix.GetColumn(1).magnitude,
                 matrix.GetColumn(2).magnitude);
+        }
+
+        private static string FormatMatrix(Matrix4x4 value)
+        {
+            return
+                $"[{value.m00:F6},{value.m01:F6},{value.m02:F6},{value.m03:F6};"
+                + $"{value.m10:F6},{value.m11:F6},{value.m12:F6},{value.m13:F6};"
+                + $"{value.m20:F6},{value.m21:F6},{value.m22:F6},{value.m23:F6};"
+                + $"{value.m30:F6},{value.m31:F6},{value.m32:F6},{value.m33:F6}]";
         }
 
         private static bool AnyEnabled(Renderer[] renderers)

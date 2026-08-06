@@ -17,7 +17,7 @@
 namespace
 {
 constexpr char kModelMagic[8] = {'U', 'R', 'P', '3', 'D', 'M', '1', '\0'};
-constexpr char kBuildVersion[] = "urp-orb-native-2026.07.24-r8-multiview-pose-hsv";
+constexpr char kBuildVersion[] = "urp-orb-native-2026.08.06-r9-pose-frame-diagnostics";
 constexpr int kDescriptorBytes = 32;
 constexpr int kModelRecordBytes = 3 * static_cast<int>(sizeof(float)) + kDescriptorBytes;
 
@@ -174,6 +174,10 @@ public:
         }
 
         *result = UrpOrbResult{0};
+        lastInlierModelPoints_.clear();
+        lastInlierFramePoints_.clear();
+        lastFrameWidth_ = 0;
+        lastFrameHeight_ = 0;
         result->r00 = 1.0f;
         result->r11 = 1.0f;
         result->r22 = 1.0f;
@@ -229,6 +233,12 @@ public:
         double scaledCx = orientedCx > 1.0 ? orientedCx * resizeScale : static_cast<double>(frame.cols) * 0.5;
         double scaledCy = orientedCy > 1.0 ? orientedCy * resizeScale : static_cast<double>(frame.rows) * 0.5;
         cv::Mat cameraMatrix = (cv::Mat_<double>(3, 3) << scaledFx, 0.0, scaledCx, 0.0, scaledFy, scaledCy, 0.0, 0.0, 1.0);
+        lastFrameWidth_ = frame.cols;
+        lastFrameHeight_ = frame.rows;
+        lastFx_ = static_cast<float>(scaledFx);
+        lastFy_ = static_cast<float>(scaledFy);
+        lastCx_ = static_cast<float>(scaledCx);
+        lastCy_ = static_cast<float>(scaledCy);
         cv::Mat distCoeffs = cv::Mat::zeros(4, 1, CV_64F);
 
         std::vector<cv::KeyPoint> frameKeypoints;
@@ -426,6 +436,8 @@ public:
             result->poseValid = result->rejectionCode == kAccepted ? 1 : 0;
             if (result->poseValid != 0)
             {
+                lastInlierModelPoints_ = chosen.inlierModelPoints;
+                lastInlierFramePoints_ = chosen.inlierFramePoints;
                 SampleReferenceHsv(frame, chosen.inlierFramePoints, result);
             }
         }
@@ -434,6 +446,43 @@ public:
             std::chrono::duration<double, std::milli>(
                 std::chrono::steady_clock::now() - startedAt).count());
         return result->tracked;
+    }
+
+    int GetLastInliers(
+        float* modelXyz,
+        float* frameXy,
+        int capacity,
+        int* frameWidth,
+        int* frameHeight,
+        float* intrinsics)
+    {
+        if (frameWidth != nullptr) *frameWidth = lastFrameWidth_;
+        if (frameHeight != nullptr) *frameHeight = lastFrameHeight_;
+        if (intrinsics != nullptr)
+        {
+            intrinsics[0] = lastFx_;
+            intrinsics[1] = lastFy_;
+            intrinsics[2] = lastCx_;
+            intrinsics[3] = lastCy_;
+        }
+        if (modelXyz == nullptr || frameXy == nullptr || capacity <= 0)
+        {
+            return static_cast<int>(lastInlierModelPoints_.size());
+        }
+        const int count = std::min(
+            capacity,
+            static_cast<int>(std::min(
+                lastInlierModelPoints_.size(),
+                lastInlierFramePoints_.size())));
+        for (int i = 0; i < count; i++)
+        {
+            modelXyz[i * 3] = lastInlierModelPoints_[i].x;
+            modelXyz[i * 3 + 1] = lastInlierModelPoints_[i].y;
+            modelXyz[i * 3 + 2] = lastInlierModelPoints_[i].z;
+            frameXy[i * 2] = lastInlierFramePoints_[i].x;
+            frameXy[i * 2 + 1] = lastInlierFramePoints_[i].y;
+        }
+        return count;
     }
 
 private:
@@ -453,6 +502,7 @@ private:
         cv::Mat tvec;
         cv::Mat rotation;
         std::vector<cv::Point2f> inlierFramePoints;
+        std::vector<cv::Point3f> inlierModelPoints;
     };
 
     PoseSolution SolveCandidateSet(
@@ -677,10 +727,12 @@ private:
         solution.tvec = best.tvec;
         cv::Rodrigues(solution.rvec, solution.rotation);
         solution.inlierFramePoints.reserve(best.inliers.rows);
+        solution.inlierModelPoints.reserve(best.inliers.rows);
         for (int row = 0; row < best.inliers.rows; row++)
         {
             const int index = best.inliers.at<int>(row);
             solution.inlierFramePoints.push_back(framePoints[index]);
+            solution.inlierModelPoints.push_back(modelPoints[index]);
         }
         return solution;
     }
@@ -802,6 +854,14 @@ private:
     cv::Mat priorTranslation_ = cv::Mat::zeros(3, 1, CV_64F);
     float priorSearchRadiusFraction_ = 0.12f;
     bool hasPosePrior_ = false;
+    std::vector<cv::Point3f> lastInlierModelPoints_;
+    std::vector<cv::Point2f> lastInlierFramePoints_;
+    int lastFrameWidth_ = 0;
+    int lastFrameHeight_ = 0;
+    float lastFx_ = 0.0f;
+    float lastFy_ = 0.0f;
+    float lastCx_ = 0.0f;
+    float lastCy_ = 0.0f;
 };
 
 static std::mutex gMutex;
@@ -880,5 +940,29 @@ extern "C"
         }
 
         return found->second->Track(rgba, width, height, fx, fy, cx, cy, rotationClockwise, result);
+    }
+
+    int urp_orb_get_last_inliers(
+        int handle,
+        float* modelXyz,
+        float* frameXy,
+        int capacity,
+        int* frameWidth,
+        int* frameHeight,
+        float* intrinsics)
+    {
+        std::lock_guard<std::mutex> lock(gMutex);
+        auto found = gTrackers.find(handle);
+        if (found == gTrackers.end())
+        {
+            return 0;
+        }
+        return found->second->GetLastInliers(
+            modelXyz,
+            frameXy,
+            capacity,
+            frameWidth,
+            frameHeight,
+            intrinsics);
     }
 }

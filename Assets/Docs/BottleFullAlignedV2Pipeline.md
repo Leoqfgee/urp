@@ -1,4 +1,4 @@
-# BottleFullAlignedV2 v37 A-to-B-to-C contract
+# BottleFullAlignedV2 v38 A-to-B-to-C contract
 
 ## Rigid asset contract
 
@@ -43,11 +43,27 @@ There is no session upright/yaw correction. This preserves the measured pitch,
 roll, yaw, translation, and perspective in front, oblique, and top views. C is
 excluded from recognition and inherits B exactly.
 
-The imported FBX `BottleRepairRoot` was measured in Unity with a `-90 degrees X`
-rotation and scale 100. `ModelCoordinateAlignment` therefore uses one fixed
-`+90 degrees X` profile rotation, yielding an identity canonical orientation
-under `TrackedBottleRoot`; the imported unit scale remains intact. This is an
-A-to-B coordinate-frame correction, not a cap offset.
+The imported FBX `BottleRepairRoot` is measured with rotation near
+`Rx(-90 degrees)` and hierarchy scale 100, while imported mesh vertices carry
+the reciprocal file-unit scale and an X handedness reflection. Runtime passes
+five actual B landmark coordinates through that complete hierarchy and solves
+the proper similarity transform to the reflected ORB target landmarks. The
+current asset derives zero translation, unit scale and `Rx(+90 degrees)` with
+landmark RMS below 1e-5. The value is an output of the fit, not a profile Euler.
+
+Native rotates raw CPU pixels and intrinsics by `frameRotationClockwise` before
+PnP. The resulting R/t is already in the display-oriented tracking camera.
+Unity applies only `CvCameraToUnityCamera = diag(1,-1,1)` on the camera side;
+the imported mesh X reflection supplies the model-side handedness conversion.
+The old final-pose `UndoImageRotation` left a portrait 90-degree roll and was
+removed. Raw/oriented rotation and inverse rotation remain unit-tested for
+0/90/180/270 degrees and are still used to supply the native raw-frame prior.
+
+Before registration, `UnityPoseConsistencyGate` retrieves the exact native PnP
+inlier model/image pairs. Each observed pixel is converted through the oriented
+K and ARCamera projection, while the same model point is passed through the
+prospective TrackedBottleRoot, derived alignment, actual FBX hierarchy, and
+`WorldToScreenPoint`. RMS above 5 px blocks registration and ReadyForRepair.
 
 Start changes rendering only. It does not apply registration, create, move,
 rotate, scale, reparent, or rematerial C:

@@ -118,6 +118,59 @@ namespace Urp.ArDemo.Native
             }
         }
 
+        public unsafe bool TryGetLastInliers(out NativeInlierSet inliers)
+        {
+            inliers = default;
+            if (!IsValid)
+            {
+                return false;
+            }
+            const int Capacity = 128;
+            float[] model = new float[Capacity * 3];
+            float[] frame = new float[Capacity * 2];
+            float[] intrinsics = new float[4];
+            int frameWidth;
+            int frameHeight;
+            int count;
+            fixed (float* modelPtr = model)
+            fixed (float* framePtr = frame)
+            fixed (float* intrinsicsPtr = intrinsics)
+            {
+                count = urp_orb_get_last_inliers(
+                    handle,
+                    modelPtr,
+                    framePtr,
+                    Capacity,
+                    out frameWidth,
+                    out frameHeight,
+                    intrinsicsPtr);
+            }
+            if (count <= 0 || frameWidth <= 0 || frameHeight <= 0)
+            {
+                return false;
+            }
+            Vector3[] modelPoints = new Vector3[count];
+            Vector2[] framePoints = new Vector2[count];
+            for (int i = 0; i < count; i++)
+            {
+                modelPoints[i] = new Vector3(
+                    model[i * 3],
+                    model[i * 3 + 1],
+                    model[i * 3 + 2]);
+                framePoints[i] = new Vector2(
+                    frame[i * 2],
+                    frame[i * 2 + 1]);
+            }
+            inliers = new NativeInlierSet(
+                modelPoints,
+                framePoints,
+                frameWidth,
+                frameHeight,
+                new CameraIntrinsics(
+                    intrinsics[0], intrinsics[1], intrinsics[2], intrinsics[3]));
+            return true;
+        }
+
         public void Dispose()
         {
             if (disposed)
@@ -164,6 +217,16 @@ namespace Urp.ArDemo.Native
             int rotationClockwise,
             out NativeOrbResult result);
 
+        [DllImport(DllName)]
+        private static extern unsafe int urp_orb_get_last_inliers(
+            int handle,
+            float* modelXyz,
+            float* frameXy,
+            int capacity,
+            out int frameWidth,
+            out int frameHeight,
+            float* intrinsics);
+
         internal static byte[] GetRgbaBytes(Texture2D texture)
         {
             int expectedLength = texture.width * texture.height * 4;
@@ -192,7 +255,7 @@ namespace Urp.ArDemo.Native
     }
 
 
-    internal readonly struct CameraIntrinsics
+    public readonly struct CameraIntrinsics
     {
         public CameraIntrinsics(float focalLengthX, float focalLengthY, float principalPointX, float principalPointY)
         {
@@ -206,6 +269,30 @@ namespace Urp.ArDemo.Native
         public float FocalLengthY { get; }
         public float PrincipalPointX { get; }
         public float PrincipalPointY { get; }
+    }
+
+    public readonly struct NativeInlierSet
+    {
+        public NativeInlierSet(
+            Vector3[] modelPoints,
+            Vector2[] framePoints,
+            int frameWidth,
+            int frameHeight,
+            CameraIntrinsics intrinsics)
+        {
+            ModelPoints = modelPoints;
+            FramePoints = framePoints;
+            FrameWidth = frameWidth;
+            FrameHeight = frameHeight;
+            Intrinsics = intrinsics;
+        }
+
+        public Vector3[] ModelPoints { get; }
+        public Vector2[] FramePoints { get; }
+        public int FrameWidth { get; }
+        public int FrameHeight { get; }
+        public CameraIntrinsics Intrinsics { get; }
+        public int Count => ModelPoints?.Length ?? 0;
     }
 
     [Serializable, StructLayout(LayoutKind.Sequential)]

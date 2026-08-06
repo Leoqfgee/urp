@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the BottleFullAlignedV2 v37 runtime contract without Unity."""
+"""Validate the BottleFullAlignedV2 v38 runtime contract without Unity."""
 
 from __future__ import annotations
 
@@ -134,10 +134,12 @@ def main() -> None:
     point_y_span = float(point_max[1] - point_min[1])
     if body_y_span <= 0.0 or point_y_span / body_y_span < 0.95:
         raise ValueError("ORB and Blender B vertical axes/scales do not agree")
-    if "orbToModelLocalEulerAngles: {x: 90, y: 0, z: 0}" not in calibration:
-        raise ValueError("The fixed Unity FBX -90 degree X import rotation is not cancelled")
-    if "new Vector3(90f, 0f, 0f)" not in setup:
-        raise ValueError("Scene setup does not preserve the measured FBX axis correction")
+    if "orbToModelLocalEulerAngles: {x: 0, y: 0, z: 0}" not in calibration:
+        raise ValueError("Profile still contains a hand-authored Euler correction")
+    if "CanonicalFrameRegistration.TryDerive" not in controller:
+        raise ValueError("Runtime does not derive ORB-to-B alignment from landmarks")
+    if "new Vector3(90f, 0f, 0f)" in setup:
+        raise ValueError("Scene setup still hard-codes the v37 Euler correction")
 
     prohibited = (
         "displayMatrix",
@@ -174,6 +176,7 @@ def main() -> None:
         "guidedSolution",
         "SOLVEPNP_SQPNP",
         "SampleReferenceHsv",
+        "urp_orb_get_last_inliers",
     ):
         if token not in native:
             raise ValueError(f"Restored native tracker is missing {token}")
@@ -181,7 +184,7 @@ def main() -> None:
         raise ValueError("Scene generator does not bind only BottleFullAlignedV2")
 
     payload = {
-        "status": "BOTTLE_FULL_ALIGNED_V37_DATA_OK",
+        "status": "BOTTLE_FULL_ALIGNED_V38_DATA_OK",
         "fbx_sha256": sha256(fbx),
         "database_sha256": sha256(database),
         "database_records": len(points),
@@ -195,7 +198,8 @@ def main() -> None:
         "device_overlay_verified": False,
         "orb_points_within_blender_b_bounds": True,
         "orb_blender_scale_meters_per_unit": manifest_scale,
-        "fbx_axis_correction_euler_x_degrees": 90.0,
+        "profile_euler_correction_degrees": [0.0, 0.0, 0.0],
+        "alignment_source": "runtime_landmark_similarity_fit",
     }
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 

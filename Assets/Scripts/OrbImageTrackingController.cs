@@ -47,6 +47,7 @@ namespace Urp.ArDemo
         [SerializeField] private Text statusText;
         [SerializeField] private RepairAppearanceConsistencyController appearanceConsistency;
         [SerializeField] private CapVisibilityDiagnostic capVisibilityDiagnostic;
+        [SerializeField] private PoseCoordinateDiagnostic poseCoordinateDiagnostic;
 
         [Header("Runtime profile")]
         [SerializeField] private RestorationObjectProfile activeProfile;
@@ -56,6 +57,7 @@ namespace Urp.ArDemo
         [SerializeField] private float minimumInlierRatio = 0.35f;
         [SerializeField] private float maximumReprojectionErrorPixels = 3.0f;
         [SerializeField] private float maximumReprojectionMaxPixels = 8.0f;
+        [SerializeField] private float maximumUnityCrossProjectionRmsPixels = 5.0f;
         [SerializeField] private float minimumCoverageX = 0.05f;
         [SerializeField] private float minimumCoverageY = 0.18f;
         [SerializeField] private float ratioTest = 0.72f;
@@ -113,6 +115,11 @@ namespace Urp.ArDemo
         private Vector3 smoothedRootPosition;
         private Quaternion smoothedRootRotation = Quaternion.identity;
         private float lastRootPoseApplicationTime = float.NegativeInfinity;
+        private Vector3 derivedAlignmentPosition;
+        private Quaternion derivedAlignmentRotation = Quaternion.identity;
+        private Vector3 derivedAlignmentScale = Vector3.one;
+        private Matrix4x4 derivedOrbToRenderedBMatrix = Matrix4x4.identity;
+        private float derivedAlignmentLandmarkRms;
         private TrackingState trackingState = TrackingState.Idle;
 
         public bool HasTrackedPose => registrationEstablished;
@@ -205,16 +212,9 @@ namespace Urp.ArDemo
                     "TrackedBottleRoot must remain a world root.");
             }
 
-            modelCoordinateAlignment.localPosition = calibration != null
-                ? calibration.orbToModelLocalPosition
-                : Vector3.zero;
-            modelCoordinateAlignment.localRotation = Quaternion.Euler(
-                calibration != null
-                    ? calibration.orbToModelLocalEulerAngles
-                    : Vector3.zero);
-            modelCoordinateAlignment.localScale = calibration != null
-                ? calibration.orbToModelLocalScale
-                : Vector3.one;
+            modelCoordinateAlignment.localPosition = Vector3.zero;
+            modelCoordinateAlignment.localRotation = Quaternion.identity;
+            modelCoordinateAlignment.localScale = Vector3.one;
 
             if (profile.registeredBottlePairPrefab == null)
             {
@@ -251,6 +251,24 @@ namespace Urp.ArDemo
                 registeredRepairPart = null;
                 throw new MissingReferenceException(hierarchyReason);
             }
+
+            if (!CanonicalFrameRegistration.TryDerive(
+                    trackedObjectPoseRoot,
+                    modelCoordinateAlignment,
+                    registeredReferenceModel,
+                    calibration,
+                    out CanonicalFrameRegistration.Result alignmentResult,
+                    out string alignmentReason))
+            {
+                throw new InvalidOperationException(
+                    $"ORB-to-rendered-B landmark registration failed: {alignmentReason}");
+            }
+            derivedAlignmentPosition = alignmentResult.position;
+            derivedAlignmentRotation = alignmentResult.rotation;
+            derivedAlignmentScale = alignmentResult.scale;
+            derivedOrbToRenderedBMatrix = alignmentResult.matrix;
+            derivedAlignmentLandmarkRms = alignmentResult.landmarkRms;
+            RestoreProfileCoordinateAlignment();
 
             Renderer[] allReferenceRenderers =
                 registeredReferenceModel.GetComponentsInChildren<Renderer>(true);
@@ -302,6 +320,17 @@ namespace Urp.ArDemo
                     registeredReferenceModel,
                     registeredRepairPart,
                     repairRenderers);
+            }
+            if (poseCoordinateDiagnostic != null)
+            {
+                poseCoordinateDiagnostic.Bind(
+                    arCamera,
+                    cameraManager,
+                    trackedObjectPoseRoot,
+                    modelCoordinateAlignment,
+                    registeredBottlePairRoot,
+                    registeredReferenceModel,
+                    calibration);
             }
             if (occlusionRoot != null)
             {
@@ -493,13 +522,17 @@ namespace Urp.ArDemo
                 canonicalUpInRoot);
         }
 
-        private bool SetCurrentPosePrior(NativeOrbTracker tracker)
+        private bool SetCurrentPosePrior(
+            NativeOrbTracker tracker,
+            int frameRotationClockwise)
         {
             if (tracker == null)
             {
                 return false;
             }
-            if (!TryBuildCurrentPosePrior(out float[] rotationTranslation))
+            if (!TryBuildCurrentPosePrior(
+                    frameRotationClockwise,
+                    out float[] rotationTranslation))
             {
                 tracker.ClearPosePrior();
                 return false;
@@ -511,7 +544,9 @@ namespace Urp.ArDemo
                     : guidedMatchRadiusFraction);
         }
 
-        private bool TryBuildCurrentPosePrior(out float[] rotationTranslation)
+        private bool TryBuildCurrentPosePrior(
+            int frameRotationClockwise,
+            out float[] rotationTranslation)
         {
             rotationTranslation = null;
             if (arCamera == null
@@ -530,10 +565,13 @@ namespace Urp.ArDemo
                 calibration.objectOriginInModel);
             Vector3 originCameraUnity =
                 arCamera.transform.InverseTransformPoint(originWorld);
-            Vector3 originCameraCv = new Vector3(
+            Vector3 originOrientedCameraCv = new Vector3(
                 originCameraUnity.x,
                 -originCameraUnity.y,
                 originCameraUnity.z) / calibration.metersPerModelUnit;
+            Vector3 originCameraCv = OpenCvUnityPoseConverter.UndoImageRotation(
+                originOrientedCameraCv,
+                frameRotationClockwise);
             if (!IsFinite(originCameraCv) || originCameraCv.z <= 0f)
             {
                 return false;
@@ -542,12 +580,15 @@ namespace Urp.ArDemo
             // OpenCvUnityPoseConverter reconstructs Unity orientation from
             // OpenCV up/forward. Reversing that handedness conversion requires
             // the model-right column to be negated here.
-            Vector3 right = -ModelDirectionToCameraCv(
-                priorFrameInRoot * Vector3.right);
-            Vector3 up = ModelDirectionToCameraCv(
-                priorFrameInRoot * Vector3.up);
-            Vector3 forward = ModelDirectionToCameraCv(
-                priorFrameInRoot * Vector3.forward);
+            Vector3 right = OpenCvUnityPoseConverter.UndoImageRotation(
+                -ModelDirectionToCameraCv(priorFrameInRoot * Vector3.right),
+                frameRotationClockwise);
+            Vector3 up = OpenCvUnityPoseConverter.UndoImageRotation(
+                ModelDirectionToCameraCv(priorFrameInRoot * Vector3.up),
+                frameRotationClockwise);
+            Vector3 forward = OpenCvUnityPoseConverter.UndoImageRotation(
+                ModelDirectionToCameraCv(priorFrameInRoot * Vector3.forward),
+                frameRotationClockwise);
             if (right.sqrMagnitude < 0.000001f
                 || up.sqrMagnitude < 0.000001f
                 || forward.sqrMagnitude < 0.000001f)
@@ -670,9 +711,10 @@ namespace Urp.ArDemo
 
                 NativeOrbResult best = default;
                 bool hasResult = false;
+                NativeOrbTracker bestTracker = null;
                 foreach (NativeOrbTracker tracker in trackers)
                 {
-                    SetCurrentPosePrior(tracker);
+                    SetCurrentPosePrior(tracker, rotationClockwise);
                     tracker.Track(
                         rgba,
                         texture.width,
@@ -683,6 +725,7 @@ namespace Urp.ArDemo
                     if (!hasResult || IsBetter(candidate, best))
                     {
                         best = candidate;
+                        bestTracker = tracker;
                         hasResult = true;
                     }
                 }
@@ -710,6 +753,45 @@ namespace Urp.ArDemo
                 {
                     HandleTrackingLoss();
                     UpdateStatus("已找到自然特征，但三维姿态坐标转换无效。");
+                    return;
+                }
+                if (bestTracker == null
+                    || !bestTracker.TryGetLastInliers(out NativeInlierSet inliers))
+                {
+                    HandleTrackingLoss();
+                    UpdateStatus(
+                        "PnP 数学解有效，但没有取得用于 Unity 一致性验证的内点。");
+                    return;
+                }
+                bool unityPoseConsistent = UnityPoseConsistencyGate.TryEvaluate(
+                    arCamera,
+                    inliers,
+                    targetPosition,
+                    targetRotation,
+                    trackedObjectPoseRoot,
+                    registeredReferenceModel,
+                    calibration,
+                    maximumUnityCrossProjectionRmsPixels,
+                    out UnityPoseConsistencyResult consistency,
+                    out string consistencyReason);
+                poseCoordinateDiagnostic?.UpdatePose(
+                    best,
+                    inliers,
+                    image.width,
+                    image.height,
+                    rotationClockwise,
+                    targetPosition,
+                    targetRotation,
+                    derivedOrbToRenderedBMatrix,
+                    consistency);
+                if (!unityPoseConsistent)
+                {
+                    trackingState = TrackingState.PoseValidating;
+                    HandleTrackingLoss();
+                    UpdateStatus(
+                        "PnP 数学解有效，但 PnP→Unity 坐标转换未通过一致性验证。"
+                        + $" Cross RMS {consistency.rmsPixels:F2}px。"
+                        + consistencyReason);
                     return;
                 }
                 if (appearanceConsistency != null
@@ -1090,16 +1172,9 @@ namespace Urp.ArDemo
             {
                 return;
             }
-            modelCoordinateAlignment.localPosition = calibration != null
-                ? calibration.orbToModelLocalPosition
-                : Vector3.zero;
-            modelCoordinateAlignment.localRotation = Quaternion.Euler(
-                calibration != null
-                    ? calibration.orbToModelLocalEulerAngles
-                    : Vector3.zero);
-            modelCoordinateAlignment.localScale = calibration != null
-                ? calibration.orbToModelLocalScale
-                : Vector3.one;
+            modelCoordinateAlignment.localPosition = derivedAlignmentPosition;
+            modelCoordinateAlignment.localRotation = derivedAlignmentRotation;
+            modelCoordinateAlignment.localScale = derivedAlignmentScale;
         }
 
         private void BuildTrackers()
@@ -1594,7 +1669,10 @@ namespace Urp.ArDemo
         {
             if (statusText != null)
             {
-                statusText.text = message;
+                statusText.text = message
+                    + (poseCoordinateDiagnostic != null
+                        ? poseCoordinateDiagnostic.CompactSummary
+                        : string.Empty);
             }
         }
 

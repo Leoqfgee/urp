@@ -1,4 +1,4 @@
-# URP AR production scope v37
+# URP AR production scope v38
 
 `BottleFullAlignedV2` is the only formal bottle asset. The app recognizes A
 against B with the v33 device-proven ORB baseline and recovers B's complete PnP pose. C is
@@ -11,15 +11,31 @@ Start is enabled only in that state and then disables every B renderer while
 keeping C visible. It does not apply a pose, change a transform, reparent an
 object, or replace a material.
 
-The imported FBX root carries Unity's measured `-90 degrees X` axis conversion.
-The profile has one fixed `+90 degrees X` model-coordinate alignment on the
-common B+C parent to cancel it. There is no independent C calibration.
+The imported FBX root carries an axis/unit hierarchy, but the profile no longer
+contains a guessed Euler correction. Five corresponding landmarks are passed
+through the actual imported B hierarchy and fitted to the ORB canonical frame.
+For the current FBX this derives `Rx(+90 degrees)`, unit scale, and zero
+translation with negligible landmark RMS. There is no independent C calibration.
+
+Native rotates the CPU image and intrinsics to a display-oriented tracking
+frame. PnP R/t stay in that frame for Unity conversion. `UndoImageRotation` is
+used only for the exact native-image round trip and raw-frame pose prior; using
+it on the final pose was the v37 portrait-roll defect.
+
+The same PnP inlier correspondences are cross-projected through OpenCV and the
+prospective rendered-B hierarchy. A cross-projection RMS above 5 px prevents
+`ReadyForRepair`, even when native PnP RMS is low.
 
 Development Android builds emit `[URP_CAP_DIAG]` snapshots for the real
 ARCamera, rigid matrices, renderer bounds, camera-space cap corners, frustum,
 culling, material state, projection, camera background, and environment-depth
 state. The optional marker, RGB axes, and unlit magenta override are diagnostic
 only and are inert in release builds.
+
+Development builds also emit `[URP_POSE_DIAG]`: CPU/native/screen dimensions,
+rotationClockwise, camera facing, intrinsics, ORB and rendered-B projected axes,
+cross-projection RMS, the derived alignment matrix, every hierarchy transform,
+and B mesh/renderer bounds.
 
 The scene generator must not recreate a cyan outline, manual box, screen-space
 anchor, single-mouth-point placement, or independent C anchor. See

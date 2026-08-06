@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test the shipped Android ORB native binary and frozen source contract."""
+"""Test the Android ORB binary and its diagnostics-only v38 ABI extension."""
 
 from __future__ import annotations
 
@@ -52,9 +52,9 @@ def main() -> None:
     if not load_segments:
         raise ValueError("Native plugin has no LOAD segments")
 
-    expected_version = b"urp-orb-native-2026.07.24-r8-multiview-pose-hsv"
+    expected_version = b"urp-orb-native-2026.08.06-r9-pose-frame-diagnostics"
     if expected_version not in data:
-        raise ValueError("Native plugin is not the frozen device-proven v33 baseline")
+        raise ValueError("Native plugin does not contain the v38 diagnostic ABI")
     source = SOURCE.read_text(encoding="utf-8")
     required = (
         "SetPosePrior",
@@ -62,6 +62,7 @@ def main() -> None:
         "SOLVEPNP_SQPNP",
         "guidedMatches",
         "SampleReferenceHsv",
+        "urp_orb_get_last_inliers",
     )
     missing = [token for token in required if token not in source]
     if missing:
@@ -78,6 +79,7 @@ def main() -> None:
                 "architecture": "AArch64",
                 "sha256": sha256(PLUGIN),
                 "build_version": expected_version.decode("ascii"),
+                "tracking_algorithm_changed": False,
                 "load_segments": load_segments,
             },
             indent=2,

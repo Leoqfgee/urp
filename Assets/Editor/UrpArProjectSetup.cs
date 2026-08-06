@@ -36,7 +36,7 @@ namespace Urp.ArDemo.Editor
             "Assets/Materials/BottlePhotogrammetryLit.mat";
         private const string BottleCapMaterialPath =
             "Assets/Materials/CleanBottleCapLit.mat";
-        private const string AndroidApkPath = "Builds/BottleRepairAR_v37.apk";
+        private const string AndroidApkPath = "Builds/BottleRepairAR_v38.apk";
         private const string BottleReferenceOrbPath =
             "Assets/OrbModels/bottle_reference_b.bytes";
         private const string BottleCalibrationPath =
@@ -89,7 +89,7 @@ namespace Urp.ArDemo.Editor
                 locationPathName = AndroidApkPath,
                 target = BuildTarget.Android,
                 targetGroup = BuildTargetGroup.Android,
-                options = BuildOptions.None
+                options = BuildOptions.Development
             });
             if (report.summary.result != BuildResult.Succeeded)
             {
@@ -190,14 +190,14 @@ namespace Urp.ArDemo.Editor
 
         private static void ConfigureAndroidProject()
         {
-            PlayerSettings.productName = "瓶盖AR修复 v37";
+            PlayerSettings.productName = "瓶盖AR修复 v38";
             PlayerSettings.companyName = "qfgeeee";
-            PlayerSettings.bundleVersion = "4.3.7";
+            PlayerSettings.bundleVersion = "4.3.8";
             PlayerSettings.SetApplicationIdentifier(
                 BuildTargetGroup.Android, "com.qfgeeee.paper52objecttrackingar");
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
-            PlayerSettings.Android.bundleVersionCode = 437;
+            PlayerSettings.Android.bundleVersionCode = 438;
             PlayerSettings.SetScriptingBackend(
                 BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
@@ -364,7 +364,7 @@ namespace Urp.ArDemo.Editor
 
             RestorationObjectProfile bottle = LoadOrCreate<RestorationObjectProfile>(
                 BottleProfilePath);
-            bottle.objectId = "bottle_full_aligned_v2_v37";
+            bottle.objectId = "bottle_full_aligned_v2_v38";
             bottle.displayName = "新重建无盖饮料瓶与瓶盖";
             bottle.shortDescription =
                 "Blender 中刚性对齐的无盖瓶身 B 与干净白色瓶盖 C。";
@@ -411,13 +411,9 @@ namespace Urp.ArDemo.Editor
             bottleCalibration.expectedPhysicalCapDiameter = 0.039f;
             bottleCalibration.expectedPhysicalCapHeight = 0.010f;
             bottleCalibration.orbToModelLocalPosition = Vector3.zero;
-            // Unity imports BottleRepairRoot with the FBX file-unit transform
-            // scale=100 and rotation=-90 degrees around X. Scale is already
-            // part of that imported root; this fixed +90-degree alignment
-            // cancels only the axis conversion so rendered B canonical +Y/+Z
-            // matches the ORB database frame under TrackedBottleRoot.
-            bottleCalibration.orbToModelLocalEulerAngles =
-                new Vector3(90f, 0f, 0f);
+            // Runtime derives the fixed parent matrix from corresponding
+            // canonical landmarks through the actual imported hierarchy.
+            bottleCalibration.orbToModelLocalEulerAngles = Vector3.zero;
             bottleCalibration.orbToModelLocalScale = Vector3.one;
             EditorUtility.SetDirty(bottleCalibration);
             bottle.calibration = bottleCalibration;
@@ -591,15 +587,20 @@ namespace Urp.ArDemo.Editor
                 originObject.AddComponent<RepairAppearanceConsistencyController>();
             CapVisibilityDiagnostic capDiagnostic =
                 originObject.AddComponent<CapVisibilityDiagnostic>();
+            PoseCoordinateDiagnostic poseDiagnostic =
+                originObject.AddComponent<PoseCoordinateDiagnostic>();
             AssignReference(appearance, "cameraManager", cameraManager);
             AssignReference(appearance, "estimatedMainLight", estimatedMainLight);
             AssignReference(capDiagnostic, "arCamera", arCamera);
             AssignReference(capDiagnostic, "arCameraBackground", cameraBackground);
             AssignReference(capDiagnostic, "arOcclusionManager", occlusionManager);
+            AssignReference(poseDiagnostic, "arCamera", arCamera);
+            AssignReference(poseDiagnostic, "cameraManager", cameraManager);
             AssignReference(tracker, "cameraManager", cameraManager);
             AssignReference(tracker, "arCamera", arCamera);
             AssignReference(tracker, "appearanceConsistency", appearance);
             AssignReference(tracker, "capVisibilityDiagnostic", capDiagnostic);
+            AssignReference(tracker, "poseCoordinateDiagnostic", poseDiagnostic);
             AssignReference(tracker, "trackedObjectPoseRoot", trackedRoot.transform);
             AssignReference(tracker, "modelCoordinateAlignment", alignment.transform);
             AssignReference(tracker, "occlusionRoot", occlusionRoot.transform);
