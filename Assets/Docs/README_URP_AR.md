@@ -1,4 +1,4 @@
-# URP AR production scope v38
+# URP AR production scope v39
 
 `BottleFullAlignedV2` is the only formal bottle asset. The app recognizes A
 against B with the v33 device-proven ORB baseline and recovers B's complete PnP pose. C is
@@ -22,9 +22,12 @@ frame. PnP R/t stay in that frame for Unity conversion. `UndoImageRotation` is
 used only for the exact native-image round trip and raw-frame pose prior; using
 it on the final pose was the v37 portrait-roll defect.
 
-The same PnP inlier correspondences are cross-projected through OpenCV and the
-prospective rendered-B hierarchy. A cross-projection RMS above 5 px prevents
-`ReadyForRepair`, even when native PnP RMS is low.
+The same PnP inlier correspondences are evaluated in the native oriented CPU
+camera and K. PoseRT validates PnP -> Unity root -> Unity camera -> oriented CV;
+BHierarchy separately validates the imported B hierarchy. Both must pass for
+three consecutive reliable frames before `ReadyForRepair`. The old display
+cross-projection is retained only as `DisplayDiag WARN`; crop/aspect differences
+can no longer discard a stable PnP pose or trigger tracking loss.
 
 Development Android builds emit `[URP_CAP_DIAG]` snapshots for the real
 ARCamera, rigid matrices, renderer bounds, camera-space cap corners, frustum,
@@ -34,7 +37,7 @@ only and are inert in release builds.
 
 Development builds also emit `[URP_POSE_DIAG]`: CPU/native/screen dimensions,
 rotationClockwise, camera facing, intrinsics, ORB and rendered-B projected axes,
-cross-projection RMS, the derived alignment matrix, every hierarchy transform,
+NativePnP/PoseRT/BHierarchy/DisplayDiag RMS, the derived alignment matrix, every hierarchy transform,
 and B mesh/renderer bounds.
 
 The scene generator must not recreate a cyan outline, manual box, screen-space

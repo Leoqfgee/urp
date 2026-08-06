@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Unity.Collections;
 using UnityEngine;
+using UnityEngine.Serialization;
 using UnityEngine.UI;
 using UnityEngine.XR.ARFoundation;
 using UnityEngine.XR.ARSubsystems;
@@ -57,7 +58,10 @@ namespace Urp.ArDemo
         [SerializeField] private float minimumInlierRatio = 0.35f;
         [SerializeField] private float maximumReprojectionErrorPixels = 3.0f;
         [SerializeField] private float maximumReprojectionMaxPixels = 8.0f;
-        [SerializeField] private float maximumUnityCrossProjectionRmsPixels = 5.0f;
+        [FormerlySerializedAs("maximumUnityCrossProjectionRmsPixels")]
+        [SerializeField] private float displayProjectionWarningRmsPixels = 5.0f;
+        [SerializeField] private float maximumPoseChainRoundTripRmsPixels = 0.25f;
+        [SerializeField] private float maximumRenderedHierarchyRmsPixels = 0.50f;
         [SerializeField] private float minimumCoverageX = 0.05f;
         [SerializeField] private float minimumCoverageY = 0.18f;
         [SerializeField] private float ratioTest = 0.72f;
@@ -72,6 +76,8 @@ namespace Urp.ArDemo
 
         [Header("Stable full-pose registration")]
         [SerializeField] private int registrationConfirmationFrames = 8;
+        [SerializeField] private int consistencyConfirmationFrames = 3;
+        [SerializeField] private int consistencyFailureHoldFrames = 2;
         [SerializeField] private float registrationPositionToleranceMeters = 0.025f;
         [SerializeField] private float registrationRotationToleranceDegrees = 8f;
         [SerializeField] private float temporaryLossHoldSeconds = 0.35f;
@@ -102,6 +108,13 @@ namespace Urp.ArDemo
         private bool repairRequested;
         private bool hasEverRegisteredSinceReset;
         private bool registrationEstablished;
+        private bool stablePnpPoseAvailable;
+        private bool poseAppliedToRigidRoot;
+        private bool poseChainVerified;
+        private bool renderedHierarchyVerified;
+        private bool readyForRepair;
+        private int consistencyVerifiedFrames;
+        private int consistencyFailureFrames;
         private bool hasSmoothedPose;
         private int registrationStableFrames;
         private float nextProcessTime;
@@ -124,6 +137,17 @@ namespace Urp.ArDemo
 
         public bool HasTrackedPose => registrationEstablished;
         public bool IsRigidRegistrationEstablished => registrationEstablished;
+        public bool StablePnpPoseAvailable => stablePnpPoseAvailable;
+        public bool IsPoseAppliedToRigidRoot => poseAppliedToRigidRoot;
+        public bool IsPoseChainVerified => poseChainVerified;
+        public bool IsRenderedHierarchyVerified => renderedHierarchyVerified;
+        public bool CanStartRepair =>
+            registrationEstablished
+            && stablePnpPoseAvailable
+            && poseAppliedToRigidRoot
+            && poseChainVerified
+            && renderedHierarchyVerified
+            && readyForRepair;
         public bool IsRepairMode =>
             repairRequested
             && registrationEstablished
@@ -395,7 +419,7 @@ namespace Urp.ArDemo
                 return;
             }
 
-            if (!registrationEstablished
+            if (!CanStartRepair
                 || trackingState != TrackingState.ReadyForRepair)
             {
                 ShowPreAlignmentPair();
@@ -763,16 +787,18 @@ namespace Urp.ArDemo
                         "PnP 数学解有效，但没有取得用于 Unity 一致性验证的内点。");
                     return;
                 }
-                bool unityPoseConsistent = UnityPoseConsistencyGate.TryEvaluate(
+                bool hardConsistencyPassed = UnityPoseConsistencyGate.TryEvaluate(
                     arCamera,
+                    best,
                     inliers,
                     targetPosition,
                     targetRotation,
                     trackedObjectPoseRoot,
                     registeredReferenceModel,
                     calibration,
-                    maximumUnityCrossProjectionRmsPixels,
-                    out UnityPoseConsistencyResult consistency,
+                    maximumPoseChainRoundTripRmsPixels,
+                    maximumRenderedHierarchyRmsPixels,
+                    out PoseConsistencyResult consistency,
                     out string consistencyReason);
                 poseCoordinateDiagnostic?.UpdatePose(
                     best,
@@ -784,16 +810,6 @@ namespace Urp.ArDemo
                     targetRotation,
                     derivedOrbToRenderedBMatrix,
                     consistency);
-                if (!unityPoseConsistent)
-                {
-                    trackingState = TrackingState.PoseValidating;
-                    HandleTrackingLoss();
-                    UpdateStatus(
-                        "PnP 数学解有效，但 PnP→Unity 坐标转换未通过一致性验证。"
-                        + $" Cross RMS {consistency.rmsPixels:F2}px。"
-                        + consistencyReason);
-                    return;
-                }
                 if (appearanceConsistency != null
                     && best.sampledConfidence > 0f)
                 {
@@ -807,28 +823,38 @@ namespace Urp.ArDemo
                 if (!TryApplyReliablePose(
                         targetPosition,
                         targetRotation,
+                        consistency,
                         out string poseApplicationReason))
                 {
-                    UpdateStatus(poseApplicationReason);
+                    UpdateStatus(BuildPoseStatus(
+                        best,
+                        consistency,
+                        hardConsistencyPassed,
+                        consistencyReason,
+                        poseApplicationReason));
                     return;
                 }
 
                 if (repairRequested)
                 {
-                    UpdateStatus(
-                        $"Repair 跟踪中：有效内点 {best.poseInliers}/"
-                        + $"{best.uniqueMatches}，重投影误差 "
-                        + $"{best.reprojectionError:F2}px。"
-                        + "B 已隐藏；C 保持 Start 前的刚性关系并随共同根节点更新。");
+                    UpdateStatus(BuildPoseStatus(
+                        best,
+                        consistency,
+                        hardConsistencyPassed,
+                        consistencyReason,
+                        "Repair：B hidden / C retained；刚性根节点继续跟踪。"));
                 }
                 else
                 {
-                    UpdateStatus(
-                        $"已完成 A→B 稳定三维配准：有效内点 {best.poseInliers}/"
-                        + $"{best.uniqueMatches}，误差 "
-                        + $"{best.reprojectionError:F2}px。"
-                        + "B+C 已应用该 Pose 并正在跟随真实瓶体；"
-                        + "请确认虚拟 B 与真实 A 重合后点击“开始”。");
+                    string stateMessage = CanStartRepair
+                        ? "B+C 已应用稳定 PnP Pose；数学坐标链连续验证通过，可点击开始。"
+                        : "稳定 PnP Pose 已应用到 B+C，但数学坐标链仍在连续验证。";
+                    UpdateStatus(BuildPoseStatus(
+                        best,
+                        consistency,
+                        hardConsistencyPassed,
+                        consistencyReason,
+                        stateMessage));
                 }
             }
             finally
@@ -899,6 +925,7 @@ namespace Urp.ArDemo
         private bool TryApplyReliablePose(
             Vector3 targetPosition,
             Quaternion targetRotation,
+            PoseConsistencyResult consistency,
             out string reason)
         {
             if (!registrationEstablished)
@@ -920,6 +947,7 @@ namespace Urp.ArDemo
 
                 ShowPreAlignmentPair();
                 trackingState = TrackingState.PoseValidating;
+                ObserveMathematicalConsistency(consistency);
                 if (!TryAccumulateStableRegistration(
                         targetPosition,
                         targetRotation,
@@ -950,7 +978,21 @@ namespace Urp.ArDemo
                         + $"{rotationJump:F1}°。";
                     return false;
                 }
-                ApplyTrackedRootPose(targetPosition, targetRotation, true);
+
+                bool wasReady = readyForRepair;
+                ObserveMathematicalConsistency(consistency);
+                bool holdLastVerifiedPose = wasReady
+                    && !consistency.HardGatePassed
+                    && consistencyFailureFrames <=
+                        Mathf.Max(0, consistencyFailureHoldFrames);
+                if (!holdLastVerifiedPose)
+                {
+                    // Before Ready, even a mathematically unverified stable
+                    // candidate remains visible on B+C for real-device
+                    // diagnosis. A transient failure after Ready instead holds
+                    // the last verified pose for the configured grace frames.
+                    ApplyTrackedRootPose(targetPosition, targetRotation, true);
+                }
             }
 
             lastAcceptedPosition = targetPosition;
@@ -958,10 +1000,48 @@ namespace Urp.ArDemo
             lastValidPoseTime = Time.unscaledTime;
             trackingState = repairRequested
                 ? TrackingState.Repair
-                : TrackingState.ReadyForRepair;
+                : readyForRepair
+                    ? TrackingState.ReadyForRepair
+                    : TrackingState.PoseValidating;
             ShowPresentationForCurrentState();
-            reason = string.Empty;
+            reason = readyForRepair
+                ? string.Empty
+                : "Stable PnP preview is applied; waiting for consecutive "
+                  + $"PoseRT/BHierarchy verification "
+                  + $"{consistencyVerifiedFrames}/"
+                  + $"{Mathf.Max(3, consistencyConfirmationFrames)}.";
             return true;
+        }
+
+        private void ObserveMathematicalConsistency(
+            PoseConsistencyResult consistency)
+        {
+            if (consistency.HardGatePassed)
+            {
+                consistencyFailureFrames = 0;
+                consistencyVerifiedFrames++;
+                int required = Mathf.Max(3, consistencyConfirmationFrames);
+                if (consistencyVerifiedFrames >= required)
+                {
+                    poseChainVerified = true;
+                    renderedHierarchyVerified = true;
+                    readyForRepair = registrationEstablished;
+                }
+                return;
+            }
+
+            consistencyVerifiedFrames = 0;
+            consistencyFailureFrames++;
+            if (readyForRepair
+                && consistencyFailureFrames <=
+                    Mathf.Max(0, consistencyFailureHoldFrames))
+            {
+                return;
+            }
+
+            poseChainVerified = false;
+            renderedHierarchyVerified = false;
+            readyForRepair = false;
         }
 
         private bool TryAccumulateStableRegistration(
@@ -1107,6 +1187,9 @@ namespace Urp.ArDemo
                 false);
 
             registrationEstablished = true;
+            stablePnpPoseAvailable = true;
+            poseAppliedToRigidRoot = true;
+            readyForRepair = poseChainVerified && renderedHierarchyVerified;
             hasEverRegisteredSinceReset = true;
             lastAcceptedPosition = orbRootPosition;
             lastAcceptedRotation = orbRootRotation;
@@ -1116,7 +1199,9 @@ namespace Urp.ArDemo
             capVisibilityDiagnostic?.LogSnapshot("registration-established");
             trackingState = repairRequested
                 ? TrackingState.Repair
-                : TrackingState.ReadyForRepair;
+                : readyForRepair
+                    ? TrackingState.ReadyForRepair
+                    : TrackingState.PoseValidating;
         }
 
         private void HandleTrackingLoss()
@@ -1129,6 +1214,9 @@ namespace Urp.ArDemo
                 // remains at its world-space coarse pose. After a prior lock,
                 // keep the last C pose while relocalizing; never move it to a
                 // camera or screen coordinate.
+                registrationStableFrames = 0;
+                consistencyVerifiedFrames = 0;
+                consistencyFailureFrames = 0;
                 ShowPresentationForCurrentState();
                 return;
             }
@@ -1144,6 +1232,11 @@ namespace Urp.ArDemo
 
             registrationEstablished = false;
             registrationStableFrames = 0;
+            poseChainVerified = false;
+            renderedHierarchyVerified = false;
+            readyForRepair = false;
+            consistencyVerifiedFrames = 0;
+            consistencyFailureFrames = 0;
             // Retain the last accepted world pose while ORB relocalizes. AR
             // camera motion continues to provide correct perspective during
             // the hold; the next accepted pose is validated before correction.
@@ -1153,7 +1246,14 @@ namespace Urp.ArDemo
         private void ResetRegistration()
         {
             registrationEstablished = false;
+            stablePnpPoseAvailable = false;
+            poseAppliedToRigidRoot = false;
+            poseChainVerified = false;
+            renderedHierarchyVerified = false;
+            readyForRepair = false;
             registrationStableFrames = 0;
+            consistencyVerifiedFrames = 0;
+            consistencyFailureFrames = 0;
             hasSmoothedPose = false;
             lastValidPoseTime = float.NegativeInfinity;
             registrationAveragePosition = Vector3.zero;
@@ -1663,6 +1763,61 @@ namespace Urp.ArDemo
             {
                 DestroyImmediate(value);
             }
+        }
+
+        private string BuildPoseStatus(
+            NativeOrbResult pose,
+            PoseConsistencyResult consistency,
+            bool hardConsistencyPassed,
+            string consistencyReason,
+            string detail)
+        {
+            string state;
+            if (repairRequested)
+            {
+                state = "REPAIR";
+            }
+            else if (CanStartRepair)
+            {
+                state = "READY";
+            }
+            else if (!consistency.poseChainPassed)
+            {
+                state = "POSE CONVERSION FAIL";
+            }
+            else if (!consistency.renderedHierarchyPassed)
+            {
+                state = "MODEL FRAME FAIL";
+            }
+            else if (!registrationEstablished)
+            {
+                state = "POSE STABILITY";
+            }
+            else
+            {
+                state = "VERIFYING";
+            }
+
+            string displayState =
+                consistency.displayProjectionDiagnosticRmsPixels
+                    > displayProjectionWarningRmsPixels
+                    ? "WARN"
+                    : "OK";
+            string hardNote = hardConsistencyPassed
+                ? string.Empty
+                : " " + consistencyReason;
+            return
+                $"PnP: {pose.poseInliers}/{pose.uniqueMatches}, "
+                + $"native {pose.reprojectionError:F2}px/"
+                + $"observed {consistency.nativePnpRmsPixels:F2}px\n"
+                + $"PoseRT: {consistency.poseChainRoundTripRmsPixels:F3}px "
+                + $"{(consistency.poseChainPassed ? "PASS" : "FAIL")} | "
+                + $"BHierarchy: {consistency.renderedHierarchyRmsPixels:F3}px "
+                + $"{(consistency.renderedHierarchyPassed ? "PASS" : "FAIL")}\n"
+                + $"DisplayDiag: "
+                + $"{consistency.displayProjectionDiagnosticRmsPixels:F2}px "
+                + $"{displayState}（仅诊断，不阻止配准） | State: {state}\n"
+                + detail + hardNote;
         }
 
         private void UpdateStatus(string message)

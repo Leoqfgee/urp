@@ -36,7 +36,7 @@ namespace Urp.ArDemo.Editor
             "Assets/Materials/BottlePhotogrammetryLit.mat";
         private const string BottleCapMaterialPath =
             "Assets/Materials/CleanBottleCapLit.mat";
-        private const string AndroidApkPath = "Builds/BottleRepairAR_v38.apk";
+        private const string AndroidApkPath = "Builds/BottleRepairAR_v39.apk";
         private const string BottleReferenceOrbPath =
             "Assets/OrbModels/bottle_reference_b.bytes";
         private const string BottleCalibrationPath =
@@ -190,14 +190,14 @@ namespace Urp.ArDemo.Editor
 
         private static void ConfigureAndroidProject()
         {
-            PlayerSettings.productName = "瓶盖AR修复 v38";
+            PlayerSettings.productName = "瓶盖AR修复 v39";
             PlayerSettings.companyName = "qfgeeee";
-            PlayerSettings.bundleVersion = "4.3.8";
+            PlayerSettings.bundleVersion = "4.3.9";
             PlayerSettings.SetApplicationIdentifier(
                 BuildTargetGroup.Android, "com.qfgeeee.paper52objecttrackingar");
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
-            PlayerSettings.Android.bundleVersionCode = 438;
+            PlayerSettings.Android.bundleVersionCode = 439;
             PlayerSettings.SetScriptingBackend(
                 BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
@@ -364,7 +364,7 @@ namespace Urp.ArDemo.Editor
 
             RestorationObjectProfile bottle = LoadOrCreate<RestorationObjectProfile>(
                 BottleProfilePath);
-            bottle.objectId = "bottle_full_aligned_v2_v38";
+            bottle.objectId = "bottle_full_aligned_v2_v39";
             bottle.displayName = "新重建无盖饮料瓶与瓶盖";
             bottle.shortDescription =
                 "Blender 中刚性对齐的无盖瓶身 B 与干净白色瓶盖 C。";
@@ -404,6 +404,16 @@ namespace Urp.ArDemo.Editor
             bottleCalibration.mouthFrontInModel =
                 new Vector3(0f, 0.05882353f, 0.1f);
             bottleCalibration.neckAxisPointInModel =
+                new Vector3(0f, -0.14117647f, 0f);
+            bottleCalibration.hasAuthoredBLandmarks = true;
+            bottleCalibration.authoredBOrigin = Vector3.zero;
+            bottleCalibration.authoredBMouthCenter =
+                new Vector3(0f, 0.05882353f, 0f);
+            bottleCalibration.authoredBMouthRight =
+                new Vector3(0.1f, 0.05882353f, 0f);
+            bottleCalibration.authoredBMouthFront =
+                new Vector3(0f, 0.05882353f, 0.1f);
+            bottleCalibration.authoredBNeckAxisPoint =
                 new Vector3(0f, -0.14117647f, 0f);
             bottleCalibration.metersPerModelUnit = 0.17f;
             bottleCalibration.physicalScaleVerified = true;
@@ -478,6 +488,13 @@ namespace Urp.ArDemo.Editor
                 tissueCalibration.objectOriginInModel + Vector3.forward;
             tissueCalibration.neckAxisPointInModel =
                 tissueCalibration.objectOriginInModel - Vector3.up;
+            tissueCalibration.hasAuthoredBLandmarks = true;
+            tissueCalibration.authoredBOrigin = tissueCalibration.objectOriginInModel;
+            tissueCalibration.authoredBMouthCenter = tissueCalibration.mouthCenterInModel;
+            tissueCalibration.authoredBMouthRight = tissueCalibration.mouthRightInModel;
+            tissueCalibration.authoredBMouthFront = tissueCalibration.mouthFrontInModel;
+            tissueCalibration.authoredBNeckAxisPoint =
+                tissueCalibration.neckAxisPointInModel;
             tissueCalibration.metersPerModelUnit = 1f;
             tissueCalibration.physicalScaleVerified = false;
             tissueCalibration.expectedPhysicalNeckDiameter = 0f;

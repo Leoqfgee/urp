@@ -213,6 +213,17 @@ def main() -> None:
             "printedFrontAxis": "+X",
             "metersPerModelUnit": METERS_PER_MODEL_UNIT,
         },
+        "authoredBLandmarks": {
+            "source": (
+                "Blender B authoring frame; independent from runtime ORB "
+                "point construction"
+            ),
+            "origin": [0.0, 0.0, 0.0],
+            "mouthCenter": [0.0, NECK_HEIGHT_MODEL_UNITS, 0.0],
+            "mouthRight": [0.1, NECK_HEIGHT_MODEL_UNITS, 0.0],
+            "mouthFront": [0.0, NECK_HEIGHT_MODEL_UNITS, 0.1],
+            "neckAxisPoint": [0.0, NECK_HEIGHT_MODEL_UNITS - 0.2, 0.0],
+        },
         "referenceB": {
             "source": (
                 "F:\\Meshroom_work\\bottle_full_clean_v2\\split_models"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the BottleFullAlignedV2 v38 runtime contract without Unity."""
+"""Validate the BottleFullAlignedV2 v39 runtime contract without Unity."""
 
 from __future__ import annotations
 
@@ -138,6 +138,10 @@ def main() -> None:
         raise ValueError("Profile still contains a hand-authored Euler correction")
     if "CanonicalFrameRegistration.TryDerive" not in controller:
         raise ValueError("Runtime does not derive ORB-to-B alignment from landmarks")
+    if "authoredBLandmarks" not in report:
+        raise ValueError("Blender report does not export independent B landmarks")
+    if "hasAuthoredBLandmarks: 1" not in calibration:
+        raise ValueError("Calibration does not bind Blender-authored B landmarks")
     if "new Vector3(90f, 0f, 0f)" in setup:
         raise ValueError("Scene setup still hard-codes the v37 Euler correction")
 
@@ -166,6 +170,10 @@ def main() -> None:
         "SetReferenceHierarchyVisible(false)",
         "ShowRepairPresentation",
         "worldPositionDeadbandMeters",
+        "maximumPoseChainRoundTripRmsPixels",
+        "maximumRenderedHierarchyRmsPixels",
+        "displayProjectionWarningRmsPixels",
+        "ObserveMathematicalConsistency",
     ):
         if token not in controller:
             raise ValueError(f"Restored managed tracker is missing {token}")
@@ -184,7 +192,7 @@ def main() -> None:
         raise ValueError("Scene generator does not bind only BottleFullAlignedV2")
 
     payload = {
-        "status": "BOTTLE_FULL_ALIGNED_V38_DATA_OK",
+        "status": "BOTTLE_FULL_ALIGNED_V39_DATA_OK",
         "fbx_sha256": sha256(fbx),
         "database_sha256": sha256(database),
         "database_records": len(points),
@@ -199,7 +207,7 @@ def main() -> None:
         "orb_points_within_blender_b_bounds": True,
         "orb_blender_scale_meters_per_unit": manifest_scale,
         "profile_euler_correction_degrees": [0.0, 0.0, 0.0],
-        "alignment_source": "runtime_landmark_similarity_fit",
+        "alignment_source": "runtime_authored_b_landmark_similarity_fit",
     }
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 

@@ -41,9 +41,9 @@ namespace Urp.ArDemo.Generated
     public static class BuildIdentity
     {
         public const string TrackingBuildVersion =
-            "orb-tracking-v38-oriented-camera-cross-projection";
+            "orb-tracking-v39-native-camera-roundtrip-gates";
         public const string CalibrationVersion =
-            "coconut-landmark-derived-registration-v38";
+            "coconut-authored-landmark-registration-v39";
         public const string OrbDatabaseVersion =
             "bottle-full-aligned-v2-reference-b-real-observations-v32";
 

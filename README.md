@@ -1,4 +1,4 @@
-# Bottle repair AR v38
+# Bottle repair AR v39
 
 Unity 2022.3.62f2 Android project for rigid A-to-B-to-C restoration:
 
@@ -15,16 +15,17 @@ Start is then a transform-invariant presentation gate: every B renderer is disab
 for both colour and depth, while C remains visible with HSV plus AR-light
 appearance correction. B is never allowed to self-occlude C.
 
-v38 fixes the portrait coordinate chain: native PnP already returns the pose
+v39 preserves the v38 portrait coordinate fix: native PnP already returns the pose
 in the rotated, display-oriented camera frame, so the final Unity conversion no
 longer applies a second inverse image rotation. The importer alignment is
-derived from five corresponding ORB/rendered-B landmarks through the actual
-FBX hierarchy; the profile contains no hand-authored Euler correction.
+derived from Blender-authored B landmarks and the actual FBX hierarchy; the
+profile contains no hand-authored Euler correction.
 
-`UnityPoseConsistencyGate` cross-projects the same native PnP inliers through
-OpenCV and the prospective Unity B hierarchy. `ReadyForRepair` is forbidden
-unless that RMS is at most 5 px. Development builds display concise coordinate
-status and write full `[URP_POSE_DIAG]` records.
+`UnityPoseConsistencyGate` now reports three independent native-image metrics:
+NativePnPRms, PoseChainRoundTripRms, and RenderedHierarchyRms. Only the latter
+two mathematical round trips gate Ready after three consecutive passing frames.
+The old WorldToScreenPoint value is retained as DisplayDiag WARN only; it never
+blocks stable B+C preview, registration, or Start eligibility by itself.
 
 Development Android builds provide searchable `[URP_CAP_DIAG]` snapshots of
 the real ARCamera projection/frustum, rigid matrices, cap camera-space bounds,
@@ -37,5 +38,5 @@ Validation entry points:
 - `Urp.ArDemo.Editor.UrpArValidation.RunPlayModeSmokeFromCommandLine`
 - `Urp.ArDemo.Editor.UrpArProjectSetup.BuildAndroidFromCommandLine`
 
-The Android artifact is `Builds/BottleRepairAR_v38.apk`. Offline and editor
+The Android artifact is `Builds/BottleRepairAR_v39.apk`. Offline and editor
 checks do not replace physical-device front/oblique/top acceptance testing.

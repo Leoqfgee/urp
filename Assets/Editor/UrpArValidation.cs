@@ -223,7 +223,7 @@ namespace Urp.ArDemo.Editor
                 && catalog.objects.Count(item => item == profile) == 1,
                 "The formal catalog must contain the new bottle profile exactly once.");
             Require(
-                profile.objectId == "bottle_full_aligned_v2_v38",
+                profile.objectId == "bottle_full_aligned_v2_v39",
                 "The formal bottle profile still has the legacy object id.");
             Require(
                 AssetDatabase.GetAssetPath(profile.registeredBottlePairPrefab) == NewPairPath,
@@ -239,6 +239,7 @@ namespace Urp.ArDemo.Editor
             Require(
                 profile.calibration != null
                 && profile.calibration.HasValidFrame
+                && profile.calibration.hasAuthoredBLandmarks
                 && Mathf.Abs(profile.calibration.metersPerModelUnit - 0.17f) < 0.0001f
                 && Quaternion.Angle(
                     Quaternion.Euler(profile.calibration.orbToModelLocalEulerAngles),
@@ -291,6 +292,7 @@ namespace Urp.ArDemo.Editor
                 && report.Contains("\"heightMeters\": 0.01")
                 && report.Contains("\"mouthPlaneModelY\": 0.058823529411764705")
                 && report.Contains("\"capOverlapsNeckAxially\": true")
+                && report.Contains("\"authoredBLandmarks\"")
                 && report.Contains("\"rigidRelationshipPreserved\": true"),
                 "Blender report does not describe the approved 10 mm neck and clean cap.");
 
@@ -428,10 +430,13 @@ namespace Urp.ArDemo.Editor
                 && poseDiagnostic.Contains("ORB screen dirs")
                 && poseDiagnostic.Contains("B screen dirs")
                 && canonicalRegistration.Contains("TrySolveSimilarity")
+                && canonicalRegistration.Contains("hasAuthoredBLandmarks")
                 && canonicalRegistration.Contains("OrbToImportedMeshPoint")
                 && unityPoseGate.Contains("NativeInlierSet")
-                && unityPoseGate.Contains("maximumRmsPixels"),
-                "v38 pose-coordinate diagnostics or cross-projection gate are incomplete.");
+                && unityPoseGate.Contains("poseChainRoundTripRmsPixels")
+                && unityPoseGate.Contains("renderedHierarchyRmsPixels")
+                && unityPoseGate.Contains("displayGate=DISABLED"),
+                "v39 native-camera round-trip gates or display diagnostic are incomplete.");
             string native = File.ReadAllText(NativeSourcePath);
             Require(
                 native.Contains("SetPosePrior")
@@ -609,6 +614,7 @@ namespace Urp.ArDemo.Editor
             Vector3 measuredPosition = new Vector3(0.08f, -0.03f, 0.62f);
             Quaternion measuredRotation = Quaternion.Euler(24f, 37f, -12f);
             SetPrivateField(controller, "registrationConfirmationFrames", 3);
+            SetPrivateField(controller, "consistencyConfirmationFrames", 3);
             SetPrivateField(controller, "maximumInitialCorrectionMeters", 10f);
             MethodInfo applyReliablePose =
                 typeof(OrbImageTrackingController).GetMethod(
@@ -618,8 +624,16 @@ namespace Urp.ArDemo.Editor
                 "Reliable pre-Start pose application path is missing.");
             for (int frame = 0; frame < 3; frame++)
             {
+                PoseConsistencyResult passingConsistency =
+                    new PoseConsistencyResult(
+                        1f, 0.01f, 0.01f, 8f, 12, true, true);
                 object[] poseArguments =
-                    { measuredPosition, measuredRotation, null };
+                    {
+                        measuredPosition,
+                        measuredRotation,
+                        passingConsistency,
+                        null
+                    };
                 bool applied = (bool)applyReliablePose.Invoke(
                     controller,
                     poseArguments);
@@ -629,6 +643,7 @@ namespace Urp.ArDemo.Editor
             }
             Require(
                 controller.IsRigidRegistrationEstablished
+                && controller.CanStartRepair
                 && controller.State == OrbImageTrackingController.TrackingState.ReadyForRepair
                 && Vector3.Distance(rootObject.transform.position, measuredPosition) < 0.0001f
                 && Quaternion.Angle(rootObject.transform.rotation, measuredRotation) < 0.1f
@@ -686,6 +701,8 @@ namespace Urp.ArDemo.Editor
             {
                 measuredPosition + new Vector3(0.005f, 0f, 0f),
                 measuredRotation * Quaternion.Euler(0f, 2f, 0f),
+                new PoseConsistencyResult(
+                    1f, 0.01f, 0.01f, 8f, 12, true, true),
                 null
             };
             Require(

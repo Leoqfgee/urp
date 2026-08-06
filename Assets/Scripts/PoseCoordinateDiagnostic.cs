@@ -28,8 +28,6 @@ namespace Urp.ArDemo
         private Vector2 bX;
         private Vector2 bY;
         private Vector2 bZ;
-        private float crossRms = float.PositiveInfinity;
-        private bool alignmentPass;
         private int cpuWidth;
         private int cpuHeight;
         private int rotationClockwise;
@@ -58,9 +56,7 @@ namespace Urp.ArDemo
                 : $"\nDBG CPU {cpuWidth}x{cpuHeight} rot={rotationClockwise} "
                   + $"Screen={Screen.orientation} | "
                   + $"ORB Y=({orbY.x:F2},{orbY.y:F2}) "
-                  + $"B Y=({bY.x:F2},{bY.y:F2}) | "
-                  + $"Cross={crossRms:F2}px "
-                  + $"Alignment={(alignmentPass ? "PASS" : "FAIL")}";
+                  + $"B Y=({bY.x:F2},{bY.y:F2})";
 
         public void UpdatePose(
             NativeOrbResult pose,
@@ -71,7 +67,7 @@ namespace Urp.ArDemo
             Vector3 targetPosition,
             Quaternion targetRotation,
             Matrix4x4 orbToRenderedB,
-            UnityPoseConsistencyResult consistency)
+            PoseConsistencyResult consistency)
         {
             if (!DiagnosticsEnabled || arCamera == null || calibration == null
                 || trackedRoot == null || renderedB == null)
@@ -82,9 +78,6 @@ namespace Urp.ArDemo
             cpuWidth = sourceCpuWidth;
             cpuHeight = sourceCpuHeight;
             rotationClockwise = frameRotation;
-            crossRms = consistency.rmsPixels;
-            alignmentPass = consistency.valid;
-
             float axisLength = 0.12f;
             Vector3 origin = calibration.objectOriginInModel;
             Vector3[] endpoints =
@@ -126,10 +119,21 @@ namespace Urp.ArDemo
             log.Append("[URP_POSE_DIAG] ")
                 .Append("inliers=").Append(pose.poseInliers)
                 .Append('/').Append(pose.uniqueMatches)
-                .Append(" pnpRms=").Append(pose.reprojectionError.ToString("F3"))
-                .Append(" crossRms=").Append(consistency.rmsPixels.ToString("F3"))
-                .Append(" crossMax=").Append(consistency.maximumPixels.ToString("F3"))
-                .Append(" alignment=").Append(consistency.valid ? "PASS" : "FAIL")
+                .Append(" nativeReportedRms=")
+                .Append(pose.reprojectionError.ToString("F3"))
+                .Append(" nativeObservedRms=")
+                .Append(consistency.nativePnpRmsPixels.ToString("F3"))
+                .Append(" poseRtRms=")
+                .Append(consistency.poseChainRoundTripRmsPixels.ToString("F4"))
+                .Append(" poseRt=")
+                .Append(consistency.poseChainPassed ? "PASS" : "FAIL")
+                .Append(" bHierarchyRms=")
+                .Append(consistency.renderedHierarchyRmsPixels.ToString("F4"))
+                .Append(" bHierarchy=")
+                .Append(consistency.renderedHierarchyPassed ? "PASS" : "FAIL")
+                .Append(" displayDiagnosticRms=")
+                .Append(consistency.displayProjectionDiagnosticRmsPixels.ToString("F3"))
+                .Append(" displayGate=DISABLED")
                 .AppendLine();
             log.Append("Screen=").Append(Screen.width).Append('x').Append(Screen.height)
                 .Append(" orientation=").Append(Screen.orientation)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test the Android ORB binary and its diagnostics-only v38 ABI extension."""
+"""Test the Android ORB binary and its diagnostics ABI used by v39."""
 
 from __future__ import annotations
 
@@ -54,7 +54,7 @@ def main() -> None:
 
     expected_version = b"urp-orb-native-2026.08.06-r9-pose-frame-diagnostics"
     if expected_version not in data:
-        raise ValueError("Native plugin does not contain the v38 diagnostic ABI")
+        raise ValueError("Native plugin does not contain the required diagnostic ABI")
     source = SOURCE.read_text(encoding="utf-8")
     required = (
         "SetPosePrior",

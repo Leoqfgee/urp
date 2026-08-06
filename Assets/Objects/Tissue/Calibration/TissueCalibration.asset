@@ -17,6 +17,12 @@ MonoBehaviour:
   mouthRightInModel: {x: 1.027, y: -0.151, z: 1.789}
   mouthFrontInModel: {x: 0.027, y: -0.151, z: 2.789}
   neckAxisPointInModel: {x: 0.027, y: -1.151, z: 1.789}
+  hasAuthoredBLandmarks: 1
+  authoredBOrigin: {x: 0.027, y: -0.151, z: 1.789}
+  authoredBMouthCenter: {x: 0.027, y: -0.151, z: 1.789}
+  authoredBMouthRight: {x: 1.027, y: -0.151, z: 1.789}
+  authoredBMouthFront: {x: 0.027, y: -0.151, z: 2.789}
+  authoredBNeckAxisPoint: {x: 0.027, y: -1.151, z: 1.789}
   metersPerModelUnit: 1
   physicalScaleVerified: 0
   expectedPhysicalNeckDiameter: 0

@@ -4,6 +4,7 @@ using System.Reflection;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
+using Urp.ArDemo.Calibration;
 
 namespace Urp.ArDemo.Tests
 {
@@ -147,15 +148,101 @@ namespace Urp.ArDemo.Tests
             }
         }
 
-        private bool ApplyReliablePose(Vector3 position, Quaternion rotation)
+        [Test]
+        public void DisplayDiagnosticFailureDoesNotBlockPoseApplication()
+        {
+            Vector3 stablePosition = new Vector3(0.04f, -0.01f, 0.58f);
+            Quaternion stableRotation = Quaternion.Euler(8f, 19f, -4f);
+            PoseConsistencyResult displayWarn = PassingConsistency(8f);
+
+            Assert.That(ApplyReliablePose(stablePosition, stableRotation, displayWarn), Is.False);
+            Assert.That(ApplyReliablePose(stablePosition, stableRotation, displayWarn), Is.False);
+            Assert.That(ApplyReliablePose(stablePosition, stableRotation, displayWarn), Is.True);
+
+            Assert.That(controller.IsPoseAppliedToRigidRoot, Is.True);
+            Assert.That(controller.IsPoseChainVerified, Is.True);
+            Assert.That(controller.IsRenderedHierarchyVerified, Is.True);
+            Assert.That(controller.CanStartRepair, Is.True);
+            Assert.That(controller.State,
+                Is.EqualTo(OrbImageTrackingController.TrackingState.ReadyForRepair));
+            Assert.That(
+                Vector3.Distance(rootObject.transform.position, stablePosition),
+                Is.LessThan(0.00001f));
+        }
+
+        [Test]
+        public void FailedPoseChainBlocksStartButKeepsPreview()
+        {
+            Vector3 stablePosition = new Vector3(0.06f, -0.02f, 0.61f);
+            Quaternion stableRotation = Quaternion.Euler(12f, 25f, -6f);
+            PoseConsistencyResult failedPoseChain = new PoseConsistencyResult(
+                1.2f,
+                2.5f,
+                0.01f,
+                8f,
+                12,
+                false,
+                true);
+
+            Assert.That(
+                ApplyReliablePose(stablePosition, stableRotation, failedPoseChain),
+                Is.False);
+            Assert.That(
+                ApplyReliablePose(stablePosition, stableRotation, failedPoseChain),
+                Is.False);
+            Assert.That(
+                ApplyReliablePose(stablePosition, stableRotation, failedPoseChain),
+                Is.True);
+
+            Assert.That(controller.IsRigidRegistrationEstablished, Is.True);
+            Assert.That(controller.IsPoseAppliedToRigidRoot, Is.True);
+            Assert.That(controller.CanStartRepair, Is.False);
+            Assert.That(controller.State,
+                Is.EqualTo(OrbImageTrackingController.TrackingState.PoseValidating));
+            Assert.That(AllVisible(body), Is.True);
+            Assert.That(AllVisible(cap), Is.True);
+            Assert.That(
+                Vector3.Distance(rootObject.transform.position, stablePosition),
+                Is.LessThan(0.00001f));
+
+            Matrix4x4 rootBefore = rootObject.transform.localToWorldMatrix;
+            Matrix4x4 capBefore = cap.localToWorldMatrix;
+            controller.StartRecognition();
+            Assert.That(controller.IsRepairMode, Is.False);
+            Assert.That(AllVisible(body), Is.True);
+            Assert.That(AllVisible(cap), Is.True);
+            AssertMatrixUnchanged(rootBefore, rootObject.transform.localToWorldMatrix, "root");
+            AssertMatrixUnchanged(capBefore, cap.localToWorldMatrix, "C");
+        }
+
+        private bool ApplyReliablePose(
+            Vector3 position,
+            Quaternion rotation,
+            PoseConsistencyResult? consistency = null)
         {
             MethodInfo method = typeof(OrbImageTrackingController).GetMethod(
                 "TryApplyReliablePose",
                 BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.That(method, Is.Not.Null);
-            object[] arguments = { position, rotation, null };
+            object[] arguments =
+            {
+                position,
+                rotation,
+                consistency ?? PassingConsistency(0f),
+                null
+            };
             return (bool)method.Invoke(controller, arguments);
         }
+
+        private static PoseConsistencyResult PassingConsistency(float displayRms) =>
+            new PoseConsistencyResult(
+                1.0f,
+                0.01f,
+                0.01f,
+                displayRms,
+                12,
+                true,
+                true);
 
         private void SetPrivateField<T>(string name, T value)
         {

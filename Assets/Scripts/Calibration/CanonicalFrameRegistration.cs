@@ -35,8 +35,14 @@ namespace Urp.ArDemo.Calibration
         // Unity's FBX mesh conversion reflects the Blender/SfM X coordinate
         // in vertex data. This is the model-side handedness conversion paired
         // with OpenCV-camera (Y down) to Unity-camera (Y up).
-        public static Vector3 OrbToImportedMeshPoint(Vector3 point) =>
+        // OpenCV and Unity camera frames have opposite handedness. A proper
+        // Unity Quaternion therefore acts on this X-reflected canonical point.
+        // This is the explicit model-side H=diag(-1,1,1) in F*R*H.
+        public static Vector3 OrbToUnityCanonicalPoint(Vector3 point) =>
             new Vector3(-point.x, point.y, point.z);
+
+        public static Vector3 OrbToImportedMeshPoint(Vector3 point) =>
+            OrbToUnityCanonicalPoint(point);
 
         public static Vector3 OrbToImportedMeshDirection(Vector3 direction) =>
             new Vector3(-direction.x, direction.y, direction.z);
@@ -78,9 +84,10 @@ namespace Urp.ArDemo.Calibration
             result = default;
             reason = string.Empty;
             if (trackedRoot == null || alignment == null || renderedB == null
-                || calibration == null || alignment.parent != trackedRoot)
+                || calibration == null || alignment.parent != trackedRoot
+                || !calibration.hasAuthoredBLandmarks)
             {
-                reason = "Canonical landmark registration hierarchy is incomplete.";
+                reason = "Canonical registration requires exported Blender B landmarks.";
                 return false;
             }
 
@@ -99,6 +106,14 @@ namespace Urp.ArDemo.Calibration
                 calibration.mouthFrontInModel,
                 calibration.neckAxisPointInModel
             };
+            Vector3[] authoredB =
+            {
+                calibration.authoredBOrigin,
+                calibration.authoredBMouthCenter,
+                calibration.authoredBMouthRight,
+                calibration.authoredBMouthFront,
+                calibration.authoredBNeckAxisPoint
+            };
             Vector3[] source = new Vector3[orb.Length];
             Vector3[] target = new Vector3[orb.Length];
             float importedHierarchyScale = GetImportedHierarchyScale(
@@ -106,10 +121,11 @@ namespace Urp.ArDemo.Calibration
                 renderedB);
             for (int i = 0; i < orb.Length; i++)
             {
-                Vector3 meshPoint = OrbToImportedMeshLocalPoint(
-                    trackedRoot,
-                    renderedB,
-                    orb[i]);
+                // Source landmarks come from Blender authoring metadata. They
+                // are intentionally not generated from orb[i], avoiding the
+                // v38 construct-and-verify self-consistency loop.
+                Vector3 meshPoint = OrbToImportedMeshPoint(authoredB[i])
+                    / importedHierarchyScale;
                 source[i] = trackedRoot.InverseTransformPoint(
                     renderedB.TransformPoint(meshPoint));
                 target[i] = OrbToImportedMeshPoint(orb[i]);

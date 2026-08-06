@@ -1,4 +1,4 @@
-# BottleFullAlignedV2 v38 A-to-B-to-C contract
+# BottleFullAlignedV2 v39 A-to-B-to-C contract
 
 ## Rigid asset contract
 
@@ -46,7 +46,7 @@ excluded from recognition and inherits B exactly.
 The imported FBX `BottleRepairRoot` is measured with rotation near
 `Rx(-90 degrees)` and hierarchy scale 100, while imported mesh vertices carry
 the reciprocal file-unit scale and an X handedness reflection. Runtime passes
-five actual B landmark coordinates through that complete hierarchy and solves
+five Blender-authored B landmark coordinates through that complete hierarchy and solves
 the proper similarity transform to the reflected ORB target landmarks. The
 current asset derives zero translation, unit scale and `Rx(+90 degrees)` with
 landmark RMS below 1e-5. The value is an output of the fit, not a profile Euler.
@@ -59,11 +59,15 @@ The old final-pose `UndoImageRotation` left a portrait 90-degree roll and was
 removed. Raw/oriented rotation and inverse rotation remain unit-tested for
 0/90/180/270 degrees and are still used to supply the native raw-frame prior.
 
-Before registration, `UnityPoseConsistencyGate` retrieves the exact native PnP
-inlier model/image pairs. Each observed pixel is converted through the oriented
-K and ARCamera projection, while the same model point is passed through the
-prospective TrackedBottleRoot, derived alignment, actual FBX hierarchy, and
-`WorldToScreenPoint`. RMS above 5 px blocks registration and ReadyForRepair.
+`UnityPoseConsistencyGate` retrieves the exact native PnP inlier pairs and uses
+the same oriented CPU-image K throughout. NativePnPRms compares direct PnP
+projection with the observed inlier. PoseRT compares direct PnP projection with
+ORB -> candidate Unity root -> camera Transform inverse -> oriented CV -> K.
+BHierarchy performs the same comparison through ModelCoordinateAlignment and
+the actual imported B hierarchy. PoseRT <= 0.25 px and BHierarchy <= 0.50 px
+must pass for three consecutive reliable frames before Ready. Stable PnP is
+still applied to visible B+C when either mathematical gate fails. The former
+`WorldToScreenPoint` RMS remains only as a non-gating DisplayDiag warning.
 
 Start changes rendering only. It does not apply registration, create, move,
 rotate, scale, reparent, or rematerial C:

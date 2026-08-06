@@ -12,6 +12,15 @@ namespace Urp.ArDemo.Calibration
         public Vector3 mouthFrontInModel;
         public Vector3 neckAxisPointInModel;
 
+        [Header("Blender-authored B landmarks")]
+        [Tooltip("Independent authoring coordinates exported with the B asset; not generated from the ORB points at runtime.")]
+        public bool hasAuthoredBLandmarks;
+        public Vector3 authoredBOrigin;
+        public Vector3 authoredBMouthCenter;
+        public Vector3 authoredBMouthRight;
+        public Vector3 authoredBMouthFront;
+        public Vector3 authoredBNeckAxisPoint;
+
         [Header("Physical scale")]
         [Min(0.000001f)] public float metersPerModelUnit = 0.18f;
         public bool physicalScaleVerified;
