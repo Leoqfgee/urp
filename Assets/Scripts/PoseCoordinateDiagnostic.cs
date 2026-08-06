@@ -31,6 +31,12 @@ namespace Urp.ArDemo
         private int cpuWidth;
         private int cpuHeight;
         private int rotationClockwise;
+        private Vector3 pnpRelativePosition;
+        private Vector3 pnpRelativeEuler;
+        private Vector3 appliedRelativePosition;
+        private Vector3 appliedRelativeEuler;
+        private float poseLagCentimetres;
+        private float poseLagDegrees;
 
         public void Bind(
             Camera camera,
@@ -56,7 +62,10 @@ namespace Urp.ArDemo
                 : $"\nDBG CPU {cpuWidth}x{cpuHeight} rot={rotationClockwise} "
                   + $"Screen={Screen.orientation} | "
                   + $"ORB Y=({orbY.x:F2},{orbY.y:F2}) "
-                  + $"B Y=({bY.x:F2},{bY.y:F2})";
+                  + $"B Y=({bY.x:F2},{bY.y:F2})"
+                  + $"\nPnP rel={FormatShort(pnpRelativeEuler)} Applied rel="
+                  + $"{FormatShort(appliedRelativeEuler)} Lag="
+                  + $"{poseLagDegrees:F1}deg/{poseLagCentimetres:F1}cm";
 
         public void UpdatePose(
             NativeOrbResult pose,
@@ -127,10 +136,10 @@ namespace Urp.ArDemo
                 .Append(consistency.poseChainRoundTripRmsPixels.ToString("F4"))
                 .Append(" poseRt=")
                 .Append(consistency.poseChainPassed ? "PASS" : "FAIL")
-                .Append(" bHierarchyRms=")
-                .Append(consistency.renderedHierarchyRmsPixels.ToString("F4"))
-                .Append(" bHierarchy=")
-                .Append(consistency.renderedHierarchyPassed ? "PASS" : "FAIL")
+                .Append(" hierarchyRtRms=")
+                .Append(consistency.hierarchyTransformRoundTripRmsPixels.ToString("F4"))
+                .Append(" hierarchyRt=")
+                .Append(consistency.hierarchyTransformRoundTripPassed ? "PASS" : "FAIL")
                 .Append(" displayDiagnosticRms=")
                 .Append(consistency.displayProjectionDiagnosticRmsPixels.ToString("F3"))
                 .Append(" displayGate=DISABLED")
@@ -179,6 +188,45 @@ namespace Urp.ArDemo
                     .Append(Format(renderer.bounds.extents)).AppendLine();
             }
             Debug.Log(log.ToString());
+        }
+
+        public void UpdateFusion(
+            Vector3 pnpWorldPosition,
+            Quaternion pnpWorldRotation,
+            Transform appliedRoot,
+            float confidence,
+            float positionAlpha,
+            float rotationAlpha)
+        {
+            if (!DiagnosticsEnabled || arCamera == null || appliedRoot == null)
+            {
+                return;
+            }
+            Quaternion worldToCameraRotation = Quaternion.Inverse(
+                arCamera.transform.rotation);
+            pnpRelativePosition = arCamera.transform.InverseTransformPoint(
+                pnpWorldPosition);
+            pnpRelativeEuler = SignedEuler(
+                worldToCameraRotation * pnpWorldRotation);
+            appliedRelativePosition = arCamera.transform.InverseTransformPoint(
+                appliedRoot.position);
+            appliedRelativeEuler = SignedEuler(
+                worldToCameraRotation * appliedRoot.rotation);
+            poseLagCentimetres = Vector3.Distance(
+                pnpRelativePosition,
+                appliedRelativePosition) * 100f;
+            poseLagDegrees = Quaternion.Angle(
+                pnpWorldRotation,
+                appliedRoot.rotation);
+            Debug.Log(
+                "[URP_POSE_FUSION_DIAG] "
+                + $"pnpCameraPosition={Format(pnpRelativePosition)} "
+                + $"pnpCameraYpr={Format(pnpRelativeEuler)} "
+                + $"appliedCameraPosition={Format(appliedRelativePosition)} "
+                + $"appliedCameraYpr={Format(appliedRelativeEuler)} "
+                + $"lagCm={poseLagCentimetres:F3} "
+                + $"lagDeg={poseLagDegrees:F3} confidence={confidence:F3} "
+                + $"positionAlpha={positionAlpha:F3} rotationAlpha={rotationAlpha:F3}");
         }
 
         private Vector3 PnpPointToWorld(NativeOrbResult pose, Vector3 modelPoint)
@@ -255,6 +303,18 @@ namespace Urp.ArDemo
 
         private static string Format(Vector3 value) =>
             $"({value.x:F6},{value.y:F6},{value.z:F6})";
+
+        private static string FormatShort(Vector3 value) =>
+            $"({value.y:F0},{value.x:F0},{value.z:F0})";
+
+        private static Vector3 SignedEuler(Quaternion rotation)
+        {
+            Vector3 euler = rotation.eulerAngles;
+            euler.x = Mathf.DeltaAngle(0f, euler.x);
+            euler.y = Mathf.DeltaAngle(0f, euler.y);
+            euler.z = Mathf.DeltaAngle(0f, euler.z);
+            return euler;
+        }
 
         private static string Format(Quaternion value) =>
             $"({value.x:F6},{value.y:F6},{value.z:F6},{value.w:F6})";

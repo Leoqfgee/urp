@@ -13,21 +13,22 @@ MonoBehaviour:
   m_Name: CoconutBottleRepairCalibration
   m_EditorClassIdentifier: 
   objectOriginInModel: {x: 0, y: 0, z: 0}
-  mouthCenterInModel: {x: 0, y: 0.05882353, z: 0}
-  mouthRightInModel: {x: 0.1, y: 0.05882353, z: 0}
-  mouthFrontInModel: {x: 0, y: 0.05882353, z: 0.1}
-  neckAxisPointInModel: {x: 0, y: -0.14117648, z: 0}
-  hasAuthoredBLandmarks: 1
+  mouthCenterInModel: {x: 0, y: 0, z: 0}
+  mouthRightInModel: {x: 0.1, y: 0, z: 0}
+  mouthFrontInModel: {x: 0, y: 0, z: 0.1}
+  neckAxisPointInModel: {x: 0, y: -0.2, z: 0}
+  hasAuthoredBLandmarks: 0
   authoredBOrigin: {x: 0, y: 0, z: 0}
-  authoredBMouthCenter: {x: 0, y: 0.05882353, z: 0}
-  authoredBMouthRight: {x: 0.1, y: 0.05882353, z: 0}
-  authoredBMouthFront: {x: 0, y: 0.05882353, z: 0.1}
-  authoredBNeckAxisPoint: {x: 0, y: -0.14117648, z: 0}
+  authoredBMouthCenter: {x: 0, y: 0, z: 0}
+  authoredBMouthRight: {x: 0, y: 0, z: 0}
+  authoredBMouthFront: {x: 0, y: 0, z: 0}
+  authoredBNeckAxisPoint: {x: 0, y: 0, z: 0}
+  modelRegistrationArtifact: {fileID: 4900000, guid: 4fdfcae691e71cc4da19b4e9d812057a, type: 3}
   metersPerModelUnit: 0.17
   physicalScaleVerified: 1
   expectedPhysicalNeckDiameter: 0.034
   expectedPhysicalCapDiameter: 0.039
   expectedPhysicalCapHeight: 0.01
   orbToModelLocalPosition: {x: 0, y: 0, z: 0}
-  orbToModelLocalEulerAngles: {x: 0, y: 0, z: 0}
+  orbToModelLocalEulerAngles: {x: 90, y: 0, z: 0}
   orbToModelLocalScale: {x: 1, y: 1, z: 1}

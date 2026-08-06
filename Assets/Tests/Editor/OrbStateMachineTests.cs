@@ -161,7 +161,8 @@ namespace Urp.ArDemo.Tests
 
             Assert.That(controller.IsPoseAppliedToRigidRoot, Is.True);
             Assert.That(controller.IsPoseChainVerified, Is.True);
-            Assert.That(controller.IsRenderedHierarchyVerified, Is.True);
+            Assert.That(controller.IsHierarchyTransformRoundTripVerified, Is.True);
+            Assert.That(controller.IsModelRegistrationVerified, Is.True);
             Assert.That(controller.CanStartRepair, Is.True);
             Assert.That(controller.State,
                 Is.EqualTo(OrbImageTrackingController.TrackingState.ReadyForRepair));
@@ -228,6 +229,7 @@ namespace Urp.ArDemo.Tests
             {
                 position,
                 rotation,
+                PassingNativePose(),
                 consistency ?? PassingConsistency(0f),
                 null
             };
@@ -243,6 +245,19 @@ namespace Urp.ArDemo.Tests
                 12,
                 true,
                 true);
+
+        private static Urp.ArDemo.Native.NativeOrbResult PassingNativePose() =>
+            new Urp.ArDemo.Native.NativeOrbResult
+            {
+                poseValid = 1,
+                poseInliers = 48,
+                uniqueMatches = 60,
+                inlierRatio = 0.8f,
+                reprojectionError = 1.4f,
+                coverageX = 0.42f,
+                coverageY = 0.72f,
+                occupiedGridCells = 9
+            };
 
         private void SetPrivateField<T>(string name, T value)
         {

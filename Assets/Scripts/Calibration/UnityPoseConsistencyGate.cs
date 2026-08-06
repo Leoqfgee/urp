@@ -7,31 +7,34 @@ namespace Urp.ArDemo.Calibration
     {
         public readonly float nativePnpRmsPixels;
         public readonly float poseChainRoundTripRmsPixels;
-        public readonly float renderedHierarchyRmsPixels;
+        public readonly float hierarchyTransformRoundTripRmsPixels;
         public readonly float displayProjectionDiagnosticRmsPixels;
         public readonly int samples;
         public readonly bool poseChainPassed;
-        public readonly bool renderedHierarchyPassed;
+        public readonly bool hierarchyTransformRoundTripPassed;
 
-        public bool HardGatePassed => poseChainPassed && renderedHierarchyPassed;
+        public bool InternalMathPassed =>
+            poseChainPassed && hierarchyTransformRoundTripPassed;
 
         public PoseConsistencyResult(
             float nativePnpRmsPixels,
             float poseChainRoundTripRmsPixels,
-            float renderedHierarchyRmsPixels,
+            float hierarchyTransformRoundTripRmsPixels,
             float displayProjectionDiagnosticRmsPixels,
             int samples,
             bool poseChainPassed,
-            bool renderedHierarchyPassed)
+            bool hierarchyTransformRoundTripPassed)
         {
             this.nativePnpRmsPixels = nativePnpRmsPixels;
             this.poseChainRoundTripRmsPixels = poseChainRoundTripRmsPixels;
-            this.renderedHierarchyRmsPixels = renderedHierarchyRmsPixels;
+            this.hierarchyTransformRoundTripRmsPixels =
+                hierarchyTransformRoundTripRmsPixels;
             this.displayProjectionDiagnosticRmsPixels =
                 displayProjectionDiagnosticRmsPixels;
             this.samples = samples;
             this.poseChainPassed = poseChainPassed;
-            this.renderedHierarchyPassed = renderedHierarchyPassed;
+            this.hierarchyTransformRoundTripPassed =
+                hierarchyTransformRoundTripPassed;
         }
     }
 
@@ -55,7 +58,7 @@ namespace Urp.ArDemo.Calibration
             Transform renderedB,
             RepairCalibrationProfile calibration,
             float maximumPoseChainRmsPixels,
-            float maximumRenderedHierarchyRmsPixels,
+            float maximumHierarchyTransformRoundTripRmsPixels,
             out PoseConsistencyResult result,
             out string reason)
         {
@@ -147,7 +150,7 @@ namespace Urp.ArDemo.Calibration
 
                 // Old v38 metric retained as diagnostic only. It mixes the
                 // native CPU image with Unity's display projection and must
-                // never participate in HardGatePassed.
+                // never participate in InternalMathPassed.
                 Vector3 observedRayCv = new Vector3(
                     (observed.x - k.PrincipalPointX) / k.FocalLengthX,
                     (observed.y - k.PrincipalPointY) / k.FocalLengthY,
@@ -180,7 +183,7 @@ namespace Urp.ArDemo.Calibration
             bool posePassed = float.IsFinite(poseRms)
                 && poseRms <= maximumPoseChainRmsPixels;
             bool hierarchyPassed = float.IsFinite(hierarchyRms)
-                && hierarchyRms <= maximumRenderedHierarchyRmsPixels;
+                && hierarchyRms <= maximumHierarchyTransformRoundTripRmsPixels;
             result = new PoseConsistencyResult(
                 nativeRms,
                 poseRms,
@@ -196,10 +199,11 @@ namespace Urp.ArDemo.Calibration
             }
             else if (!hierarchyPassed)
             {
-                reason = $"MODEL FRAME FAIL: BHierarchy {hierarchyRms:F3}px > "
-                    + $"{maximumRenderedHierarchyRmsPixels:F3}px.";
+                reason = $"HIERARCHY MATH FAIL: HierarchyRT {hierarchyRms:F3}px > "
+                    + $"{maximumHierarchyTransformRoundTripRmsPixels:F3}px. "
+                    + "This does not prove or disprove real ORB-to-B registration.";
             }
-            return result.HardGatePassed;
+            return result.InternalMathPassed;
         }
 
         private static Vector3 UnityCameraToCvCamera(Vector3 point) =>

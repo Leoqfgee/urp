@@ -1,114 +1,57 @@
-# BottleFullAlignedV2 v39 A-to-B-to-C contract
+# Bottle v40 A-to-B-to-C coordinate contract
 
-## Rigid asset contract
+## Provenance and fixed model registration
 
-- A is the real open bottle seen by the phone.
-- B is `DamagedBottleB` plus its 10 mm `ReferenceNeckProxyB` child.
-- C is the approved clean 39 x 10 mm `BottleCapC`.
+A is the real open bottle. B is `DamagedBottleB` plus
+`ReferenceNeckProxyB`; C is `BottleCapC`. The 4,100 unchanged ORB records and
+the current B mesh come from different Meshroom reconstructions, so v40 does
+not assert an identity frame and does not use copied B landmarks.
 
-The Blender-authored hierarchy is fixed:
+`Assets/Calibration/bottle_orb_to_b_registration.json` records the measured
+similarity transform `p_orb = T_ORB_FROM_B * p_B`, both source/target hashes,
+independent mouth/right/up/front controls, and all-point triangle-surface
+statistics. The yaw is locked by the red-logo/front texture: source B `+X`
+maps to ORB `+Z`; the barcode side cannot satisfy that contract. The physical
+mouth centre maps exactly to ORB `(0,0,0)`. ORB `+Y` is base-to-mouth and ORB
+`+X` is bottle-right.
 
-```text
-BottleRepairRoot
-├── DamagedBottleB
-│   └── ReferenceNeckProxyB
-└── BottleCapC
-```
-
-The scan cut is model `Y=0`. Blender restores the measured 10 mm neck above
-that datum and bakes C around the same mouth plane. B, neck, and C keep identity
-local transforms. Runtime code never positions, rotates, or scales C by itself.
-
-## Tracking contract
+The same matrix is baked offline into the vertices of B, the B neck, and C.
+No object is transformed separately. The runtime hierarchy is therefore:
 
 ```text
-TrackedBottleRoot                 complete accepted PnP world pose
-└── ModelCoordinateAlignment      fixed profile calibration only
-    └── BottleRepairRoot          immutable Blender B+C relationship
+TrackedBottleRoot                 accepted six-DoF PnP world pose
+└── ModelCoordinateAlignment      Rx(+90), inverse of imported FBX root Rx(-90)
+    └── BottleRepairRoot          identity
+        ├── DamagedBottleB        identity local transform
+        │   └── ReferenceNeckProxyB
+        └── BottleCapC            identity local transform
 ```
 
-Before registration, opaque B+C is placed once in world space, front-facing
-and centred while ORB recognition runs. The production database is the `URP3DM1`
-4,100-record real-photo baseline used by v33 and previously shown to recognize
-this physical bottle. Its multi-point correspondences are solved with PnP and
-gated by inlier consensus, spatial coverage, positive depth, and reprojection
-error. The experimental grouped database is not used at runtime because it
-regressed real-device pose acceptance.
+The source-to-ORB Sim(3) is provenance, not a runtime offset. Applying it again
+at runtime would be a coordinate conversion bug.
 
-After consecutive-frame stability validation, the full six-degree-of-freedom
-PnP pose is applied immediately to `TrackedBottleRoot`, before Start. Every
-subsequent accepted pose continues to move the common root while B and C stay
-visible. The state does not become `ReadyForRepair` until this has happened.
-There is no session upright/yaw correction. This preserves the measured pitch,
-roll, yaw, translation, and perspective in front, oblique, and top views. C is
-excluded from recognition and inherits B exactly.
+## Pose and state contract
 
-The imported FBX `BottleRepairRoot` is measured with rotation near
-`Rx(-90 degrees)` and hierarchy scale 100, while imported mesh vertices carry
-the reciprocal file-unit scale and an X handedness reflection. Runtime passes
-five Blender-authored B landmark coordinates through that complete hierarchy and solves
-the proper similarity transform to the reflected ORB target landmarks. The
-current asset derives zero translation, unit scale and `Rx(+90 degrees)` with
-landmark RMS below 1e-5. The value is an output of the fit, not a profile Euler.
+Native rotates CPU pixels and intrinsics before solvePnP. PnP R/t already use
+that oriented tracking-camera frame; final pose conversion does not call
+`UndoImageRotation`. `PoseRT` validates the CV→Unity→CV round trip in the same
+native K. `HierarchyRT` proves only transform arithmetic. Real model
+registration is a separate `ModelReg` gate backed by the JSON artifact.
+Display-space RMS remains diagnostic only.
 
-Native rotates raw CPU pixels and intrinsics by `frameRotationClockwise` before
-PnP. The resulting R/t is already in the display-oriented tracking camera.
-Unity applies only `CvCameraToUnityCamera = diag(1,-1,1)` on the camera side;
-the imported mesh X reflection supplies the model-side handedness conversion.
-The old final-pose `UndoImageRotation` left a portrait 90-degree roll and was
-removed. Raw/oriented rotation and inverse rotation remain unit-tested for
-0/90/180/270 degrees and are still used to supply the native raw-frame prior.
+After stable PnP, B+C immediately receive the pose before Start. Accepted
+updates use confidence-weighted SE(3) EMA based on inliers, ratio, RMS,
+coverage, and continuity. High confidence follows rapidly, marginal confidence
+smooths, and low confidence holds; the former 0.018 m/s and 6°/s freeze caps do
+not exist.
 
-`UnityPoseConsistencyGate` retrieves the exact native PnP inlier pairs and uses
-the same oriented CPU-image K throughout. NativePnPRms compares direct PnP
-projection with the observed inlier. PoseRT compares direct PnP projection with
-ORB -> candidate Unity root -> camera Transform inverse -> oriented CV -> K.
-BHierarchy performs the same comparison through ModelCoordinateAlignment and
-the actual imported B hierarchy. PoseRT <= 0.25 px and BHierarchy <= 0.50 px
-must pass for three consecutive reliable frames before Ready. Stable PnP is
-still applied to visible B+C when either mathematical gate fails. The former
-`WorldToScreenPoint` RMS remains only as a non-gating DisplayDiag warning.
-
-Start changes rendering only. It does not apply registration, create, move,
-rotate, scale, reparent, or rematerial C:
-
-- every B renderer is disabled for colour and depth, including
-  `ReferenceNeckProxyB`;
-- C remains in the colour pass and its visibility is reasserted every frame.
-
-`StartDoesNotChangeRigidPose` records the world matrices of
-`TrackedBottleRoot`, `BottleRepairRoot`, `DamagedBottleB`, and `BottleCapC`
-around the actual `StartRecognition()` call. Position tolerance is 0.01 mm,
-rotation tolerance is 0.01 degree, and scale tolerance is 1e-6.
-
-Development Android builds can log `[URP_CAP_DIAG]` snapshots containing all
-four rigid transforms, B/C bounds, all eight C bounds corners in ARCamera space,
-near/far checks, frustum intersection, layer/culling state, renderer flags,
-shader/material/property-block fields, projection data, ARCameraBackground,
-and AROcclusionManager depth modes. The marker/axes and magenta override are
-development diagnostics only; they never modify C's transform.
-
-## Paper-aligned consistency
-
-- Geometry follows thesis section 3.3: the recovered B pose drives the repaired
-  model in the same rigid object frame.
-- Occlusion is deliberately limited to environment/AR depth. The scanned B
-  mesh is not used as a depth proxy because its reconstructed shoulder and
-  neck overlap C and erase the required cap pixels on the real device.
-- Illumination follows chapter 4: low-saturation B pixels around verified ORB
-  inliers provide HSV correction, combined with AR Foundation ambient colour,
-  intensity, spherical harmonics, and main-light estimates. Smoothing affects
-  C's material only, never its pose.
-
-The related Tjaden et al. region tracker motivates temporal pose continuity,
-but the production tracking algorithm remains ORB as required. The Gruber et
-al. photometric-registration reference motivates geometry-aware light matching;
-the mobile implementation uses verified B samples plus AR light estimates.
+Start is a pure presentation gate. It disables B renderers and retains C. It
+does not change position, rotation, scale, parent, material, or registration.
+`StartDoesNotChangeRigidPose` checks Root/B/C matrices around the call.
 
 ## Evidence boundary
 
-The graphics-enabled RenderTexture check is only an Editor synthetic rendering
-smoke test. Offline replay, Unity validation, EditMode/PlayMode tests, and APK
-construction verify the software and asset contract. They do not prove physical overlay. Final device
-acceptance still requires recordings in which B covers A and, after Start, C
-remains seated through front, oblique, and top motion.
+EditMode, PlayMode, offline surface validation, and Editor rendering prove the
+software/asset contract only. `device_verified` remains false until an actual
+Android ARCamera run visibly shows B covering A in front, left/right oblique,
+top, near, and far views and C remaining at the mouth after Start.

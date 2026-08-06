@@ -36,11 +36,13 @@ namespace Urp.ArDemo.Editor
             "Assets/Materials/BottlePhotogrammetryLit.mat";
         private const string BottleCapMaterialPath =
             "Assets/Materials/CleanBottleCapLit.mat";
-        private const string AndroidApkPath = "Builds/BottleRepairAR_v39.apk";
+        private const string AndroidApkPath = "Builds/BottleRepairAR_v40.apk";
         private const string BottleReferenceOrbPath =
             "Assets/OrbModels/bottle_reference_b.bytes";
         private const string BottleCalibrationPath =
             "Assets/Calibration/CoconutBottleRepairCalibration.asset";
+        private const string BottleRegistrationArtifactPath =
+            "Assets/Calibration/bottle_orb_to_b_registration.json";
         private const string TissueModelPath =
             "Assets/Objects/Tissue/Viewer/Processed/tissue_processed.obj";
         private const string TissueTexturePath =
@@ -190,14 +192,14 @@ namespace Urp.ArDemo.Editor
 
         private static void ConfigureAndroidProject()
         {
-            PlayerSettings.productName = "瓶盖AR修复 v39";
+            PlayerSettings.productName = "瓶盖AR修复 v40";
             PlayerSettings.companyName = "qfgeeee";
-            PlayerSettings.bundleVersion = "4.3.9";
+            PlayerSettings.bundleVersion = "4.4.0";
             PlayerSettings.SetApplicationIdentifier(
                 BuildTargetGroup.Android, "com.qfgeeee.paper52objecttrackingar");
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
-            PlayerSettings.Android.bundleVersionCode = 439;
+            PlayerSettings.Android.bundleVersionCode = 440;
             PlayerSettings.SetScriptingBackend(
                 BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
@@ -317,6 +319,10 @@ namespace Urp.ArDemo.Editor
                     importer.importLights = false;
                     importer.isReadable = true;
                     importer.preserveHierarchy = path == BottleRegisteredPairPath;
+                    // Preserve the exporter-authored FBX root conversion.  Unity
+                    // imports this asset with a measured Rx(-90); calibration applies
+                    // its exact inverse once, without altering the baked ORB-to-B Sim(3).
+                    importer.bakeAxisConversion = false;
                     importer.materialImportMode =
                         path == BottleRegisteredPairPath
                             ? ModelImporterMaterialImportMode.ImportStandard
@@ -364,7 +370,7 @@ namespace Urp.ArDemo.Editor
 
             RestorationObjectProfile bottle = LoadOrCreate<RestorationObjectProfile>(
                 BottleProfilePath);
-            bottle.objectId = "bottle_full_aligned_v2_v39";
+            bottle.objectId = "bottle_orb_cross_registered_v40";
             bottle.displayName = "新重建无盖饮料瓶与瓶盖";
             bottle.shortDescription =
                 "Blender 中刚性对齐的无盖瓶身 B 与干净白色瓶盖 C。";
@@ -378,7 +384,7 @@ namespace Urp.ArDemo.Editor
                 + "同时使用真实无盖瓶照片的 ORB 特征识别 A→B 六自由度位姿。"
                 + "点击开始后，在姿态稳定时关闭 B 的 Renderer，"
                 + "但保留 B 的跟踪位姿和 B/C 刚性关系。"
-                + "手机运动由 AR 世界相机提供连续透视，PnP 只缓慢修正漂移。"
+                + "手机运动由 AR 世界相机提供连续透视，可靠 PnP 通过置信度加权 SE(3) 滤波持续更新完整位姿。"
                 + "C 不单独识别，不挂在屏幕或摄像机下。"
                 + "C 的外观结合真实瓶身 HSV 样本和 AR 光照估计平滑校正。";
             bottle.missingPartName = "瓶盖 C";
@@ -393,37 +399,30 @@ namespace Urp.ArDemo.Editor
             RepairCalibrationProfile bottleCalibration =
                 LoadOrCreate<RepairCalibrationProfile>(BottleCalibrationPath);
             bottleCalibration.objectOriginInModel = Vector3.zero;
-            // ORB/PnP keeps the v32 scan coordinate frame and its origin at
-            // the damaged shoulder cut.  Blender restores the photographed
-            // 10 mm neck above that datum; C is baked around the resulting
-            // physical mouth and never receives a runtime offset.
-            bottleCalibration.mouthCenterInModel =
-                new Vector3(0f, 0.05882353f, 0f);
-            bottleCalibration.mouthRightInModel =
-                new Vector3(0.1f, 0.05882353f, 0f);
-            bottleCalibration.mouthFrontInModel =
-                new Vector3(0f, 0.05882353f, 0.1f);
-            bottleCalibration.neckAxisPointInModel =
-                new Vector3(0f, -0.14117647f, 0f);
-            bottleCalibration.hasAuthoredBLandmarks = true;
+            // The real ORB canonicalizer defines origin at physical mouth
+            // centre. The measured cross-reconstruction Sim(3) is baked into
+            // B, neck and C together offline.
+            bottleCalibration.mouthCenterInModel = Vector3.zero;
+            bottleCalibration.mouthRightInModel = new Vector3(0.1f, 0f, 0f);
+            bottleCalibration.mouthFrontInModel = new Vector3(0f, 0f, 0.1f);
+            bottleCalibration.neckAxisPointInModel = new Vector3(0f, -0.2f, 0f);
+            bottleCalibration.hasAuthoredBLandmarks = false;
             bottleCalibration.authoredBOrigin = Vector3.zero;
-            bottleCalibration.authoredBMouthCenter =
-                new Vector3(0f, 0.05882353f, 0f);
-            bottleCalibration.authoredBMouthRight =
-                new Vector3(0.1f, 0.05882353f, 0f);
-            bottleCalibration.authoredBMouthFront =
-                new Vector3(0f, 0.05882353f, 0.1f);
-            bottleCalibration.authoredBNeckAxisPoint =
-                new Vector3(0f, -0.14117647f, 0f);
+            bottleCalibration.authoredBMouthCenter = Vector3.zero;
+            bottleCalibration.authoredBMouthRight = Vector3.zero;
+            bottleCalibration.authoredBMouthFront = Vector3.zero;
+            bottleCalibration.authoredBNeckAxisPoint = Vector3.zero;
+            bottleCalibration.modelRegistrationArtifact =
+                AssetDatabase.LoadAssetAtPath<TextAsset>(
+                    BottleRegistrationArtifactPath);
             bottleCalibration.metersPerModelUnit = 0.17f;
             bottleCalibration.physicalScaleVerified = true;
             bottleCalibration.expectedPhysicalNeckDiameter = 0.034f;
             bottleCalibration.expectedPhysicalCapDiameter = 0.039f;
             bottleCalibration.expectedPhysicalCapHeight = 0.010f;
             bottleCalibration.orbToModelLocalPosition = Vector3.zero;
-            // Runtime derives the fixed parent matrix from corresponding
-            // canonical landmarks through the actual imported hierarchy.
-            bottleCalibration.orbToModelLocalEulerAngles = Vector3.zero;
+            // The cross-registered B+C asset is baked into ORB canonical space.
+            bottleCalibration.orbToModelLocalEulerAngles = new Vector3(90f, 0f, 0f);
             bottleCalibration.orbToModelLocalScale = Vector3.one;
             EditorUtility.SetDirty(bottleCalibration);
             bottle.calibration = bottleCalibration;

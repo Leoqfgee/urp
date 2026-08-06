@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using UnityEditor;
 using UnityEngine;
 using Urp.ArDemo.Calibration;
 using Urp.ArDemo.Native;
@@ -40,6 +41,52 @@ namespace Urp.ArDemo.Tests
         [Test] public void PnpUnityRoundTrip_270Deg() => AssertRoundTrip(270);
 
         [Test]
+        public void ConfidenceWeightedFusionTracksHighConfidenceSixDof()
+        {
+            Vector3 start = new Vector3(0f, 0f, 0.6f);
+            Quaternion startRotation = Quaternion.identity;
+            Vector3 candidate = new Vector3(0.04f, -0.02f, 0.64f);
+            Quaternion candidateRotation = Quaternion.Euler(18f, 27f, -9f);
+            ConfidenceWeightedPoseFusion.Result result =
+                ConfidenceWeightedPoseFusion.Step(
+                    start,
+                    startRotation,
+                    candidate,
+                    candidateRotation,
+                    0.95f,
+                    0.20f,
+                    0.18f,
+                    0.14f,
+                    0.14f);
+            Assert.That(result.held, Is.False);
+            Assert.That(result.positionAlpha, Is.GreaterThan(0.85f));
+            Assert.That(result.rotationAlpha, Is.GreaterThan(0.84f));
+            Assert.That(Vector3.Distance(result.position, candidate), Is.LessThan(0.01f));
+            Assert.That(Quaternion.Angle(result.rotation, candidateRotation), Is.LessThan(6f));
+        }
+
+        [Test]
+        public void ConfidenceWeightedFusionHoldsLowConfidencePose()
+        {
+            Vector3 start = new Vector3(0f, 0f, 0.6f);
+            Quaternion startRotation = Quaternion.Euler(1f, 2f, 3f);
+            ConfidenceWeightedPoseFusion.Result result =
+                ConfidenceWeightedPoseFusion.Step(
+                    start,
+                    startRotation,
+                    new Vector3(0.1f, 0.1f, 0.8f),
+                    Quaternion.Euler(40f, 50f, 60f),
+                    0.20f,
+                    0.20f,
+                    0.18f,
+                    0.14f,
+                    0.14f);
+            Assert.That(result.held, Is.True);
+            Assert.That(result.position, Is.EqualTo(start));
+            Assert.That(Quaternion.Angle(result.rotation, startRotation), Is.LessThan(0.001f));
+        }
+
+        [Test]
         public void RenderedHierarchyRoundTrip()
         {
             using (PoseFixture fixture = new PoseFixture())
@@ -47,53 +94,44 @@ namespace Urp.ArDemo.Tests
                 NativeOrbResult pose = CreateOrientedPose(90);
                 PoseConsistencyResult good = fixture.Evaluate(pose);
                 Assert.That(good.poseChainPassed, Is.True);
-                Assert.That(good.renderedHierarchyPassed, Is.True);
+                Assert.That(good.hierarchyTransformRoundTripPassed, Is.True);
                 Assert.That(good.poseChainRoundTripRmsPixels, Is.LessThan(0.01f));
-                Assert.That(good.renderedHierarchyRmsPixels, Is.LessThan(0.01f));
+                Assert.That(good.hierarchyTransformRoundTripRmsPixels, Is.LessThan(0.01f));
 
                 fixture.Alignment.localRotation *= Quaternion.Euler(0f, 6f, 0f);
                 PoseConsistencyResult badHierarchy = fixture.Evaluate(pose);
                 Assert.That(badHierarchy.poseChainPassed, Is.True);
-                Assert.That(badHierarchy.renderedHierarchyPassed, Is.False);
-                Assert.That(badHierarchy.renderedHierarchyRmsPixels, Is.GreaterThan(1f));
+                Assert.That(badHierarchy.hierarchyTransformRoundTripPassed, Is.False);
+                Assert.That(badHierarchy.hierarchyTransformRoundTripRmsPixels, Is.GreaterThan(1f));
             }
         }
 
         [Test]
-        public void LandmarkRegistrationDerivesImportedHierarchyMatrix()
+        public void ProductionModelRegistrationArtifactIsIndependentAndNonIdentity()
         {
-            using (PoseFixture fixture = new PoseFixture())
-            {
-                Assert.That(
-                    Quaternion.Angle(
-                        fixture.Alignment.localRotation,
-                        Quaternion.Euler(90f, 0f, 0f)),
-                    Is.LessThan(0.0001f));
-                Assert.That(
-                    Vector3.Distance(fixture.Alignment.localScale, Vector3.one),
-                    Is.LessThan(0.00001f));
-            }
-        }
-
-        [Test]
-        public void AuthoredLandmarksAreIndependentFromOrbLandmarks()
-        {
-            using (PoseFixture fixture = new PoseFixture())
-            {
-                fixture.Calibration.authoredBMouthRight +=
-                    new Vector3(0f, 0.04f, 0f);
-                Assert.That(
-                    CanonicalFrameRegistration.TryDerive(
-                        fixture.Root,
-                        fixture.Alignment,
-                        fixture.Body,
-                        fixture.Calibration,
-                        out _,
-                        out _),
-                    Is.False,
-                    "A changed authored B landmark must not be reconstructed "
-                    + "from the unchanged ORB landmark set.");
-            }
+            TextAsset asset = AssetDatabase.LoadAssetAtPath<TextAsset>(
+                "Assets/Calibration/bottle_orb_to_b_registration.json");
+            Assert.That(
+                ModelRegistrationEvidence.TryParse(
+                    asset,
+                    out ModelRegistrationEvidence evidence,
+                    out string reason),
+                Is.True,
+                reason);
+            Assert.That(evidence.landmark_rms_mm, Is.LessThan(2f));
+            Assert.That(evidence.orb_point_to_b_surface_mm.p95_mm, Is.LessThan(12f));
+            Assert.That(evidence.front_axis_agreement, Is.GreaterThan(0.995f));
+            Assert.That(evidence.up_axis_agreement, Is.GreaterThan(0.995f));
+            Assert.That(
+                new Vector3(
+                    evidence.mouth_center_orb[0],
+                    evidence.mouth_center_orb[1],
+                    evidence.mouth_center_orb[2]),
+                Is.EqualTo(Vector3.zero));
+            Assert.That(
+                Mathf.Abs(evidence.T_ORB_FROM_B[0] - 1f),
+                Is.GreaterThan(0.1f),
+                "The two Meshroom reconstructions must not be self-certified as identity.");
         }
 
         private static void AssertRoundTrip(int rotationClockwise)
@@ -103,19 +141,19 @@ namespace Urp.ArDemo.Tests
                 NativeOrbResult pose = CreateOrientedPose(rotationClockwise);
                 PoseConsistencyResult result = fixture.Evaluate(pose);
                 Assert.That(result.poseChainPassed, Is.True);
-                Assert.That(result.renderedHierarchyPassed, Is.True);
+                Assert.That(result.hierarchyTransformRoundTripPassed, Is.True);
                 Assert.That(
                     result.poseChainRoundTripRmsPixels,
                     Is.LessThan(0.01f),
                     $"rotation={rotationClockwise}");
                 Assert.That(
-                    result.renderedHierarchyRmsPixels,
+                    result.hierarchyTransformRoundTripRmsPixels,
                     Is.LessThan(0.01f),
                     $"rotation={rotationClockwise}");
                 Debug.Log(
                     $"PNP_UNITY_ROUNDTRIP_{rotationClockwise}_OK "
                     + $"poseRt={result.poseChainRoundTripRmsPixels:F6}px "
-                    + $"hierarchy={result.renderedHierarchyRmsPixels:F6}px");
+                    + $"hierarchy={result.hierarchyTransformRoundTripRmsPixels:F6}px");
             }
         }
 
@@ -182,19 +220,8 @@ namespace Urp.ArDemo.Tests
                 pairObject.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
                 bodyObject.transform.SetParent(pairObject.transform, false);
                 calibration = CreateCalibration();
-                Assert.That(
-                    CanonicalFrameRegistration.TryDerive(
-                        rootObject.transform,
-                        alignmentObject.transform,
-                        bodyObject.transform,
-                        calibration,
-                        out CanonicalFrameRegistration.Result alignment,
-                        out string reason),
-                    Is.True,
-                    reason);
-                alignmentObject.transform.localPosition = alignment.position;
-                alignmentObject.transform.localRotation = alignment.rotation;
-                alignmentObject.transform.localScale = alignment.scale;
+                alignmentObject.transform.localRotation =
+                    Quaternion.Euler(90f, 0f, 0f);
             }
 
             public PoseConsistencyResult Evaluate(NativeOrbResult pose)
@@ -278,16 +305,11 @@ namespace Urp.ArDemo.Tests
             RepairCalibrationProfile calibration =
                 ScriptableObject.CreateInstance<RepairCalibrationProfile>();
             calibration.objectOriginInModel = Vector3.zero;
-            calibration.mouthCenterInModel = new Vector3(0f, 0.05882353f, 0f);
-            calibration.mouthRightInModel = new Vector3(0.1f, 0.05882353f, 0f);
-            calibration.mouthFrontInModel = new Vector3(0f, 0.05882353f, 0.1f);
-            calibration.neckAxisPointInModel = new Vector3(0f, -0.14117648f, 0f);
-            calibration.hasAuthoredBLandmarks = true;
-            calibration.authoredBOrigin = calibration.objectOriginInModel;
-            calibration.authoredBMouthCenter = calibration.mouthCenterInModel;
-            calibration.authoredBMouthRight = calibration.mouthRightInModel;
-            calibration.authoredBMouthFront = calibration.mouthFrontInModel;
-            calibration.authoredBNeckAxisPoint = calibration.neckAxisPointInModel;
+            calibration.mouthCenterInModel = Vector3.zero;
+            calibration.mouthRightInModel = new Vector3(0.1f, 0f, 0f);
+            calibration.mouthFrontInModel = new Vector3(0f, 0f, 0.1f);
+            calibration.neckAxisPointInModel = new Vector3(0f, -0.2f, 0f);
+            calibration.hasAuthoredBLandmarks = false;
             calibration.metersPerModelUnit = 0.17f;
             return calibration;
         }

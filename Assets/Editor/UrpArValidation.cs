@@ -30,6 +30,8 @@ namespace Urp.ArDemo.Editor
             "Assets/OrbModels/bottle_reference_b.bytes";
         private const string DatabaseManifestPath =
             "Assets/OrbModels/bottle_reference_b_manifest.json";
+        private const string ModelRegistrationArtifactPath =
+            "Assets/Calibration/bottle_orb_to_b_registration.json";
         private const string BottleAlbedoPath =
             "Assets/Models/CleanBottleReconstruction/BottleFullAlignedV2/"
             + "Textures/bottle_full_clean_v2_albedo.png";
@@ -45,6 +47,10 @@ namespace Urp.ArDemo.Editor
             "Assets/Scripts/CapVisibilityDiagnostic.cs";
         private const string PoseDiagnosticPath =
             "Assets/Scripts/PoseCoordinateDiagnostic.cs";
+        private const string AppControllerPath =
+            "Assets/Scripts/UrpAppController.cs";
+        private const string BuildIdentityPath =
+            "Assets/Generated/BuildIdentity.cs";
         private const string CanonicalRegistrationPath =
             "Assets/Scripts/Calibration/CanonicalFrameRegistration.cs";
         private const string UnityPoseGatePath =
@@ -208,6 +214,9 @@ namespace Urp.ArDemo.Editor
             Require(
                 File.Exists(DatabaseManifestPath),
                 $"Missing B database manifest: {DatabaseManifestPath}");
+            Require(
+                File.Exists(ModelRegistrationArtifactPath),
+                $"Missing independent model registration: {ModelRegistrationArtifactPath}");
             Require(File.Exists(BottleAlbedoPath),
                 $"Missing bottle photogrammetry texture: {BottleAlbedoPath}");
             Require(File.Exists(BottleCapMaterialPath),
@@ -223,7 +232,7 @@ namespace Urp.ArDemo.Editor
                 && catalog.objects.Count(item => item == profile) == 1,
                 "The formal catalog must contain the new bottle profile exactly once.");
             Require(
-                profile.objectId == "bottle_full_aligned_v2_v39",
+                profile.objectId == "bottle_orb_cross_registered_v40",
                 "The formal bottle profile still has the legacy object id.");
             Require(
                 AssetDatabase.GetAssetPath(profile.registeredBottlePairPrefab) == NewPairPath,
@@ -239,13 +248,16 @@ namespace Urp.ArDemo.Editor
             Require(
                 profile.calibration != null
                 && profile.calibration.HasValidFrame
-                && profile.calibration.hasAuthoredBLandmarks
+                && !profile.calibration.hasAuthoredBLandmarks
+                && AssetDatabase.GetAssetPath(
+                    profile.calibration.modelRegistrationArtifact)
+                    == ModelRegistrationArtifactPath
                 && Mathf.Abs(profile.calibration.metersPerModelUnit - 0.17f) < 0.0001f
                 && Quaternion.Angle(
                     Quaternion.Euler(profile.calibration.orbToModelLocalEulerAngles),
-                    Quaternion.identity) < 0.01f
+                    Quaternion.Euler(90f, 0f, 0f)) < 0.01f
                 && Mathf.Abs(
-                    profile.calibration.mouthCenterInModel.y - 0.05882353f) < 0.0001f,
+                    profile.calibration.mouthCenterInModel.y) < 0.0001f,
                 "The new canonical B frame or physical scale is invalid.");
             Require(
                 profile.viewerMaterial != null
@@ -279,22 +291,29 @@ namespace Urp.ArDemo.Editor
                 $"B device-proven database is invalid: {records} records.");
             string manifest = File.ReadAllText(DatabaseManifestPath);
             Require(
-                manifest.Contains("bottle-full-aligned-v2-reference-b-real-observations-v32")
+                manifest.Contains("bottle-orb-cross-registration-reference-b-v40")
                 && manifest.Contains("\"rendered_mesh_descriptors_used\": false")
-                && manifest.Contains("bottle_damaged")
+                && manifest.Contains("different Meshroom reconstructions")
                 && manifest.Contains("\"repair_c_excluded_from_matching\": true")
                 && manifest.Contains("\"device_overlay_verified\": false"),
                 "B database manifest does not describe the real-photo B-only pipeline.");
             string report = File.ReadAllText(NewPairReportPath);
             Require(
-                report.Contains("bottle-full-aligned-v2-rigid-neck-cap-v33")
-                && report.Contains("bottle_cap_clean_39x10mm.obj")
-                && report.Contains("\"heightMeters\": 0.01")
-                && report.Contains("\"mouthPlaneModelY\": 0.058823529411764705")
-                && report.Contains("\"capOverlapsNeckAxially\": true")
-                && report.Contains("\"authoredBLandmarks\"")
+                report.Contains("bottle-orb-cross-reconstruction-rigid-pair-v40")
+                && report.Contains("bottle_full_clean_v2")
+                && report.Contains("\"physicalMouthCentreModel\": [")
+                && report.Contains("cross-reconstruction Sim(3)")
+                && report.Contains("no independent C offset/rotation/scale")
                 && report.Contains("\"rigidRelationshipPreserved\": true"),
-                "Blender report does not describe the approved 10 mm neck and clean cap.");
+                "Blender report does not describe the v40 cross-registered B+C contract.");
+            string modelRegistration = File.ReadAllText(ModelRegistrationArtifactPath);
+            Require(
+                modelRegistration.Contains(
+                    "\"independent_model_registration_verified\": true")
+                && modelRegistration.Contains("\"orb_point_to_b_surface_mm\"")
+                && modelRegistration.Contains("\"T_ORB_FROM_B\"")
+                && modelRegistration.Contains("\"device_verified\": false"),
+                "Independent ORB-to-B registration evidence is incomplete.");
 
             GameObject pairPrefab =
                 AssetDatabase.LoadAssetAtPath<GameObject>(NewPairPath);
@@ -321,9 +340,9 @@ namespace Urp.ArDemo.Editor
                 root,
                 body.GetComponentsInChildren<Renderer>(true));
             Vector3 expectedBodyMin =
-                new Vector3(-0.0021447852f, -0.0119999993f, -0.0026533404f);
+                new Vector3(-0.0025041732f, -0.0124520111f, -0.0024484295f);
             Vector3 expectedBodyMax =
-                new Vector3(0.0028399414f, 0.0005882353f, 0.0022504458f);
+                new Vector3(0.0024784960f, 0.0000367595f, 0.0025443977f);
             Require(
                 Vector3.Distance(importedBodyBounds.min, expectedBodyMin) < 0.00005f
                 && Vector3.Distance(importedBodyBounds.max, expectedBodyMax) < 0.00005f
@@ -345,6 +364,15 @@ namespace Urp.ArDemo.Editor
         {
             string controller = File.ReadAllText(ControllerPath);
             string setup = File.ReadAllText(SetupPath);
+            string appController = File.ReadAllText(AppControllerPath);
+            string buildIdentity = File.ReadAllText(BuildIdentityPath);
+            Require(
+                appController.Contains("v40")
+                && buildIdentity.Contains(
+                    "orb-tracking-v40-cross-registered-adaptive-se3")
+                && buildIdentity.Contains(
+                    "coconut-cross-reconstruction-sim3-v40"),
+                "Visible application/build identity still reports a pre-v40 build.");
             string[] prohibitedControllerTokens =
             {
                 "displayMatrix",
@@ -387,8 +415,9 @@ namespace Urp.ArDemo.Editor
                 && controller.Contains("repairRequested")
                 && controller.Contains("recognitionRunning = true")
                 && controller.Contains("SetReferenceHierarchyVisible(false)")
-                && controller.Contains("worldPositionDeadbandMeters")
-                && controller.Contains("maximumWorldRotationCorrectionDegreesPerSecond")
+                && controller.Contains("ConfidenceWeightedPoseFusion.Step")
+                && !controller.Contains("maximumWorldPositionCorrectionMetersPerSecond")
+                && !controller.Contains("maximumWorldRotationCorrectionDegreesPerSecond")
                 && controller.Contains("trackingState = TrackingState.Repair")
                 && controller.Contains("renderer.enabled = enabled"),
                 "Production tracker does not implement pre-alignment, guided PnP, hidden B, and stabilized C.");
@@ -429,14 +458,12 @@ namespace Urp.ArDemo.Editor
                 poseDiagnostic.Contains("[URP_POSE_DIAG]")
                 && poseDiagnostic.Contains("ORB screen dirs")
                 && poseDiagnostic.Contains("B screen dirs")
-                && canonicalRegistration.Contains("TrySolveSimilarity")
-                && canonicalRegistration.Contains("hasAuthoredBLandmarks")
                 && canonicalRegistration.Contains("OrbToImportedMeshPoint")
                 && unityPoseGate.Contains("NativeInlierSet")
                 && unityPoseGate.Contains("poseChainRoundTripRmsPixels")
-                && unityPoseGate.Contains("renderedHierarchyRmsPixels")
+                && unityPoseGate.Contains("hierarchyTransformRoundTripRmsPixels")
                 && unityPoseGate.Contains("displayGate=DISABLED"),
-                "v39 native-camera round-trip gates or display diagnostic are incomplete.");
+                "v40 native-camera round-trip or hierarchy diagnostics are incomplete.");
             string native = File.ReadAllText(NativeSourcePath);
             Require(
                 native.Contains("SetPosePrior")
@@ -579,7 +606,7 @@ namespace Urp.ArDemo.Editor
             Vector3 alignmentZeroLongAxis =
                 derivedMatrix.inverse.MultiplyVector(Vector3.up).normalized;
             Debug.Log(
-                "ORB_RENDERED_B_LANDMARK_MATRIX_OK "
+                "ORB_RENDERED_B_BAKED_MATRIX_OK "
                 + $"matrix={FormatMatrix(derivedMatrix)} rms={landmarkRms:E6} "
                 + $"importedHierarchyScale={importedScale:F6} "
                 + $"alignment0LongAxis={alignmentZeroLongAxis} "
@@ -587,9 +614,10 @@ namespace Urp.ArDemo.Editor
                 + $"orbZInRoot={renderedZ} bottleLongAxis={renderedY}");
             Require(
                 Vector3.Angle(renderedY, Vector3.up) < 0.1f
-                && landmarkRms < 0.00001f
+                && Mathf.Abs(landmarkRms - 0.00508247f) < 0.0001f
+                && derivedMatrix == Matrix4x4.identity
                 && Mathf.Abs(importedScale - 100f) < 0.1f,
-                "Derived ORB-to-B landmarks do not preserve the bottle long axis: "
+                "Baked ORB-to-B asset does not preserve the bottle long axis: "
                 + $"angle={Vector3.Angle(renderedY, Vector3.up):F6}, "
                 + $"rms={landmarkRms:E6}, scale={importedScale:F6}.");
             Require(body.parent == pair && neck.IsChildOf(body) && cap.parent == pair,
@@ -631,6 +659,17 @@ namespace Urp.ArDemo.Editor
                     {
                         measuredPosition,
                         measuredRotation,
+                        new NativeOrbResult
+                        {
+                            poseValid = 1,
+                            poseInliers = 48,
+                            uniqueMatches = 60,
+                            inlierRatio = 0.8f,
+                            reprojectionError = 1.4f,
+                            coverageX = 0.42f,
+                            coverageY = 0.72f,
+                            occupiedGridCells = 9
+                        },
                         passingConsistency,
                         null
                     };
@@ -701,6 +740,17 @@ namespace Urp.ArDemo.Editor
             {
                 measuredPosition + new Vector3(0.005f, 0f, 0f),
                 measuredRotation * Quaternion.Euler(0f, 2f, 0f),
+                new NativeOrbResult
+                {
+                    poseValid = 1,
+                    poseInliers = 48,
+                    uniqueMatches = 60,
+                    inlierRatio = 0.8f,
+                    reprojectionError = 1.4f,
+                    coverageX = 0.42f,
+                    coverageY = 0.72f,
+                    occupiedGridCells = 9
+                },
                 new PoseConsistencyResult(
                     1f, 0.01f, 0.01f, 8f, 12, true, true),
                 null

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the BottleFullAlignedV2 v39 runtime contract without Unity."""
+"""Validate the v40 measured cross-reconstruction B+C contract."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import numpy as np
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MAGIC_V1 = b"URP3DM1\0"
+MAGIC = b"URP3DM1\0"
 RECORD_SIZE = 44
 
 
@@ -20,196 +20,152 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest().upper()
 
 
-def read_points(path: Path) -> np.ndarray:
+def points(path: Path) -> np.ndarray:
     data = path.read_bytes()
-    if data[:8] != MAGIC_V1:
-        raise ValueError(f"{path}: expected device-proven URP3DM1 database")
+    if data[:8] != MAGIC:
+        raise ValueError("invalid ORB database")
     count = struct.unpack_from("<I", data, 8)[0]
     if count != 4100 or len(data) != 12 + count * RECORD_SIZE:
-        raise ValueError(
-            f"{path}: expected 4100 records, got {count} ({len(data)} bytes)"
-        )
+        raise ValueError("expected the unchanged 4100-record ORB database")
     return np.asarray(
-        [
-            struct.unpack_from("<3f", data, 12 + index * RECORD_SIZE)
-            for index in range(count)
-        ],
-        dtype=np.float32,
+        [struct.unpack_from("<3f", data, 12 + i * RECORD_SIZE) for i in range(count)]
     )
 
 
-def assert_identity(item: dict, label: str) -> None:
+def identity(item: dict, label: str) -> None:
     if item.get("localPosition") != [0.0, 0.0, 0.0]:
-        raise ValueError(f"{label} local position is not identity")
+        raise ValueError(f"{label} local position changed")
     if item.get("localRotationRadians") != [0.0, 0.0, 0.0]:
-        raise ValueError(f"{label} local rotation is not identity")
+        raise ValueError(f"{label} local rotation changed")
     if item.get("localScale") != [1.0, 1.0, 1.0]:
-        raise ValueError(f"{label} local scale is not identity")
+        raise ValueError(f"{label} local scale changed")
 
 
 def main() -> None:
-    database = ROOT / "Assets/OrbModels/bottle_reference_b.bytes"
-    manifest_path = ROOT / "Assets/OrbModels/bottle_reference_b_manifest.json"
-    fbx = (
-        ROOT
-        / "Assets/Models/CleanBottleReconstruction/BottleFullAlignedV2"
-        / "bottle_full_aligned_v2.fbx"
+    orb = ROOT / "Assets/OrbModels/bottle_reference_b.bytes"
+    manifest = json.loads(
+        (ROOT / "Assets/OrbModels/bottle_reference_b_manifest.json").read_text()
     )
-    report_path = fbx.with_name("bottle_full_aligned_v2_report.json")
-    controller_path = ROOT / "Assets/Scripts/OrbImageTrackingController.cs"
-    native_path = ROOT / "Native/UrpOrbNative/src/urp_orb_native.cpp"
-    setup_path = ROOT / "Assets/Editor/UrpArProjectSetup.cs"
-    calibration_path = ROOT / "Assets/Calibration/CoconutBottleRepairCalibration.asset"
+    asset_root = ROOT / "Assets/Models/CleanBottleReconstruction/BottleFullAlignedV2"
+    fbx = asset_root / "bottle_full_aligned_v2.fbx"
+    report = json.loads((asset_root / "bottle_full_aligned_v2_report.json").read_text())
+    artifact = json.loads(
+        (ROOT / "Assets/Calibration/bottle_orb_to_b_registration.json").read_text()
+    )
+    contract = json.loads(
+        (ROOT / "Assets/Calibration/bottle_orb_frame_contract.json").read_text()
+    )
+    controller = (ROOT / "Assets/Scripts/OrbImageTrackingController.cs").read_text(
+        encoding="utf-8"
+    )
+    native = (ROOT / "Native/UrpOrbNative/src/urp_orb_native.cpp").read_text(
+        encoding="utf-8"
+    )
+    setup = (ROOT / "Assets/Editor/UrpArProjectSetup.cs").read_text(
+        encoding="utf-8"
+    )
+    app_controller = (ROOT / "Assets/Scripts/UrpAppController.cs").read_text(
+        encoding="utf-8"
+    )
+    build_identity = (ROOT / "Assets/Generated/BuildIdentity.cs").read_text(
+        encoding="utf-8"
+    )
+    calibration = (
+        ROOT / "Assets/Calibration/CoconutBottleRepairCalibration.asset"
+    ).read_text(encoding="utf-8")
+    cloud = points(orb)
 
-    points = read_points(database)
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    report = json.loads(report_path.read_text(encoding="utf-8"))
-    controller = controller_path.read_text(encoding="utf-8")
-    native = native_path.read_text(encoding="utf-8")
-    setup = setup_path.read_text(encoding="utf-8")
-    calibration = calibration_path.read_text(encoding="utf-8")
-
-    expected_version = "bottle-full-aligned-v2-reference-b-real-observations-v32"
-    if manifest.get("version") != expected_version:
-        raise ValueError("ORB manifest is not the device-proven v33 B-only baseline")
-    if manifest.get("database_format") != "URP3DM1":
-        raise ValueError("ORB manifest format is not URP3DM1")
-    if manifest.get("records") != len(points):
-        raise ValueError("ORB manifest record count does not match the binary")
-    if manifest.get("database_sha256") != sha256(database):
-        raise ValueError("ORB manifest SHA256 does not match the database")
+    if manifest.get("database_sha256") != sha256(orb):
+        raise ValueError("ORB binary changed or manifest hash is stale")
     if manifest.get("repair_c_excluded_from_matching") is not True:
-        raise ValueError("BottleCapC must be excluded from B feature generation")
-    provenance = manifest.get("source_provenance", {})
-    if provenance.get("rendered_mesh_descriptors_used") is not False:
-        raise ValueError("The production database must use real bottle observations")
-    if provenance.get("complete_bottle_or_cap_images_used") is not False:
-        raise ValueError("The B database must exclude complete-bottle/cap images")
-    if manifest.get("device_overlay_verified") is not False:
-        raise ValueError("Device overlay cannot be marked verified without device evidence")
-
-    if report.get("version") != "bottle-full-aligned-v2-rigid-neck-cap-v33":
-        raise ValueError("Blender report is not the v33 rigid registration")
-    if report.get("runtimeHierarchy") != {
-        "root": "BottleRepairRoot",
-        "referenceB": "DamagedBottleB",
-        "referenceNeckB": "ReferenceNeckProxyB",
-        "repairC": "BottleCapC",
-    }:
-        raise ValueError("Blender report hierarchy is invalid")
+        raise ValueError("C entered the ORB database")
+    if report.get("version") != "bottle-orb-cross-reconstruction-rigid-pair-v40":
+        raise ValueError("runtime B is not the v40 cross-registered rigid asset")
+    if "bottle_full_clean_v2" not in report["referenceB"]["sourceReconstruction"]:
+        raise ValueError("B source reconstruction provenance is missing")
     if report.get("rigidRelationshipPreserved") is not True:
-        raise ValueError("Blender report does not preserve B+C rigidity")
-    manifest_scale = float(manifest.get("meters_per_model_unit", 0.0))
-    report_scale = float(report.get("coordinateFrame", {}).get("metersPerModelUnit", 0.0))
-    if abs(manifest_scale - 0.17) > 1e-6 or abs(report_scale - manifest_scale) > 1e-6:
-        raise ValueError("ORB and Blender B do not share the same physical scale")
-    assert_identity(report["referenceB"], "DamagedBottleB")
-    assert_identity(report["referenceNeckB"], "ReferenceNeckProxyB")
-    assert_identity(report["repairC"], "BottleCapC")
-    registration = report.get("registration", {})
-    if abs(registration.get("mouthPlaneModelY", 0.0) - 0.0588235294) > 1e-6:
-        raise ValueError("The physical mouth is not 10 mm above the scan cut")
-    if abs(registration.get("neckHeightMetersFromBounds", 0.0) - 0.010) > 0.0001:
-        raise ValueError("ReferenceNeckProxyB is not the photographed 10 mm neck")
-    if abs(registration.get("capHeightMetersFromBounds", 0.0) - 0.01012) > 0.0002:
-        raise ValueError("BottleCapC height changed")
-    if registration.get("capOverlapsNeckAxially") is not True:
-        raise ValueError("BottleCapC no longer seats over the B neck")
-    if report["repairC"]["boundsMin"][1] <= 0.0:
-        raise ValueError("BottleCapC is still embedded below the damaged scan cut")
-    if registration.get("bToCLocalPosition") != [0.0, 0.0, 0.0]:
-        raise ValueError("B-to-C local position changed")
-    body_min = np.asarray(report["referenceB"]["boundsMin"], dtype=np.float32)
-    body_max = np.asarray(report["referenceB"]["boundsMax"], dtype=np.float32)
-    point_min = points.min(axis=0)
-    point_max = points.max(axis=0)
-    coordinate_margin = 0.03
-    if np.any(point_min < body_min - coordinate_margin) or np.any(
-        point_max > body_max + coordinate_margin
-    ):
-        raise ValueError(
-            "ORB 3D points fall outside Blender B bounds; canonical frames diverged"
-        )
-    body_y_span = float(body_max[1] - body_min[1])
-    point_y_span = float(point_max[1] - point_min[1])
-    if body_y_span <= 0.0 or point_y_span / body_y_span < 0.95:
-        raise ValueError("ORB and Blender B vertical axes/scales do not agree")
-    if "orbToModelLocalEulerAngles: {x: 0, y: 0, z: 0}" not in calibration:
-        raise ValueError("Profile still contains a hand-authored Euler correction")
-    if "CanonicalFrameRegistration.TryDerive" not in controller:
-        raise ValueError("Runtime does not derive ORB-to-B alignment from landmarks")
-    if "authoredBLandmarks" not in report:
-        raise ValueError("Blender report does not export independent B landmarks")
-    if "hasAuthoredBLandmarks: 1" not in calibration:
-        raise ValueError("Calibration does not bind Blender-authored B landmarks")
-    if "new Vector3(90f, 0f, 0f)" in setup:
-        raise ValueError("Scene setup still hard-codes the v37 Euler correction")
+        raise ValueError("B+C rigid contract missing")
+    identity(report["referenceB"], "B")
+    identity(report["repairC"], "C")
+    if report["coordinateFrame"]["physicalMouthCentreModel"] != [0.0, 0.0, 0.0]:
+        raise ValueError("ORB origin is not the physical mouth centre")
 
+    if artifact.get("source_orb_sha256") != sha256(orb):
+        raise ValueError("registration artifact ORB hash mismatch")
+    if artifact.get("target_b_mesh_sha256") != sha256(fbx):
+        raise ValueError("registration artifact runtime FBX hash mismatch")
+    if artifact.get("independent_model_registration_verified") is not True:
+        raise ValueError("real model registration is not verified")
+    if artifact.get("device_verified") is not False:
+        raise ValueError("offline artifact cannot claim device verification")
+    matrix = np.asarray(artifact.get("T_ORB_FROM_B"), dtype=np.float64).reshape(4, 4)
+    if np.allclose(matrix, np.eye(4), atol=1e-7):
+        raise ValueError("cross-reconstruction artifact incorrectly claims identity")
+    if abs(np.linalg.det(matrix[:3, :3]) - artifact["determinant"]) > 1e-6:
+        raise ValueError("registration determinant does not match T_ORB_FROM_B")
+    stats = artifact["orb_point_to_b_surface_mm"]
+    if artifact["landmark_rms_mm"] > 2.0 or stats["p95_mm"] > 12.0:
+        raise ValueError("real landmark/surface registration exceeds contract")
+    if artifact["up_axis_agreement"] < 0.995 or artifact["front_axis_agreement"] < 0.995:
+        raise ValueError("up/front orientation contract failed")
+    if contract["orb_database_sha256"] != sha256(orb):
+        raise ValueError("frame contract ORB hash mismatch")
+    if contract["coordinate_frame_origin"] != artifact["orb_origin_definition"]:
+        raise ValueError("ORB origin definitions conflict")
+
+    if "hasAuthoredBLandmarks: 0" not in calibration:
+        raise ValueError("copied authored B landmarks were not disabled")
+    if "mouthCenterInModel: {x: 0, y: 0, z: 0}" not in calibration:
+        raise ValueError("calibration still uses the false shoulder-cut origin")
     prohibited = (
-        "displayMatrix",
-        "WorldToViewportPoint",
-        "AlignmentOutline",
-        "ARAnchor",
         "registeredRepairPart.localPosition",
         "registeredRepairPart.localRotation",
         "registeredRepairPart.localScale",
-        "activeProfile.referenceDepthOcclusionMaterial",
-        "hasReadyPoseCandidate",
-        "readyCandidatePosition",
-        "readyCandidateRotation",
-        "readyCandidateTime",
+        "maximumWorldPositionCorrectionMetersPerSecond",
+        "maximumWorldRotationCorrectionDegreesPerSecond",
+        "BHierarchy:",
     )
     found = [token for token in prohibited if token in controller]
     if found:
-        raise ValueError(f"Production tracker contains prohibited logic: {found}")
+        raise ValueError(f"runtime contains prohibited v39 logic: {found}")
     for token in (
-        "RestoreProfileCoordinateAlignment",
-        "TryApplyReliablePose",
-        "TrackingState.ReadyForRepair",
+        "ModelRegistrationEvidence.TryParse",
+        "ConfidenceWeightedPoseFusion.Step",
+        "hierarchyTransformRoundTripVerified",
         "AssertStartPoseUnchanged",
-        "SetReferenceHierarchyVisible(false)",
         "ShowRepairPresentation",
-        "worldPositionDeadbandMeters",
-        "maximumPoseChainRoundTripRmsPixels",
-        "maximumRenderedHierarchyRmsPixels",
-        "displayProjectionWarningRmsPixels",
-        "ObserveMathematicalConsistency",
+        "SetReferenceHierarchyVisible(false)",
     ):
         if token not in controller:
-            raise ValueError(f"Restored managed tracker is missing {token}")
-    for token in (
-        "SetPosePrior",
-        "guidedMatches",
-        "strictSolution",
-        "guidedSolution",
-        "SOLVEPNP_SQPNP",
-        "SampleReferenceHsv",
-        "urp_orb_get_last_inliers",
-    ):
+            raise ValueError(f"managed v40 contract missing {token}")
+    for token in ("SetPosePrior", "SOLVEPNP_SQPNP", "urp_orb_get_last_inliers"):
         if token not in native:
-            raise ValueError(f"Restored native tracker is missing {token}")
-    if "BottleFullAlignedV2" not in setup or "BottleCleanCapV31" in setup:
-        raise ValueError("Scene generator does not bind only BottleFullAlignedV2")
+            raise ValueError(f"native baseline changed: missing {token}")
+    if "BottleRepairAR_v40.apk" not in setup:
+        raise ValueError("setup does not build v40")
+    if "v40" not in app_controller:
+        raise ValueError("tracking screen does not display v40")
+    for token in (
+        "orb-tracking-v40-cross-registered-adaptive-se3",
+        "coconut-cross-reconstruction-sim3-v40",
+        "bottle-orb-cross-registration-reference-b-v40",
+    ):
+        if token not in build_identity:
+            raise ValueError(f"build identity is stale: {token}")
 
-    payload = {
-        "status": "BOTTLE_FULL_ALIGNED_V39_DATA_OK",
+    print(json.dumps({
+        "status": "BOTTLE_ORB_CROSS_REGISTRATION_V40_DATA_OK",
+        "database_sha256": sha256(orb),
         "fbx_sha256": sha256(fbx),
-        "database_sha256": sha256(database),
-        "database_records": len(points),
-        "database_format": "URP3DM1",
-        "database_view_groups": 1,
-        "database_bounds_min": points.min(axis=0).tolist(),
-        "database_bounds_max": points.max(axis=0).tolist(),
-        "repair_c_excluded_from_matching": True,
-        "reference_neck_height_meters": 0.010,
-        "cap_seated_over_neck": True,
+        "records": len(cloud),
+        "orb_bounds_min": cloud.min(axis=0).tolist(),
+        "orb_bounds_max": cloud.max(axis=0).tolist(),
+        "mouth_center_orb": artifact["mouth_center_orb"],
+        "landmark_rms_mm": artifact["landmark_rms_mm"],
+        "surface_mm": stats,
+        "T_ORB_FROM_B": artifact["T_ORB_FROM_B"],
         "device_overlay_verified": False,
-        "orb_points_within_blender_b_bounds": True,
-        "orb_blender_scale_meters_per_unit": manifest_scale,
-        "profile_euler_correction_degrees": [0.0, 0.0, 0.0],
-        "alignment_source": "runtime_authored_b_landmark_similarity_fit",
-    }
-    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    }, indent=2))
 
 
 if __name__ == "__main__":

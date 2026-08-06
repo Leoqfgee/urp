@@ -21,6 +21,10 @@ namespace Urp.ArDemo.Calibration
         public Vector3 authoredBMouthFront;
         public Vector3 authoredBNeckAxisPoint;
 
+        [Header("Independent ORB to rendered B registration")]
+        [Tooltip("Offline evidence derived from the real SfM point cloud and real B mesh; runtime round trips cannot create this evidence.")]
+        public TextAsset modelRegistrationArtifact;
+
         [Header("Physical scale")]
         [Min(0.000001f)] public float metersPerModelUnit = 0.18f;
         public bool physicalScaleVerified;

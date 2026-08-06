@@ -1,5 +1,5 @@
 {
-  "version": "bottle-full-aligned-v2-rigid-neck-cap-v33",
+  "version": "bottle-orb-cross-reconstruction-rigid-pair-v40",
   "runtimeHierarchy": {
     "root": "BottleRepairRoot",
     "referenceB": "DamagedBottleB",
@@ -7,35 +7,28 @@
     "repairC": "BottleCapC"
   },
   "coordinateFrame": {
-    "origin": "damaged B shoulder cut datum",
+    "origin": "physical bottle mouth centre",
     "physicalMouthCentreModel": [
       0.0,
-      0.058823529411764705,
+      0.0,
       0.0
     ],
-    "upAxis": "+Y from shoulder cut to mouth",
-    "printedFrontAxis": "+X",
+    "upAxis": "+Y base to mouth",
+    "printedFrontAxis": "+Z red-logo/front side",
     "metersPerModelUnit": 0.17
   },
-  "authoredBLandmarks": {
-    "source": "Blender B authoring frame; independent from runtime ORB point construction",
-    "origin": [0.0, 0.0, 0.0],
-    "mouthCenter": [0.0, 0.058823529411764705, 0.0],
-    "mouthRight": [0.1, 0.058823529411764705, 0.0],
-    "mouthFront": [0.0, 0.058823529411764705, 0.1],
-    "neckAxisPoint": [0.0, -0.1411764705882353, 0.0]
-  },
   "referenceB": {
-    "source": "F:\\Meshroom_work\\bottle_full_clean_v2\\split_models\\bottle_no_cap\\texturedMesh.obj",
+    "source": "Assets\\Models\\CleanBottleReconstruction\\BottleFullAlignedV2\\bottle_full_aligned_v2.fbx",
+    "sourceReconstruction": "F:\\Meshroom_work\\bottle_full_clean_v2",
     "boundsMin": [
-      -0.2839941382408142,
-      -1.1999999284744263,
-      -0.26533403992652893
+      -0.24784959852695465,
+      -1.2452011108398438,
+      -0.24484294652938843
     ],
     "boundsMax": [
-      0.2144785225391388,
-      0.0,
-      0.22504457831382751
+      0.2504173219203949,
+      -0.057069674134254456,
+      0.2544397711753845
     ],
     "localPosition": [
       0.0,
@@ -54,18 +47,15 @@
     ]
   },
   "referenceNeckB": {
-    "purpose": "B-only alignment geometry; hidden with B after Start",
-    "heightMeters": 0.01,
-    "outerDiameterMeters": 0.034,
     "boundsMin": [
-      -0.1120000034570694,
-      0.0,
-      -0.1120000034570694
+      -0.11208304762840271,
+      -0.06154286488890648,
+      -0.10994289815425873
     ],
     "boundsMax": [
-      0.1120000034570694,
-      0.05882352963089943,
-      0.1120000034570694
+      0.11046388000249863,
+      0.0036759525537490845,
+      0.11265447735786438
     ],
     "localPosition": [
       0.0,
@@ -84,18 +74,17 @@
     ]
   },
   "repairC": {
-    "source": "bottle_cap_clean_39x10mm.obj",
-    "outerDiameterMeters": 0.039,
-    "heightMeters": 0.01,
+    "source": "Assets\\Models\\CleanBottleReconstruction\\BottleFullAlignedV2\\bottle_full_aligned_v2.fbx",
+    "geometryPolicy": "same T_ORB_FROM_B baked into B, neck and C vertices; no independent C offset/rotation/scale",
     "boundsMin": [
-      -0.11537646502256393,
-      0.007235277444124222,
-      -0.11537646502256393
+      -0.11542869359254837,
+      -0.055418629199266434,
+      -0.1132439598441124
     ],
     "boundsMax": [
-      0.11537646502256393,
-      0.0667647123336792,
-      0.11537646502256393
+      0.1135018840432167,
+      0.011889807879924774,
+      0.1160384938120842
     ],
     "localPosition": [
       0.0,
@@ -114,31 +103,64 @@
     ]
   },
   "registration": {
-    "method": "Blender rigid registration in B coordinates; 10 mm B neck from scan cut to physical mouth; C lift baked into mesh",
-    "bCutDatumModelY": 0.0,
-    "mouthPlaneModelY": 0.058823529411764705,
-    "neckHeightMetersFromBounds": 0.010000000037252904,
-    "capHeightMetersFromBounds": 0.010120003931224347,
-    "capBottomMeters": 0.0012299971655011178,
-    "capTopMeters": 0.011350001096725465,
-    "capOverlapsNeckAxially": true,
-    "bToCLocalPosition": [
+    "method": "cross-reconstruction Sim(3): historical real ORB-to-legacy-B robust Umeyama (commit 65d64d1), current-B-to-legacy-B trimmed surface ICP, red-logo texture fixes current +X to ORB +Z yaw, physical mouth center imposed exactly",
+    "sourceT_ORB_FROM_B": [
+      -0.0419322104632083,
+      0.018853338881553793,
+      -0.992102548022601,
+      -0.0011090199383404678,
+      0.03234640302738032,
+      0.9924862280813386,
+      0.017493476907616004,
+      -0.05838154304580223,
+      0.9917543165477568,
+      -0.03157313947241066,
+      -0.042517489660092354,
+      0.0018572435052958687,
       0.0,
       0.0,
-      0.0
-    ],
-    "bToCLocalRotationRadians": [
       0.0,
-      0.0,
-      0.0
-    ],
-    "bToCLocalScale": [
-      1.0,
-      1.0,
       1.0
-    ]
+    ],
+    "runtimeModelCoordinateAlignment": [
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      -1.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "registrationArtifact": "Assets\\Calibration\\bottle_orb_to_b_registration.json"
   },
   "rigidContract": {
+    "rootLocalMatrix": [
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
     "bLocalMatrix": [
       1.0,
       0.0,
@@ -195,6 +217,8 @@
     ],
     "cIsNeverPositionedIndependentlyAtRuntime": true
   },
+  "sourceFbxSha256": "573D7583033B6D1B5AD2103DA5B2D095C0F475E2A48E8585D883EDC11A4DCED9",
+  "runtimeFbxSha256": "54DB65AF31DB2286BB619B8982C8AB83F1EBE7B0A4B22F910EA7D210012F7180",
   "rigidRelationshipPreserved": true,
   "deviceOverlayVerified": false
 }
