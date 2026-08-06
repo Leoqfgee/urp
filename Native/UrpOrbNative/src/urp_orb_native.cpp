@@ -16,10 +16,13 @@
 
 namespace
 {
-constexpr char kModelMagic[8] = {'U', 'R', 'P', '3', 'D', 'M', '1', '\0'};
-constexpr char kBuildVersion[] = "urp-orb-native-2026.07.24-r8-multiview-pose-hsv";
+constexpr char kModelMagicV1[8] = {'U', 'R', 'P', '3', 'D', 'M', '1', '\0'};
+constexpr char kModelMagicV2[8] = {'U', 'R', 'P', '3', 'D', 'M', '2', '\0'};
+constexpr char kBuildVersion[] = "urp-orb-native-2026.08.06-r14-rigid-cap-direct-pose";
 constexpr int kDescriptorBytes = 32;
 constexpr int kModelRecordBytes = 3 * static_cast<int>(sizeof(float)) + kDescriptorBytes;
+constexpr int kCoarseDescriptorsPerGroup = 40;
+constexpr int kRelocalizationGroupLimit = 24;
 
 struct UrpOrbResult
 {
@@ -74,24 +77,50 @@ enum RejectionCode
 class OrbTracker
 {
 public:
+    struct ModelGroup
+    {
+        int id = 0;
+        int start = 0;
+        int count = 0;
+    };
+
     OrbTracker(int featureCount, float ratio, int minMatches, int maxWidth)
         : ratio_(ratio), minMatches_(minMatches), maxWidth_(maxWidth)
     {
-        orb_ = cv::ORB::create(std::max(100, featureCount));
+        // Dense low-threshold pyramid improves repeatability on the glossy
+        // cylindrical label when the phone moves closer, farther or oblique.
+        // Descriptor type remains standard 256-bit ORB/Hamming.
+        orb_ = cv::ORB::create(
+            std::max(100, featureCount),
+            1.15f,
+            10,
+            31,
+            0,
+            2,
+            cv::ORB::HARRIS_SCORE,
+            31,
+            7);
         matcher_ = cv::BFMatcher::create(cv::NORM_HAMMING, false);
     }
 
     int SetModel(const uint8_t* data, int length)
     {
-        if (data == nullptr || length < 12 || std::memcmp(data, kModelMagic, sizeof(kModelMagic)) != 0)
+        if (data == nullptr || length < 12)
         {
             return 0;
         }
 
+        const bool isV1 =
+            std::memcmp(data, kModelMagicV1, sizeof(kModelMagicV1)) == 0;
+        const bool isV2 =
+            std::memcmp(data, kModelMagicV2, sizeof(kModelMagicV2)) == 0;
+        if (!isV1 && !isV2)
+        {
+            return 0;
+        }
         uint32_t count = 0;
         std::memcpy(&count, data + 8, sizeof(count));
-        size_t expectedLength = 12u + static_cast<size_t>(count) * static_cast<size_t>(kModelRecordBytes);
-        if (count < 8 || expectedLength != static_cast<size_t>(length))
+        if (count < 8)
         {
             return 0;
         }
@@ -99,16 +128,106 @@ public:
         targetModelPoints_.clear();
         targetModelPoints_.reserve(count);
         targetDescriptors_.create(static_cast<int>(count), kDescriptorBytes, CV_8UC1);
+        modelGroups_.clear();
         const uint8_t* cursor = data + 12;
-        for (uint32_t row = 0; row < count; row++)
+        const uint8_t* end = data + length;
+        uint32_t parsed = 0;
+        uint32_t groupCount = 1;
+        if (isV2)
         {
-            float coordinates[3];
-            std::memcpy(coordinates, cursor, sizeof(coordinates));
-            cursor += sizeof(coordinates);
-            targetModelPoints_.emplace_back(coordinates[0], coordinates[1], coordinates[2]);
-            std::memcpy(targetDescriptors_.ptr(static_cast<int>(row)), cursor, kDescriptorBytes);
-            cursor += kDescriptorBytes;
+            if (length < 16)
+            {
+                return 0;
+            }
+            std::memcpy(&groupCount, cursor, sizeof(groupCount));
+            cursor += sizeof(groupCount);
         }
+        for (uint32_t groupIndex = 0; groupIndex < groupCount; groupIndex++)
+        {
+            uint32_t groupId = groupIndex;
+            uint32_t recordsInGroup = count;
+            if (isV2)
+            {
+                if (cursor + 8 > end)
+                {
+                    return 0;
+                }
+                std::memcpy(&groupId, cursor, sizeof(groupId));
+                cursor += sizeof(groupId);
+                std::memcpy(&recordsInGroup, cursor, sizeof(recordsInGroup));
+                cursor += sizeof(recordsInGroup);
+            }
+            if (recordsInGroup < 8
+                || parsed + recordsInGroup > count
+                || cursor + static_cast<size_t>(recordsInGroup) * kModelRecordBytes > end)
+            {
+                return 0;
+            }
+            ModelGroup group;
+            group.id = static_cast<int>(groupId);
+            group.start = static_cast<int>(parsed);
+            group.count = static_cast<int>(recordsInGroup);
+            modelGroups_.push_back(group);
+            for (uint32_t localRow = 0; localRow < recordsInGroup; localRow++)
+            {
+                float coordinates[3];
+                std::memcpy(coordinates, cursor, sizeof(coordinates));
+                cursor += sizeof(coordinates);
+                targetModelPoints_.emplace_back(
+                    coordinates[0],
+                    coordinates[1],
+                    coordinates[2]);
+                std::memcpy(
+                    targetDescriptors_.ptr(static_cast<int>(parsed)),
+                    cursor,
+                    kDescriptorBytes);
+                cursor += kDescriptorBytes;
+                parsed++;
+            }
+        }
+        if (parsed != count || cursor != end || modelGroups_.empty())
+        {
+            targetModelPoints_.clear();
+            targetDescriptors_.release();
+            modelGroups_.clear();
+            coarseDescriptors_.release();
+            coarseGroupIndices_.clear();
+            return 0;
+        }
+        int coarseRows = 0;
+        for (const ModelGroup& group : modelGroups_)
+        {
+            coarseRows += std::min(kCoarseDescriptorsPerGroup, group.count);
+        }
+        coarseDescriptors_.create(
+            coarseRows,
+            kDescriptorBytes,
+            CV_8UC1);
+        coarseGroupIndices_.clear();
+        coarseGroupIndices_.reserve(coarseRows);
+        int coarseRow = 0;
+        for (int groupIndex = 0;
+             groupIndex < static_cast<int>(modelGroups_.size());
+             groupIndex++)
+        {
+            const ModelGroup& group = modelGroups_[groupIndex];
+            const int sampleCount =
+                std::min(kCoarseDescriptorsPerGroup, group.count);
+            for (int sample = 0; sample < sampleCount; sample++)
+            {
+                const float fraction = sampleCount <= 1
+                    ? 0.0f
+                    : static_cast<float>(sample)
+                        / static_cast<float>(sampleCount - 1);
+                const int localRow = static_cast<int>(std::round(
+                    fraction * static_cast<float>(group.count - 1)));
+                targetDescriptors_.row(group.start + localRow).copyTo(
+                    coarseDescriptors_.row(coarseRow));
+                coarseGroupIndices_.push_back(groupIndex);
+                coarseRow++;
+            }
+        }
+        lastBestGroup_ = -1;
 
         return targetDescriptors_.empty() || targetModelPoints_.size() < 8 ? 0 : 1;
     }
@@ -290,82 +409,180 @@ public:
             hasUsablePrior = projectedPrior.size() == targetModelPoints_.size();
         }
 
-        std::vector<std::vector<cv::DMatch>> targetToFrame;
-        matcher_->knnMatch(targetDescriptors_, frameDescriptors, targetToFrame, 2);
-        std::vector<cv::DMatch> strictRatioMatches;
-        std::vector<cv::DMatch> guidedMatches;
-        strictRatioMatches.reserve(targetToFrame.size());
-        guidedMatches.reserve(targetToFrame.size());
         const float guidedRatio = std::max(ratio_, 0.86f);
         const float guidedRadius = std::max(
             36.0f,
             priorSearchRadiusFraction_
                 * static_cast<float>(std::min(frame.cols, frame.rows)));
         const float guidedRadiusSquared = guidedRadius * guidedRadius;
-        for (const auto& pair : targetToFrame)
-        {
-            if (pair.size() < 2)
-            {
-                continue;
-            }
-            const cv::DMatch& match = pair[0];
-            if (match.distance < ratio_ * pair[1].distance)
-            {
-                strictRatioMatches.push_back(match);
-            }
-            if (!hasUsablePrior
-                || match.queryIdx < 0
-                || match.queryIdx >= static_cast<int>(projectedPrior.size())
-                || match.trainIdx < 0
-                || match.trainIdx >= static_cast<int>(frameKeypoints.size())
-                || projectedPriorDepth[match.queryIdx] <= 0.0f
-                || match.distance > 64.0f
-                || match.distance >= guidedRatio * pair[1].distance)
-            {
-                continue;
-            }
+        PoseSolution chosen;
+        int chosenGroup = -1;
+        int chosenRatioMatches = 0;
+        int chosenGuidedMatches = 0;
 
-            const cv::Point2f delta =
-                frameKeypoints[match.trainIdx].pt - projectedPrior[match.queryIdx];
-            if (delta.dot(delta) <= guidedRadiusSquared)
+        std::vector<int> groupOrder;
+        groupOrder.reserve(modelGroups_.size());
+        if (hasUsablePrior
+            && lastBestGroup_ >= 0
+            && lastBestGroup_ < static_cast<int>(modelGroups_.size()))
+        {
+            groupOrder.push_back(lastBestGroup_);
+        }
+        std::vector<int> rankedGroups;
+        rankedGroups.reserve(modelGroups_.size());
+        for (int index = 0;
+             index < static_cast<int>(modelGroups_.size());
+             index++)
+        {
+            rankedGroups.push_back(index);
+        }
+        if (static_cast<int>(modelGroups_.size())
+            > kRelocalizationGroupLimit)
+        {
+            std::vector<float> coarseScores(modelGroups_.size(), 0.0f);
+            std::vector<std::vector<cv::DMatch>> coarsePairs;
+            matcher_->knnMatch(
+                coarseDescriptors_,
+                frameDescriptors,
+                coarsePairs,
+                2);
+            const float coarseRatio = std::max(ratio_, 0.80f);
+            for (int row = 0;
+                 row < static_cast<int>(coarsePairs.size());
+                 row++)
             {
-                guidedMatches.push_back(match);
+                const auto& pair = coarsePairs[row];
+                if (pair.size() < 2
+                    || pair[0].distance >= coarseRatio * pair[1].distance)
+                {
+                    continue;
+                }
+                const int groupIndex = coarseGroupIndices_[row];
+                coarseScores[groupIndex] +=
+                    1.0f + (256.0f - pair[0].distance) / 256.0f;
+            }
+            std::stable_sort(
+                rankedGroups.begin(),
+                rankedGroups.end(),
+                [&coarseScores](int left, int right)
+                {
+                    return coarseScores[left] > coarseScores[right];
+                });
+            rankedGroups.resize(kRelocalizationGroupLimit);
+        }
+        for (int index : rankedGroups)
+        {
+            if (index != lastBestGroup_)
+            {
+                groupOrder.push_back(index);
             }
         }
 
-        result->ratioMatches = static_cast<int>(strictRatioMatches.size());
-        result->guidedMatches = static_cast<int>(guidedMatches.size());
-        const PoseSolution strictSolution = SolveCandidateSet(
-            strictRatioMatches,
-            frameKeypoints,
-            frame.cols,
-            frame.rows,
-            cameraMatrix,
-            distCoeffs,
-            false,
-            cv::Mat(),
-            cv::Mat());
-        PoseSolution guidedSolution;
-        if (hasUsablePrior
-            && static_cast<int>(guidedMatches.size()) >= minMatches_)
+        for (int groupIndex : groupOrder)
         {
-            guidedSolution = SolveCandidateSet(
-                guidedMatches,
+            const ModelGroup& group = modelGroups_[groupIndex];
+            cv::Mat groupDescriptors = targetDescriptors_.rowRange(
+                group.start,
+                group.start + group.count);
+            std::vector<std::vector<cv::DMatch>> targetToFrame;
+            matcher_->knnMatch(
+                groupDescriptors,
+                frameDescriptors,
+                targetToFrame,
+                2);
+            std::vector<cv::DMatch> strictRatioMatches;
+            std::vector<cv::DMatch> guidedMatches;
+            strictRatioMatches.reserve(targetToFrame.size());
+            guidedMatches.reserve(targetToFrame.size());
+            for (const auto& pair : targetToFrame)
+            {
+                if (pair.size() < 2)
+                {
+                    continue;
+                }
+                cv::DMatch match = pair[0];
+                match.queryIdx += group.start;
+                if (match.distance < ratio_ * pair[1].distance)
+                {
+                    strictRatioMatches.push_back(match);
+                }
+                if (!hasUsablePrior
+                    || match.queryIdx < 0
+                    || match.queryIdx >= static_cast<int>(projectedPrior.size())
+                    || match.trainIdx < 0
+                    || match.trainIdx >= static_cast<int>(frameKeypoints.size())
+                    || projectedPriorDepth[match.queryIdx] <= 0.0f
+                    || match.distance > 64.0f
+                    || match.distance >= guidedRatio * pair[1].distance)
+                {
+                    continue;
+                }
+
+                const cv::Point2f delta =
+                    frameKeypoints[match.trainIdx].pt
+                    - projectedPrior[match.queryIdx];
+                if (delta.dot(delta) <= guidedRadiusSquared)
+                {
+                    guidedMatches.push_back(match);
+                }
+            }
+
+            PoseSolution groupSolution = SolveCandidateSet(
+                strictRatioMatches,
                 frameKeypoints,
                 frame.cols,
                 frame.rows,
                 cameraMatrix,
                 distCoeffs,
-                true,
+                hasUsablePrior,
                 orientedPriorRvec,
                 orientedPriorTranslation);
+            if (hasUsablePrior
+                && static_cast<int>(guidedMatches.size()) >= minMatches_)
+            {
+                PoseSolution guidedSolution = SolveCandidateSet(
+                    guidedMatches,
+                    frameKeypoints,
+                    frame.cols,
+                    frame.rows,
+                    cameraMatrix,
+                    distCoeffs,
+                    true,
+                    orientedPriorRvec,
+                    orientedPriorTranslation);
+                if (IsBetterPose(guidedSolution, groupSolution))
+                {
+                    groupSolution = guidedSolution;
+                }
+            }
+            if (chosenGroup < 0 || IsBetterPose(groupSolution, chosen))
+            {
+                chosen = groupSolution;
+                chosenGroup = groupIndex;
+                chosenRatioMatches =
+                    static_cast<int>(strictRatioMatches.size());
+                chosenGuidedMatches =
+                    static_cast<int>(guidedMatches.size());
+            }
+            // During continuous tracking, the previous keyframe group is
+            // evaluated first.  A geometrically strong prior-guided solution
+            // avoids scanning every viewpoint; quality loss automatically
+            // falls through to full multi-view relocalization.
+            if (hasUsablePrior
+                && groupIndex == lastBestGroup_
+                && groupSolution.solved
+                && groupSolution.poseInliers >= 8
+                && groupSolution.inlierRatio >= 0.34f
+                && groupSolution.reprojectionError <= 3.0f
+                && groupSolution.coverageY >= 0.10f
+                && groupSolution.occupiedGridCells >= 3)
+            {
+                break;
+            }
         }
 
-        PoseSolution chosen = strictSolution;
-        if (IsBetterPose(guidedSolution, chosen))
-        {
-            chosen = guidedSolution;
-        }
+        result->ratioMatches = chosenRatioMatches;
+        result->guidedMatches = chosenGuidedMatches;
         result->uniqueMatches = chosen.uniqueMatches;
         result->occupiedGridCells = chosen.occupiedGridCells;
         result->coverageX = chosen.coverageX;
@@ -404,6 +621,24 @@ public:
                     chosen.uniqueMatches * requiredInlierRatio)),
                 6,
                 10);
+            // A front-facing cylindrical bottle concentrates repeatable label
+            // features in a narrow vertical band.  v30 rejected real-device
+            // solutions even at 30/30 and 37/39 inliers because the generic
+            // coverage gate was evaluated before considering that very strong
+            // consensus.  Keep the strict gate for weak poses, but allow a
+            // narrower distribution when the PnP solution itself is dense,
+            // low-error and overwhelmingly consistent.
+            const bool strongConsensus =
+                chosen.poseInliers >= 18
+                && chosen.inlierRatio >= 0.70f
+                && chosen.reprojectionError <= 2.5f
+                && chosen.reprojectionMax <= 7.0f;
+            const float requiredCoverageX =
+                strongConsensus ? 0.020f : (locallyGuided ? 0.035f : 0.05f);
+            const float requiredCoverageY =
+                strongConsensus ? 0.080f : (locallyGuided ? 0.10f : 0.16f);
+            const int requiredGridCells =
+                strongConsensus ? 3 : (locallyGuided ? 3 : 4);
             if (chosen.tvec.at<double>(2) <= 0.0)
                 result->rejectionCode = kNegativeDepth;
             else if (chosen.poseInliers < requiredPoseInliers)
@@ -413,9 +648,9 @@ public:
             else if (chosen.reprojectionError > 3.0f
                 || chosen.reprojectionMax > 8.0f)
                 result->rejectionCode = kHighReprojectionError;
-            else if (chosen.coverageX < (locallyGuided ? 0.035f : 0.05f)
-                || chosen.coverageY < (locallyGuided ? 0.10f : 0.16f)
-                || chosen.occupiedGridCells < (locallyGuided ? 3 : 4))
+            else if (chosen.coverageX < requiredCoverageX
+                || chosen.coverageY < requiredCoverageY
+                || chosen.occupiedGridCells < requiredGridCells)
                 result->rejectionCode = kInsufficientSpatialDistribution;
             else if (chosen.poseInliers < 8
                 && (chosen.reprojectionError > 1.75f
@@ -426,6 +661,7 @@ public:
             result->poseValid = result->rejectionCode == kAccepted ? 1 : 0;
             if (result->poseValid != 0)
             {
+                lastBestGroup_ = chosenGroup;
                 SampleReferenceHsv(frame, chosen.inlierFramePoints, result);
             }
         }
@@ -449,6 +685,7 @@ private:
         float inlierRatio = 0.0f;
         float reprojectionError = 999.0f;
         float reprojectionMax = 999.0f;
+        float priorRotationErrorDegrees = 0.0f;
         cv::Mat rvec;
         cv::Mat tvec;
         cv::Mat rotation;
@@ -556,8 +793,14 @@ private:
             float inlierRatio = 0.0f;
             float rms = 999.0f;
             float maximumError = 999.0f;
+            float priorRotationErrorDegrees = 0.0f;
         };
         Attempt best;
+        cv::Mat priorRotationForComparison;
+        if (usePosePrior)
+        {
+            cv::Rodrigues(priorRvec, priorRotationForComparison);
+        }
         auto trySolver = [&](int flag, bool useGuess)
         {
             Attempt attempt;
@@ -642,14 +885,48 @@ private:
                 : static_cast<float>(
                     std::sqrt(squaredError / projected.size()));
             attempt.maximumError = static_cast<float>(maximumError);
+            cv::Mat attemptRotation;
+            cv::Rodrigues(attempt.rvec, attemptRotation);
+            if (usePosePrior)
+            {
+                const cv::Mat delta =
+                    attemptRotation * priorRotationForComparison.t();
+                const double cosine = std::clamp(
+                    (cv::trace(delta)[0] - 1.0) * 0.5,
+                    -1.0,
+                    1.0);
+                attempt.priorRotationErrorDegrees = static_cast<float>(
+                    std::acos(cosine) * 180.0 / CV_PI);
+                // The user has already placed visible B approximately over A.
+                // A pose more than 100 degrees away is the cylindrical
+                // front/back ambiguity, not a valid refinement.  Reject it
+                // before it can beat the prior-consistent solution merely by
+                // having a few extra inliers.
+                if (attempt.priorRotationErrorDegrees > 100.0f)
+                {
+                    return;
+                }
+            }
+            const float priorPenalty = usePosePrior
+                ? std::max(
+                    0.0f,
+                    attempt.priorRotationErrorDegrees - 20.0f) * 1.5f
+                : 0.0f;
             const float score =
                 attempt.inlierCount * 4.0f
                 + attempt.inlierRatio * 12.0f
-                - attempt.rms;
+                - attempt.rms
+                - priorPenalty;
+            const float bestPriorPenalty = usePosePrior
+                ? std::max(
+                    0.0f,
+                    best.priorRotationErrorDegrees - 20.0f) * 1.5f
+                : 0.0f;
             const float bestScore =
                 best.inlierCount * 4.0f
                 + best.inlierRatio * 12.0f
-                - best.rms;
+                - best.rms
+                - bestPriorPenalty;
             if (!best.solved || score > bestScore)
             {
                 best = attempt;
@@ -673,6 +950,8 @@ private:
         solution.inlierRatio = best.inlierRatio;
         solution.reprojectionError = best.rms;
         solution.reprojectionMax = best.maximumError;
+        solution.priorRotationErrorDegrees =
+            best.priorRotationErrorDegrees;
         solution.rvec = best.rvec;
         solution.tvec = best.tvec;
         cv::Rodrigues(solution.rvec, solution.rotation);
@@ -700,11 +979,21 @@ private:
         const float candidateScore =
             candidate.poseInliers * 4.0f
             + candidate.inlierRatio * 12.0f
-            - candidate.reprojectionError;
+            - candidate.reprojectionError
+            - (candidate.usedPosePrior
+                ? std::max(
+                    0.0f,
+                    candidate.priorRotationErrorDegrees - 20.0f) * 1.5f
+                : 0.0f);
         const float currentScore =
             current.poseInliers * 4.0f
             + current.inlierRatio * 12.0f
-            - current.reprojectionError;
+            - current.reprojectionError
+            - (current.usedPosePrior
+                ? std::max(
+                    0.0f,
+                    current.priorRotationErrorDegrees - 20.0f) * 1.5f
+                : 0.0f);
         return candidateScore > currentScore;
     }
 
@@ -798,6 +1087,10 @@ private:
     cv::Ptr<cv::BFMatcher> matcher_;
     std::vector<cv::Point3f> targetModelPoints_;
     cv::Mat targetDescriptors_;
+    std::vector<ModelGroup> modelGroups_;
+    cv::Mat coarseDescriptors_;
+    std::vector<int> coarseGroupIndices_;
+    int lastBestGroup_ = -1;
     cv::Mat priorRotation_ = cv::Mat::eye(3, 3, CV_64F);
     cv::Mat priorTranslation_ = cv::Mat::zeros(3, 1, CV_64F);
     float priorSearchRadiusFraction_ = 0.12f;

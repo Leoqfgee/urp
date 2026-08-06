@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the single BottleFullAlignedV2 v33 runtime data without Unity."""
+"""Validate the BottleFullAlignedV2 v34 runtime contract without Unity."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import numpy as np
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MAGIC_V1 = b"URP3DM1\0"
+MAGIC_V2 = b"URP3DM2\0"
 RECORD_SIZE = 44
 
 
@@ -20,22 +20,26 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest().upper()
 
 
-def read_points(path: Path) -> np.ndarray:
+def read_points(path: Path) -> tuple[np.ndarray, int]:
     data = path.read_bytes()
-    if data[:8] != MAGIC_V1:
-        raise ValueError(f"{path}: expected restored URP3DM1 database")
+    if data[:8] != MAGIC_V2:
+        raise ValueError(f"{path}: expected grouped URP3DM2 database")
     count = struct.unpack_from("<I", data, 8)[0]
-    if count != 4100 or len(data) != 12 + count * RECORD_SIZE:
+    group_count = struct.unpack_from("<I", data, 12)[0]
+    cursor = 16
+    points: list[tuple[float, float, float]] = []
+    for _ in range(group_count):
+        _, records = struct.unpack_from("<II", data, cursor)
+        cursor += 8
+        for _ in range(records):
+            points.append(struct.unpack_from("<3f", data, cursor))
+            cursor += RECORD_SIZE
+    if count != 73047 or group_count != 188 or len(points) != count or cursor != len(data):
         raise ValueError(
-            f"{path}: expected 4100 records, got {count} ({len(data)} bytes)"
+            f"{path}: expected 73047 records/188 groups, got "
+            f"{count} records/{group_count} groups ({len(data)} bytes)"
         )
-    return np.asarray(
-        [
-            struct.unpack_from("<3f", data, 12 + index * RECORD_SIZE)
-            for index in range(count)
-        ],
-        dtype=np.float32,
-    )
+    return np.asarray(points, dtype=np.float32), group_count
 
 
 def assert_identity(item: dict, label: str) -> None:
@@ -60,20 +64,22 @@ def main() -> None:
     native_path = ROOT / "Native/UrpOrbNative/src/urp_orb_native.cpp"
     setup_path = ROOT / "Assets/Editor/UrpArProjectSetup.cs"
 
-    points = read_points(database)
+    points, group_count = read_points(database)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     report = json.loads(report_path.read_text(encoding="utf-8"))
     controller = controller_path.read_text(encoding="utf-8")
     native = native_path.read_text(encoding="utf-8")
     setup = setup_path.read_text(encoding="utf-8")
 
-    expected_version = "bottle-full-aligned-v2-reference-b-real-observations-v32"
+    expected_version = "bottle-no-cap-grouped-multiview-v34"
     if manifest.get("version") != expected_version:
-        raise ValueError("ORB manifest is not the restored v32 B-only database")
-    if manifest.get("database_format") != "URP3DM1":
-        raise ValueError("ORB manifest format is not URP3DM1")
-    if manifest.get("records") != 4100:
+        raise ValueError("ORB manifest is not the v34 grouped B-only database")
+    if manifest.get("database_format") != "URP3DM2":
+        raise ValueError("ORB manifest format is not URP3DM2")
+    if manifest.get("records") != len(points):
         raise ValueError("ORB manifest record count does not match the binary")
+    if manifest.get("view_group_count") != group_count:
+        raise ValueError("ORB manifest view-group count does not match the binary")
     if manifest.get("database_sha256") != sha256(database):
         raise ValueError("ORB manifest SHA256 does not match the database")
     if manifest.get("repair_c_excluded_from_matching") is not True:
@@ -127,8 +133,8 @@ def main() -> None:
     if found:
         raise ValueError(f"Production tracker contains prohibited logic: {found}")
     for token in (
-        "CalibrateSessionCoordinateFrame",
-        "SetReferenceHierarchyVisible(false)",
+        "RestoreProfileCoordinateAlignment",
+        "SetRenderersEnabled(referenceNeckRenderers, false)",
         "ShowRepairPresentation",
         "worldPositionDeadbandMeters",
     ):
@@ -137,10 +143,13 @@ def main() -> None:
     for token in (
         "SetPosePrior",
         "guidedMatches",
-        "strictSolution",
+        "strictRatioMatches",
+        "groupSolution",
         "guidedSolution",
         "SOLVEPNP_SQPNP",
         "SampleReferenceHsv",
+        "kModelMagicV2",
+        "priorRotationErrorDegrees",
     ):
         if token not in native:
             raise ValueError(f"Restored native tracker is missing {token}")
@@ -148,12 +157,12 @@ def main() -> None:
         raise ValueError("Scene generator does not bind only BottleFullAlignedV2")
 
     payload = {
-        "status": "BOTTLE_FULL_ALIGNED_V33_DATA_OK",
+        "status": "BOTTLE_FULL_ALIGNED_V34_DATA_OK",
         "fbx_sha256": sha256(fbx),
         "database_sha256": sha256(database),
         "database_records": len(points),
-        "database_format": "URP3DM1",
-        "database_view_groups": 1,
+        "database_format": "URP3DM2",
+        "database_view_groups": group_count,
         "database_bounds_min": points.min(axis=0).tolist(),
         "database_bounds_max": points.max(axis=0).tolist(),
         "repair_c_excluded_from_matching": True,

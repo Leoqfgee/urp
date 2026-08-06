@@ -1,42 +1,65 @@
 {
-  "version": "bottle-full-aligned-v2-reference-b-real-observations-v32",
-  "restored_from_commit": "bcb344b",
-  "logic": "Restored as one device-proven coordinate set: ORB descriptors come from real open/no-cap bottle observations and their filtered SfM points use the same canonical frame as Blender B. solvePnP estimates B only; rigid child C is excluded and inherits B.",
+  "version": "bottle-no-cap-grouped-multiview-v34",
+  "logic": "ORB descriptors are detected on real no-cap bottle photographs. Exact ORB keypoints are tracked by forward/backward optical flow across calibrated neighbouring views, triangulated into the same B reconstruction frame, and stored by source viewpoint. The native tracker retrieves likely view groups, solves the complete six-degree-of-freedom B pose per group, rejects front/back-ambiguous candidates that disagree with the AR world-pose prior, and applies the accepted pose directly to the rigid B+C root without an upright override.",
   "database": "Assets\\OrbModels\\bottle_reference_b.bytes",
-  "database_format": "URP3DM1",
-  "database_sha256": "A046CD3386245B4A255A45088ECD9087366FF32A1352B2E20C3AC713253AC1EF",
-  "records": 4100,
+  "database_format": "URP3DM2",
+  "database_sha256": "6DA9D8793DE175C6D365839F4EE2F3A9A5D4D4A5B62A149AFB0F7FDBCA728B93",
+  "records": 73047,
+  "view_group_count": 188,
+  "maximum_records_per_group": 420,
   "canonical_bounds_min": [
-    -0.23538906872272491,
-    -1.2189726829528809,
-    -0.09627003967761993
+    -0.3364206799339832,
+    -1.2798658236389722,
+    -0.33687533884300147
   ],
   "canonical_bounds_max": [
-    0.23058083653450012,
-    -0.026713119819760323,
-    0.19327491521835327
+    0.175429102249971,
+    0.05676680340378626,
+    0.32048025112653183
   ],
   "source_provenance": {
-    "photo_set": "F:\\Meshroom_work\\bottle_damaged (real open/no-cap bottle photographs)",
-    "selected_masked_images": "F:\\Meshroom_work\\bottle_damaged\\meshroom_input",
-    "original_observation_database_sha256": "A046CD3386245B4A255A45088ECD9087366FF32A1352B2E20C3AC713253AC1EF",
+    "photo_set": "F:\\Meshroom_work\\bottle_damaged\\masked_rgba",
+    "real_no_cap_input_images": 424,
+    "meshroom_calibrated_cameras": 423,
+    "meshroom_landmarks": 70684,
+    "missing_camera_frame": 189,
+    "training_frame_rule": "even frameId only",
     "complete_bottle_or_cap_images_used": false,
-    "rendered_mesh_descriptors_used": false
+    "rendered_mesh_descriptors_used": false,
+    "repair_model_descriptors_used": false
   },
-  "offline_failure_frame_replay": {
-    "frames": 3,
-    "pose_solutions": 3,
-    "pose_inliers": [19, 14, 19],
-    "reprojection_rms_pixels": [
-      1.4396680984531167,
-      1.3109569107091754,
-      1.2433029540716665
+  "offline_held_out_replay": {
+    "validation_frames": 212,
+    "training_overlap_frames": 0,
+    "accepted_pose_frames": 208,
+    "success_rate": 0.9811320754716981,
+    "view_groups_total": 188,
+    "coarse_descriptors_per_group": 40,
+    "full_match_shortlist_groups": 24,
+    "ratio_threshold": 0.72,
+    "failed_frames": [
+      167,
+      173,
+      189,
+      199
     ],
-    "runtime_minimum_inlier_ratio": 0.35
+    "evidence": "Builds\\Validation\\v27-dense-heldout-even-full-short24\\summary.json",
+    "note": "Offline replay validates descriptor and PnP coverage only. It is not physical-device overlay proof."
   },
-  "reference_objects": ["DamagedBottleB"],
+  "orientation_prior_audit": {
+    "validation_frames": 36,
+    "unconstrained_median_rotation_error_degrees": 0.444,
+    "unconstrained_max_rotation_error_degrees": 174.776,
+    "prior_constrained_flipped_frame_error_degrees": 0.189,
+    "reject_or_hold_when_no_candidate_within_degrees": 100.0,
+    "evidence": "Builds\\Validation\\v31-orientation-audit.json",
+    "note": "The prior constraint resolves the observed near-180-degree cylindrical front/back ambiguity. Offline orientation audit is not physical-device overlay proof."
+  },
+  "reference_objects": [
+    "DamagedBottleB"
+  ],
   "repair_c_excluded_from_matching": true,
   "meters_per_model_unit": 0.17,
   "device_overlay_verified": false,
-  "generator": "Tools\\TrackingReplay\\filter_bottle_orb_database.py"
+  "generator": "Tools\\TrackingReplay\\build_orb_database_by_optical_flow.py"
 }

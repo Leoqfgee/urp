@@ -35,6 +35,8 @@ namespace Urp.ArDemo.Editor
             + "Textures/bottle_full_clean_v2_albedo.png";
         private const string BottleCapMaterialPath =
             "Assets/Materials/CleanBottleCapLit.mat";
+        private const string BottleDepthMaterialPath =
+            "Assets/Materials/BottleDepthOccluder.mat";
         private const string ControllerPath =
             "Assets/Scripts/OrbImageTrackingController.cs";
         private const string SetupPath =
@@ -232,6 +234,8 @@ namespace Urp.ArDemo.Editor
                 $"Missing bottle photogrammetry texture: {BottleAlbedoPath}");
             Require(File.Exists(BottleCapMaterialPath),
                 $"Missing clean C material: {BottleCapMaterialPath}");
+            Require(File.Exists(BottleDepthMaterialPath),
+                $"Missing B depth occlusion material: {BottleDepthMaterialPath}");
 
             RestorationObjectCatalog catalog =
                 AssetDatabase.LoadAssetAtPath<RestorationObjectCatalog>(CatalogPath);
@@ -243,7 +247,7 @@ namespace Urp.ArDemo.Editor
                 && catalog.objects.Count(item => item == profile) == 1,
                 "The formal catalog must contain the new bottle profile exactly once.");
             Require(
-                profile.objectId == "bottle_full_aligned_v2_v33",
+                profile.objectId == "bottle_full_aligned_v2_v34",
                 "The formal bottle profile still has the legacy object id.");
             Require(
                 AssetDatabase.GetAssetPath(profile.registeredBottlePairPrefab) == NewPairPath,
@@ -279,22 +283,30 @@ namespace Urp.ArDemo.Editor
                 && profile.preAlignmentMaterial.GetFloat("_Surface") < 0.5f
                 && profile.preAlignmentMaterial.GetColor("_BaseColor").a > 0.95f,
                 "Pre-alignment B+C must use the requested opaque textured material.");
+            Require(
+                profile.referenceDepthOcclusionMaterial != null
+                && AssetDatabase.GetAssetPath(
+                    profile.referenceDepthOcclusionMaterial)
+                    == BottleDepthMaterialPath,
+                "The bottle body must use the dedicated colour-invisible depth material after Start.");
 
             byte[] database = File.ReadAllBytes(DatabasePath);
             Require(
-                database.Length >= 12
+                database.Length >= 16
                 && database.Take(8).SequenceEqual(
-                    new byte[] { 0x55, 0x52, 0x50, 0x33, 0x44, 0x4D, 0x31, 0x00 }),
-                "B database has invalid URP3DM1 magic.");
+                    new byte[] { 0x55, 0x52, 0x50, 0x33, 0x44, 0x4D, 0x32, 0x00 }),
+                "B database has invalid URP3DM2 magic.");
             int records = BitConverter.ToInt32(database, 8);
+            int viewGroups = BitConverter.ToInt32(database, 12);
             Require(
-                records >= 1000 && database.Length == 12 + records * 44,
-                $"B database record count/length is invalid: {records}.");
+                records == 73047 && viewGroups == 188,
+                $"B grouped database is invalid: {records} records/{viewGroups} groups.");
             string manifest = File.ReadAllText(DatabaseManifestPath);
             Require(
-                manifest.Contains("bottle-full-aligned-v2-reference-b-real-observations-v32")
+                manifest.Contains("bottle-no-cap-grouped-multiview-v34")
                 && manifest.Contains("\"rendered_mesh_descriptors_used\": false")
                 && manifest.Contains("bottle_damaged")
+                && manifest.Contains("\"view_group_count\": 188")
                 && manifest.Contains("\"repair_c_excluded_from_matching\": true")
                 && manifest.Contains("\"device_overlay_verified\": false"),
                 "B database manifest does not describe the real-photo B-only pipeline.");
@@ -364,12 +376,13 @@ namespace Urp.ArDemo.Editor
                 && controller.Contains("ShowRepairPresentation")
                 && controller.Contains("ShowPresentationForCurrentState")
                 && controller.Contains("GetCanonicalModelRotationInTrackedRoot")
-                && controller.Contains("CalibrateSessionCoordinateFrame")
-                && controller.Contains("sessionCoordinateFrameCalibrated")
+                && controller.Contains("RestoreProfileCoordinateAlignment")
+                && !controller.Contains("CalibrateSessionCoordinateFrame")
+                && !controller.Contains("sessionCoordinateFrameCalibrated")
                 && controller.Contains("hasReadyPoseCandidate")
                 && controller.Contains("repairRequested")
                 && controller.Contains("recognitionRunning = true")
-                && controller.Contains("SetReferenceHierarchyVisible(false)")
+                && controller.Contains("SetRenderersEnabled(referenceNeckRenderers, false)")
                 && controller.Contains("worldPositionDeadbandMeters")
                 && controller.Contains("maximumWorldRotationCorrectionDegreesPerSecond")
                 && controller.Contains("trackingState = TrackingState.Repair")
@@ -384,10 +397,14 @@ namespace Urp.ArDemo.Editor
             Require(
                 native.Contains("SetPosePrior")
                 && native.Contains("guidedMatches")
-                && native.Contains("strictSolution")
+                && native.Contains("strictRatioMatches")
+                && native.Contains("groupSolution")
                 && native.Contains("guidedSolution")
                 && native.Contains("SOLVEPNP_SQPNP")
                 && native.Contains("SampleReferenceHsv")
+                && native.Contains("priorRotationErrorDegrees")
+                && native.Contains("1.15f")
+                && native.Contains("cv::ORB::HARRIS_SCORE")
                 && !native.Contains("frameToTarget")
                 && !native.Contains("repairAnchor")
                 && !native.Contains("set_repair_anchor"),
@@ -474,98 +491,10 @@ namespace Urp.ArDemo.Editor
                 && Mathf.Abs(determinant - 1f) < 0.01f
                 && prior[11] > 0f,
                 "The coarse model-to-camera prior is not a proper positive-depth rotation.");
-            NativeOrbResult priorPose = new NativeOrbResult
-            {
-                poseValid = 1,
-                tvecX = prior[3],
-                tvecY = prior[7],
-                tvecZ = prior[11],
-                r00 = prior[0],
-                r01 = prior[1],
-                r02 = prior[2],
-                r10 = prior[4],
-                r11 = prior[5],
-                r12 = prior[6],
-                r20 = prior[8],
-                r21 = prior[9],
-                r22 = prior[10]
-            };
-            Require(
-                OpenCvUnityPoseConverter.TryGetObjectPose(
-                    priorPose,
-                    0,
-                    camera,
-                    profile.calibration,
-                    out Vector3 priorOrbPosition,
-                    out Quaternion priorOrbRotation),
-                "Could not convert the visible B prior back to a model pose.");
-            Quaternion alignmentWorldRotationBefore =
-                alignmentObject.transform.rotation;
-            MethodInfo calibrateSessionFrame =
-                typeof(OrbImageTrackingController).GetMethod(
-                    "CalibrateSessionCoordinateFrame",
-                    BindingFlags.Instance | BindingFlags.NonPublic);
-            Require(calibrateSessionFrame != null,
-                "The coarse-alignment B-to-ORB calibration path is missing.");
-            calibrateSessionFrame.Invoke(
-                controller,
-                new object[] { priorOrbPosition, priorOrbRotation });
-            Require(
-                GetPrivateField<bool>(
-                    controller,
-                    "sessionCoordinateFrameCalibrated")
-                && Vector3.Distance(
-                    rootObject.transform.position,
-                    priorOrbPosition) < 0.0001f
-                && Quaternion.Angle(
-                    rootObject.transform.rotation,
-                    priorOrbRotation) < 0.1f
-                && Quaternion.Angle(
-                    alignmentObject.transform.rotation,
-                    alignmentWorldRotationBefore) < 0.1f
-                && Vector3.Distance(
-                    alignmentObject.transform.localPosition,
-                    profile.calibration.orbToModelLocalPosition) < 0.0001f,
-                "Session calibration must move the ORB root without rotating the visible B overlay.");
-            object[] calibratedPriorArguments = { null };
-            Require(
-                (bool)buildPrior.Invoke(controller, calibratedPriorArguments),
-                "The calibrated ORB root did not produce a valid pose prior.");
-            float[] calibratedPrior = calibratedPriorArguments[0] as float[];
-            NativeOrbResult calibratedPriorPose = new NativeOrbResult
-            {
-                poseValid = 1,
-                tvecX = calibratedPrior[3],
-                tvecY = calibratedPrior[7],
-                tvecZ = calibratedPrior[11],
-                r00 = calibratedPrior[0],
-                r01 = calibratedPrior[1],
-                r02 = calibratedPrior[2],
-                r10 = calibratedPrior[4],
-                r11 = calibratedPrior[5],
-                r12 = calibratedPrior[6],
-                r20 = calibratedPrior[8],
-                r21 = calibratedPrior[9],
-                r22 = calibratedPrior[10]
-            };
-            Require(
-                OpenCvUnityPoseConverter.TryGetObjectPose(
-                    calibratedPriorPose,
-                    0,
-                    camera,
-                    profile.calibration,
-                    out Vector3 roundTripPosition,
-                    out Quaternion roundTripRotation)
-                && Vector3.Distance(
-                    rootObject.transform.position,
-                    roundTripPosition) < 0.0001f
-                && Quaternion.Angle(
-                    rootObject.transform.rotation,
-                    roundTripRotation) < 0.1f,
-                "The calibrated ORB pose prior must round-trip directly to TrackedBottleRoot.");
-
             Transform body =
                 GetPrivateField<Transform>(controller, "registeredReferenceModel");
+            Transform neck =
+                GetPrivateField<Transform>(controller, "registeredReferenceNeck");
             Transform cap =
                 GetPrivateField<Transform>(controller, "registeredRepairPart");
             Transform pair =
@@ -578,7 +507,7 @@ namespace Urp.ArDemo.Editor
                     body.TransformDirection(Vector3.up),
                     camera.transform.up) > 0.99f,
                 "Initial B+C pose must show the imported B mesh front-facing and upright.");
-            Require(body.parent == pair && cap.parent == pair,
+            Require(body.parent == pair && neck.IsChildOf(body) && cap.parent == pair,
                 "Runtime changed the Blender-authored B/C parent relationship.");
             Require(
                 Vector3.Distance(body.position, cap.position) < 0.0001f,
@@ -595,14 +524,45 @@ namespace Urp.ArDemo.Editor
                     cap.GetComponentsInChildren<Renderer>(true),
                     profile.repairMaterial),
                 "Pre-alignment must use opaque textured B and the clean white C material.");
-            Matrix4x4 bodyBefore = body.localToWorldMatrix;
             Matrix4x4 capLocalBefore = pair.worldToLocalMatrix * cap.localToWorldMatrix;
 
-            controller.ShowRepairPresentation();
+            Vector3 measuredPosition = new Vector3(0.08f, -0.03f, 0.62f);
+            Quaternion measuredRotation = Quaternion.Euler(24f, 37f, -12f);
+            MethodInfo establishRegistration =
+                typeof(OrbImageTrackingController).GetMethod(
+                    "EstablishRegistration",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+            Require(establishRegistration != null,
+                "Direct full-pose registration path is missing.");
+            establishRegistration.Invoke(
+                controller,
+                new object[] { measuredPosition, measuredRotation });
             Require(
-                !AnyEnabled(body.GetComponentsInChildren<Renderer>(true))
+                Vector3.Distance(rootObject.transform.position, measuredPosition) < 0.0001f
+                && Quaternion.Angle(rootObject.transform.rotation, measuredRotation) < 0.1f
+                && Vector3.Distance(
+                    alignmentObject.transform.localPosition,
+                    profile.calibration.orbToModelLocalPosition) < 0.0001f
+                && Quaternion.Angle(
+                    alignmentObject.transform.localRotation,
+                    Quaternion.Euler(
+                        profile.calibration.orbToModelLocalEulerAngles)) < 0.1f,
+                "PnP position/rotation must apply directly to TrackedBottleRoot without an upright override.");
+            controller.ShowRepairPresentation();
+            Renderer[] bodyDepthRenderers =
+                GetPrivateField<Renderer[]>(controller, "referenceBodyRenderers");
+            Renderer[] neckRenderers =
+                GetPrivateField<Renderer[]>(controller, "referenceNeckRenderers");
+            Require(
+                AnyEnabled(bodyDepthRenderers)
+                && !AnyEnabled(neckRenderers)
                 && AnyEnabled(cap.GetComponentsInChildren<Renderer>(true)),
-                "Repair stage must disable B Renderers while keeping C visible.");
+                "Repair stage must hide the B neck colour, retain body depth, and keep C visible.");
+            Require(
+                AllUseMaterial(
+                    bodyDepthRenderers,
+                    profile.referenceDepthOcclusionMaterial),
+                "Only the damaged B body may remain as the thesis depth occluder.");
             Require(
                 AllUseMaterial(
                     cap.GetComponentsInChildren<Renderer>(true),
@@ -613,8 +573,11 @@ namespace Urp.ArDemo.Editor
             Matrix4x4 capLocalAfter = pair.worldToLocalMatrix * cap.localToWorldMatrix;
             Require(MatrixApproximately(capLocalBefore, capLocalAfter),
                 "C local relationship changed while hiding B.");
-            Require(MatrixApproximately(bodyBefore, body.localToWorldMatrix),
-                "B transform changed while hiding its Renderers.");
+            Require(
+                MatrixApproximately(
+                    pair.worldToLocalMatrix * body.localToWorldMatrix,
+                    pair.worldToLocalMatrix * cap.localToWorldMatrix),
+                "B and C no longer share the same rigid authored frame after registration.");
             if (SystemInfo.graphicsDeviceType != GraphicsDeviceType.Null)
             {
                 Renderer[] capRenderers =

@@ -1,16 +1,12 @@
-# BottleFullAlignedV2 v33 A-to-B-to-C contract
+# BottleFullAlignedV2 v34 A-to-B-to-C contract
 
-## Formal assets
+## Rigid asset contract
 
 - A is the real open bottle seen by the phone.
-- B is `DamagedBottleB` plus its clean 10 mm `ReferenceNeckProxyB`.
+- B is `DamagedBottleB` plus its 10 mm `ReferenceNeckProxyB` child.
 - C is the approved clean 39 x 10 mm `BottleCapC`.
 
-The production Blender source is
-`F:\Meshroom_work\bottle_full_clean_v2\split_models\bottle_full_aligned_v2_v33.blend`.
-Unity keeps the formal FBX at
-`Assets/Models/CleanBottleReconstruction/BottleFullAlignedV2/bottle_full_aligned_v2.fbx`
-so its Unity GUID remains stable.
+The Blender-authored hierarchy is fixed:
 
 ```text
 BottleRepairRoot
@@ -19,51 +15,58 @@ BottleRepairRoot
 └── BottleCapC
 ```
 
-The Meshroom scan ends at the damaged shoulder cut, which remains model `Y=0`
-for the existing ORB feature database. Blender restores the photographed
-10 mm neck above that datum. C's corresponding 10 mm lift is baked into its
-vertices; B and C object transforms remain identity and Unity never positions,
-rotates, or scales C independently.
+The scan cut is model `Y=0`. Blender restores the measured 10 mm neck above
+that datum and bakes C around the same mouth plane. B, neck, and C keep identity
+local transforms. Runtime code never positions, rotates, or scales C by itself.
 
-## Runtime tracking
+## Tracking contract
 
 ```text
-TrackedBottleRoot                 accepted A-to-B world pose
-└── ModelCoordinateAlignment      fixed ORB-to-Blender calibration
-    └── BottleRepairRoot          Blender-authored rigid pair
-        ├── DamagedBottleB        opaque before Start; Renderer off after lock
-        │   └── ReferenceNeckProxyB
-        └── BottleCapC            always inherits the complete B pose
+TrackedBottleRoot                 complete accepted PnP world pose
+└── ModelCoordinateAlignment      fixed profile calibration only
+    └── BottleRepairRoot          immutable Blender B+C relationship
 ```
 
-Recognition starts when the tracking page opens. Before Start, the opaque B+C
-pair is upright, front-facing, and centred for coarse alignment. Start does not
-create or reposition C. Once A-to-B tracking is stable, only the B renderers
-(including its neck) are disabled. C remains in the same rigid hierarchy.
+Before Start, opaque B+C is placed once in world space, upright and centred.
+ORB recognition already runs. The production database is `URP3DM2`: 73,047
+real open-bottle observations split into 188 calibrated view groups. A dense
+10-level ORB pyramid handles scale and oblique views. Candidate view groups are
+solved independently with SQPnP, EPNP, and iterative RANSAC, refined with LM,
+and gated by inlier consensus, spatial coverage, positive depth, reprojection
+error, and temporal orientation continuity.
 
-ORB supplies natural-feature correspondences from real open-bottle photos.
-The multi-point pose solver converts those 2D-to-3D correspondences into the
-six-degree-of-freedom A-to-B pose; C is excluded from recognition.
+The full six-degree-of-freedom PnP pose is applied directly to
+`TrackedBottleRoot`. There is no session upright/yaw correction. This preserves
+the measured pitch, roll, yaw, translation, and perspective in front, oblique,
+and top views. C is excluded from recognition and inherits B exactly.
 
-## Consistency
+Start changes rendering only. It does not create, move, or reparent C:
 
-- Geometry: only `TrackedBottleRoot` receives pose updates.
-- Illumination: accepted B samples and AR Foundation light estimates adjust
-  C's material gradually without changing pose.
-- Occlusion: B can participate in validation/depth, but after lock its colour
-  renderer is disabled while supported AR environment depth remains available.
-- Stability: temporal confirmation, reprojection error, spatial coverage,
-  deadbands, and bounded corrections gate accepted pose updates.
+- B colour is removed, including `ReferenceNeckProxyB`;
+- the damaged B body writes depth only;
+- the neck proxy does not write depth because it lies inside C;
+- C remains in the colour pass and its visibility is reasserted every frame.
 
-The editor regression now renders the repair stage into a `RenderTexture` and
-fails when C is merely enabled in the hierarchy but produces no colour pixels.
+## Paper-aligned consistency
 
-## Verification boundary
+- Geometry follows thesis section 3.3: the recovered B pose drives the repaired
+  model in the same rigid object frame.
+- Occlusion follows section 3.4.1: B and C are rendered at the same pose and
+  compared by the depth buffer. Only the real damaged body is the invisible
+  depth occluder, avoiding the previous synthetic-neck self-occlusion.
+- Illumination follows chapter 4: low-saturation B pixels around verified ORB
+  inliers provide HSV correction, combined with AR Foundation ambient colour,
+  intensity, spherical harmonics, and main-light estimates. Smoothing affects
+  C's material only, never its pose.
 
-Static validation, six-view Blender QA, Play Mode, and APK build prove the asset
-and code contract. They do not prove physical overlay. Device success requires:
+The related Tjaden et al. region tracker motivates temporal pose continuity,
+but the production tracking algorithm remains ORB as required. The Gruber et
+al. photometric-registration reference motivates geometry-aware light matching;
+the mobile implementation uses verified B samples plus AR light estimates.
 
-1. B stays over A through front, oblique, and top views.
-2. After Start, B disappears and C remains seated through the same motion.
+## Evidence boundary
 
-Until device recordings prove both, `device_overlay_verified` remains `false`.
+Offline replay, Unity validation, Play Mode, and APK construction verify the
+software and asset contract. They do not prove physical overlay. Final device
+acceptance still requires recordings in which B covers A and, after Start, C
+remains seated through front, oblique, and top motion.

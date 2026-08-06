@@ -36,7 +36,9 @@ namespace Urp.ArDemo.Editor
             "Assets/Materials/BottlePhotogrammetryLit.mat";
         private const string BottleCapMaterialPath =
             "Assets/Materials/CleanBottleCapLit.mat";
-        private const string AndroidApkPath = "Builds/BottleRepairAR_v33.apk";
+        private const string BottleDepthMaterialPath =
+            "Assets/Materials/BottleDepthOccluder.mat";
+        private const string AndroidApkPath = "Builds/BottleRepairAR_v34.apk";
         private const string BottleReferenceOrbPath =
             "Assets/OrbModels/bottle_reference_b.bytes";
         private const string BottleCalibrationPath =
@@ -190,14 +192,14 @@ namespace Urp.ArDemo.Editor
 
         private static void ConfigureAndroidProject()
         {
-            PlayerSettings.productName = "瓶盖AR修复 v33";
+            PlayerSettings.productName = "瓶盖AR修复 v34";
             PlayerSettings.companyName = "qfgeeee";
-            PlayerSettings.bundleVersion = "4.3.3";
+            PlayerSettings.bundleVersion = "4.3.4";
             PlayerSettings.SetApplicationIdentifier(
                 BuildTargetGroup.Android, "com.qfgeeee.paper52objecttrackingar");
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
-            PlayerSettings.Android.bundleVersionCode = 433;
+            PlayerSettings.Android.bundleVersionCode = 434;
             PlayerSettings.SetScriptingBackend(
                 BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
@@ -354,6 +356,8 @@ namespace Urp.ArDemo.Editor
                 BottleSurfaceMaterialPath, BottleAlbedoPath, 0.12f, true);
             Material bottleCapMaterial = CreateLitMaterial(
                 BottleCapMaterialPath, null, 0.28f, true);
+            Material bottleDepthMaterial =
+                CreateDepthOcclusionMaterial(BottleDepthMaterialPath);
             bottleCapMaterial.SetColor(
                 "_BaseColor",
                 new Color(0.96f, 0.96f, 0.94f, 1f));
@@ -364,7 +368,7 @@ namespace Urp.ArDemo.Editor
 
             RestorationObjectProfile bottle = LoadOrCreate<RestorationObjectProfile>(
                 BottleProfilePath);
-            bottle.objectId = "bottle_full_aligned_v2_v33";
+            bottle.objectId = "bottle_full_aligned_v2_v34";
             bottle.displayName = "新重建无盖饮料瓶与瓶盖";
             bottle.shortDescription =
                 "Blender 中刚性对齐的无盖瓶身 B 与干净白色瓶盖 C。";
@@ -421,6 +425,7 @@ namespace Urp.ArDemo.Editor
             // production profile.
             bottle.preAlignmentMaterial = bottleSurfaceMaterial;
             bottle.repairMaterial = bottleCapMaterial;
+            bottle.referenceDepthOcclusionMaterial = bottleDepthMaterial;
             bottle.defaultViewerEuler = Vector3.zero;
             bottle.viewerMargin = 0.18f;
             bottle.trackingSettings.minimumGoodMatches = 8;
@@ -689,6 +694,27 @@ namespace Urp.ArDemo.Editor
             if (!string.IsNullOrEmpty(texturePath))
                 material.SetTexture("_BaseMap",
                     AssetDatabase.LoadAssetAtPath<Texture2D>(texturePath));
+            EditorUtility.SetDirty(material);
+            return material;
+        }
+
+        private static Material CreateDepthOcclusionMaterial(string path)
+        {
+            Shader shader = Shader.Find("URP AR/Bottle Depth Occluder");
+            if (shader == null)
+            {
+                throw new InvalidOperationException(
+                    "URP AR/Bottle Depth Occluder shader is missing.");
+            }
+            Material material = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (material == null)
+            {
+                material = new Material(shader);
+                AssetDatabase.CreateAsset(material, path);
+            }
+            material.shader = shader;
+            material.name = "BottleDepthOccluder";
+            material.SetShaderPassEnabled("ShadowCaster", false);
             EditorUtility.SetDirty(material);
             return material;
         }

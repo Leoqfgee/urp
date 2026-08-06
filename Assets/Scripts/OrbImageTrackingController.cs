@@ -64,7 +64,6 @@ namespace Urp.ArDemo
         [Range(0.08f, 0.35f)]
         [SerializeField] private float guidedMatchRadiusFraction = 0.18f;
         [SerializeField] private float maximumInitialCorrectionMeters = 0.30f;
-        [SerializeField] private float maximumInitialCorrectionDegrees = 60f;
 
         [Header("Stable full-pose registration")]
         [SerializeField] private int registrationConfirmationFrames = 8;
@@ -86,7 +85,10 @@ namespace Urp.ArDemo
         private Texture2D frameTexture;
         private Transform registeredBottlePairRoot;
         private Transform registeredReferenceModel;
+        private Transform registeredReferenceNeck;
         private Transform registeredRepairPart;
+        private Renderer[] referenceBodyRenderers = Array.Empty<Renderer>();
+        private Renderer[] referenceNeckRenderers = Array.Empty<Renderer>();
         private Renderer[] referenceRenderers = Array.Empty<Renderer>();
         private Renderer[] repairRenderers = Array.Empty<Renderer>();
         private RepairCalibrationProfile calibration;
@@ -108,7 +110,6 @@ namespace Urp.ArDemo
         private Vector3 smoothedRootPosition;
         private Quaternion smoothedRootRotation = Quaternion.identity;
         private float lastRootPoseApplicationTime = float.NegativeInfinity;
-        private bool sessionCoordinateFrameCalibrated;
         private bool hasReadyPoseCandidate;
         private Vector3 readyCandidatePosition;
         private Quaternion readyCandidateRotation = Quaternion.identity;
@@ -151,6 +152,22 @@ namespace Urp.ArDemo
                 return;
             }
             ProcessCameraFrame();
+        }
+
+        private void LateUpdate()
+        {
+            if (!modeEnabled
+                || !repairRequested
+                || !hasEverRegisteredSinceReset)
+            {
+                return;
+            }
+
+            // Start changes presentation only. It must never deactivate C or
+            // leave the authored B neck proxy in the colour pass. Reassert the
+            // renderer contract after every frame so loss/relocalisation and
+            // imported renderer state cannot make C disappear.
+            ShowRepairPresentation();
         }
 
         public void BindStatusText(Text value)
@@ -215,6 +232,9 @@ namespace Urp.ArDemo
             instance.transform.localScale = Vector3.one;
 
             registeredReferenceModel = FindDescendant(instance.transform, "DamagedBottleB");
+            registeredReferenceNeck = FindDescendant(
+                instance.transform,
+                "ReferenceNeckProxyB");
             registeredRepairPart = FindDescendant(instance.transform, "BottleCapC");
             registeredBottlePairRoot = FindDescendant(instance.transform, "BottleRepairRoot");
             if (registeredBottlePairRoot == null
@@ -233,8 +253,17 @@ namespace Urp.ArDemo
                 throw new MissingReferenceException(hierarchyReason);
             }
 
-            referenceRenderers =
+            Renderer[] allReferenceRenderers =
                 registeredReferenceModel.GetComponentsInChildren<Renderer>(true);
+            referenceNeckRenderers = registeredReferenceNeck != null
+                ? registeredReferenceNeck.GetComponentsInChildren<Renderer>(true)
+                : Array.Empty<Renderer>();
+            referenceBodyRenderers = ExcludeRenderers(
+                allReferenceRenderers,
+                referenceNeckRenderers);
+            referenceRenderers = MergeRenderers(
+                referenceBodyRenderers,
+                referenceNeckRenderers);
             repairRenderers =
                 registeredRepairPart.GetComponentsInChildren<Renderer>(true);
             if (referenceRenderers.Length == 0 || repairRenderers.Length == 0)
@@ -472,7 +501,9 @@ namespace Urp.ArDemo
             }
             return tracker.SetPosePrior(
                 rotationTranslation,
-                guidedMatchRadiusFraction);
+                registrationEstablished
+                    ? Mathf.Min(0.09f, guidedMatchRadiusFraction)
+                    : guidedMatchRadiusFraction);
         }
 
         private bool TryBuildCurrentPosePrior(out float[] rotationTranslation)
@@ -486,13 +517,12 @@ namespace Urp.ArDemo
                 return false;
             }
 
-            Quaternion priorFrameInRoot = sessionCoordinateFrameCalibrated
-                ? Quaternion.identity
-                : GetCanonicalModelRotationInTrackedRoot();
-            Vector3 originWorld = sessionCoordinateFrameCalibrated
-                ? trackedObjectPoseRoot.position
-                : trackedObjectPoseRoot.TransformPoint(
-                    priorFrameInRoot * calibration.objectOriginInModel);
+            // TrackedBottleRoot is the canonical ORB object frame. FBX import
+            // axis conversion stays below ModelCoordinateAlignment and must
+            // not be folded into the native PnP prior a second time.
+            Quaternion priorFrameInRoot = Quaternion.identity;
+            Vector3 originWorld = trackedObjectPoseRoot.TransformPoint(
+                calibration.objectOriginInModel);
             Vector3 originCameraUnity =
                 arCamera.transform.InverseTransformPoint(originWorld);
             Vector3 originCameraCv = new Vector3(
@@ -568,11 +598,20 @@ namespace Urp.ArDemo
                 activeProfile.repairMaterial != null
                     ? activeProfile.repairMaterial
                     : activeProfile.viewerMaterial);
-            // B stays in the hierarchy as the tracked rigid reference, but its
-            // noisy photogrammetry surface must not depth-occlude C. The old
-            // depth-only pass cut the clean cap into a floating crescent near
-            // the reconstructed mouth. AR environment depth remains active.
-            SetReferenceHierarchyVisible(false);
+            // B's bottle body remains as a colour-invisible depth proxy, which
+            // is the z-buffer comparison used by the thesis for geometric
+            // occlusion. The synthetic neck proxy is excluded because it is
+            // inside C and would erase the repair. If no depth material is
+            // configured, fail safe by disabling the body colour renderers.
+            bool useBodyDepth = activeProfile.referenceDepthOcclusionMaterial != null;
+            if (useBodyDepth)
+            {
+                ApplyMaterial(
+                    referenceBodyRenderers,
+                    activeProfile.referenceDepthOcclusionMaterial);
+            }
+            SetRenderersEnabled(referenceBodyRenderers, useBodyDepth);
+            SetRenderersEnabled(referenceNeckRenderers, false);
             SetRepairHierarchyVisible(true);
         }
 
@@ -698,10 +737,7 @@ namespace Urp.ArDemo
                         Vector3.Distance(trackedObjectPoseRoot.position, targetPosition);
                     float initialRotationCorrection =
                         Quaternion.Angle(trackedObjectPoseRoot.rotation, targetRotation);
-                    if (initialPositionCorrection > maximumInitialCorrectionMeters
-                        || (sessionCoordinateFrameCalibrated
-                            && initialRotationCorrection
-                                > maximumInitialCorrectionDegrees))
+                    if (initialPositionCorrection > maximumInitialCorrectionMeters)
                     {
                         trackingState = TrackingState.Candidate;
                         UpdateStatus(
@@ -979,19 +1015,16 @@ namespace Urp.ArDemo
             Vector3 orbRootPosition,
             Quaternion orbRootRotation)
         {
-            if (!sessionCoordinateFrameCalibrated)
-            {
-                CalibrateSessionCoordinateFrame(
-                    orbRootPosition,
-                    orbRootRotation);
-            }
-            else
-            {
-                ApplyTrackedRootPose(
-                    orbRootPosition,
-                    orbRootRotation,
-                    false);
-            }
+            // The ORB database and Blender B+C asset share the same canonical
+            // reconstruction frame. Preserve the measured pitch, roll and yaw
+            // by applying the complete PnP pose directly to their common root.
+            // A session-specific upright correction would overwrite the very
+            // viewing-angle change that C must inherit from B.
+            RestoreProfileCoordinateAlignment();
+            ApplyTrackedRootPose(
+                orbRootPosition,
+                orbRootRotation,
+                false);
 
             registrationEstablished = true;
             hasEverRegisteredSinceReset = true;
@@ -1002,76 +1035,6 @@ namespace Urp.ArDemo
                 ? TrackingState.Repair
                 : TrackingState.PreAlignment;
             ShowPresentationForCurrentState();
-        }
-
-        private void CalibrateSessionCoordinateFrame(
-            Vector3 orbRootPosition,
-            Quaternion orbRootRotation)
-        {
-            if (trackedObjectPoseRoot == null
-                || modelCoordinateAlignment == null
-                || calibration == null)
-            {
-                return;
-            }
-
-            // The ORB database and the Blender B mesh were reconstructed in
-            // separate SfM projects, so their yaw-zero directions are
-            // arbitrary. The user-supplied coarse overlay defines that missing
-            // fixed rotation. Keep the current rendered B orientation, move
-            // the root to the measured ORB pose, and solve the B-to-ORB child
-            // rotation exactly once for this reset cycle. Translation and
-            // physical scale still come from PnP and the calibration profile.
-            Quaternion alignedModelWorldRotation =
-                GetUprightAlignmentWorldRotation();
-            ApplyTrackedRootPose(
-                orbRootPosition,
-                orbRootRotation,
-                false);
-            modelCoordinateAlignment.localPosition =
-                calibration.orbToModelLocalPosition;
-            modelCoordinateAlignment.localRotation =
-                Quaternion.Inverse(trackedObjectPoseRoot.rotation)
-                * alignedModelWorldRotation;
-            modelCoordinateAlignment.localScale =
-                calibration.orbToModelLocalScale;
-            sessionCoordinateFrameCalibrated = true;
-        }
-
-        private Quaternion GetUprightAlignmentWorldRotation()
-        {
-            if (registeredReferenceModel == null
-                || modelCoordinateAlignment == null)
-            {
-                return modelCoordinateAlignment != null
-                    ? modelCoordinateAlignment.rotation
-                    : Quaternion.identity;
-            }
-
-            Vector3 desiredUp = Vector3.up;
-            Vector3 desiredFront = Vector3.ProjectOnPlane(
-                registeredReferenceModel.TransformDirection(Vector3.right),
-                desiredUp);
-            if (desiredFront.sqrMagnitude < 0.000001f && arCamera != null)
-            {
-                desiredFront = Vector3.ProjectOnPlane(
-                    -arCamera.transform.forward,
-                    desiredUp);
-            }
-            if (desiredFront.sqrMagnitude < 0.000001f)
-            {
-                return modelCoordinateAlignment.rotation;
-            }
-
-            desiredFront.Normalize();
-            Vector3 desiredForward =
-                Vector3.Cross(desiredFront, desiredUp).normalized;
-            Quaternion desiredBodyRotation =
-                Quaternion.LookRotation(desiredForward, desiredUp);
-            Quaternion bodyCorrection =
-                desiredBodyRotation
-                * Quaternion.Inverse(registeredReferenceModel.rotation);
-            return bodyCorrection * modelCoordinateAlignment.rotation;
         }
 
         private void HandleTrackingLoss()
@@ -1117,7 +1080,6 @@ namespace Urp.ArDemo
             lastCandidateRotation = Quaternion.identity;
             lastAcceptedPosition = Vector3.zero;
             lastAcceptedRotation = Quaternion.identity;
-            sessionCoordinateFrameCalibrated = false;
             hasReadyPoseCandidate = false;
             readyCandidatePosition = Vector3.zero;
             readyCandidateRotation = Quaternion.identity;
@@ -1198,7 +1160,10 @@ namespace Urp.ArDemo
             }
             registeredBottlePairRoot = null;
             registeredReferenceModel = null;
+            registeredReferenceNeck = null;
             registeredRepairPart = null;
+            referenceBodyRenderers = Array.Empty<Renderer>();
+            referenceNeckRenderers = Array.Empty<Renderer>();
             referenceRenderers = Array.Empty<Renderer>();
             repairRenderers = Array.Empty<Renderer>();
         }
@@ -1418,6 +1383,46 @@ namespace Urp.ArDemo
             renderer.shadowCastingMode =
                 UnityEngine.Rendering.ShadowCastingMode.Off;
             renderer.receiveShadows = false;
+        }
+
+        private static Renderer[] MergeRenderers(
+            Renderer[] first,
+            Renderer[] second)
+        {
+            List<Renderer> merged = new List<Renderer>();
+            HashSet<Renderer> seen = new HashSet<Renderer>();
+            foreach (Renderer[] group in new[]
+                     {
+                         first ?? Array.Empty<Renderer>(),
+                         second ?? Array.Empty<Renderer>()
+                     })
+            {
+                foreach (Renderer renderer in group)
+                {
+                    if (renderer != null && seen.Add(renderer))
+                    {
+                        merged.Add(renderer);
+                    }
+                }
+            }
+            return merged.ToArray();
+        }
+
+        private static Renderer[] ExcludeRenderers(
+            Renderer[] source,
+            Renderer[] excluded)
+        {
+            HashSet<Renderer> excludedSet = new HashSet<Renderer>(
+                excluded ?? Array.Empty<Renderer>());
+            List<Renderer> kept = new List<Renderer>();
+            foreach (Renderer renderer in source ?? Array.Empty<Renderer>())
+            {
+                if (renderer != null && !excludedSet.Contains(renderer))
+                {
+                    kept.Add(renderer);
+                }
+            }
+            return kept.ToArray();
         }
 
         private static void SetRenderersEnabled(Renderer[] renderers, bool enabled)
