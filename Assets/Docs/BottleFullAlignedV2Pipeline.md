@@ -1,4 +1,4 @@
-# BottleFullAlignedV2 v36 A-to-B-to-C contract
+# BottleFullAlignedV2 v37 A-to-B-to-C contract
 
 ## Rigid asset contract
 
@@ -27,24 +27,46 @@ TrackedBottleRoot                 complete accepted PnP world pose
     └── BottleRepairRoot          immutable Blender B+C relationship
 ```
 
-Before Start, opaque B+C is placed once in world space, upright and centred.
-ORB recognition already runs. The production database is the `URP3DM1`
+Before registration, opaque B+C is placed once in world space, front-facing
+and centred while ORB recognition runs. The production database is the `URP3DM1`
 4,100-record real-photo baseline used by v33 and previously shown to recognize
 this physical bottle. Its multi-point correspondences are solved with PnP and
 gated by inlier consensus, spatial coverage, positive depth, and reprojection
 error. The experimental grouped database is not used at runtime because it
 regressed real-device pose acceptance.
 
-The full six-degree-of-freedom PnP pose is applied directly to
-`TrackedBottleRoot`. There is no session upright/yaw correction. This preserves
-the measured pitch, roll, yaw, translation, and perspective in front, oblique,
-and top views. C is excluded from recognition and inherits B exactly.
+After consecutive-frame stability validation, the full six-degree-of-freedom
+PnP pose is applied immediately to `TrackedBottleRoot`, before Start. Every
+subsequent accepted pose continues to move the common root while B and C stay
+visible. The state does not become `ReadyForRepair` until this has happened.
+There is no session upright/yaw correction. This preserves the measured pitch,
+roll, yaw, translation, and perspective in front, oblique, and top views. C is
+excluded from recognition and inherits B exactly.
 
-Start changes rendering only. It does not create, move, or reparent C:
+The imported FBX `BottleRepairRoot` was measured in Unity with a `-90 degrees X`
+rotation and scale 100. `ModelCoordinateAlignment` therefore uses one fixed
+`+90 degrees X` profile rotation, yielding an identity canonical orientation
+under `TrackedBottleRoot`; the imported unit scale remains intact. This is an
+A-to-B coordinate-frame correction, not a cap offset.
+
+Start changes rendering only. It does not apply registration, create, move,
+rotate, scale, reparent, or rematerial C:
 
 - every B renderer is disabled for colour and depth, including
   `ReferenceNeckProxyB`;
 - C remains in the colour pass and its visibility is reasserted every frame.
+
+`StartDoesNotChangeRigidPose` records the world matrices of
+`TrackedBottleRoot`, `BottleRepairRoot`, `DamagedBottleB`, and `BottleCapC`
+around the actual `StartRecognition()` call. Position tolerance is 0.01 mm,
+rotation tolerance is 0.01 degree, and scale tolerance is 1e-6.
+
+Development Android builds can log `[URP_CAP_DIAG]` snapshots containing all
+four rigid transforms, B/C bounds, all eight C bounds corners in ARCamera space,
+near/far checks, frustum intersection, layer/culling state, renderer flags,
+shader/material/property-block fields, projection data, ARCameraBackground,
+and AROcclusionManager depth modes. The marker/axes and magenta override are
+development diagnostics only; they never modify C's transform.
 
 ## Paper-aligned consistency
 
@@ -65,7 +87,8 @@ the mobile implementation uses verified B samples plus AR light estimates.
 
 ## Evidence boundary
 
-Offline replay, Unity validation, Play Mode, and APK construction verify the
-software and asset contract. They do not prove physical overlay. Final device
+The graphics-enabled RenderTexture check is only an Editor synthetic rendering
+smoke test. Offline replay, Unity validation, EditMode/PlayMode tests, and APK
+construction verify the software and asset contract. They do not prove physical overlay. Final device
 acceptance still requires recordings in which B covers A and, after Start, C
 remains seated through front, oblique, and top motion.

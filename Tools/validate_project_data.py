@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the BottleFullAlignedV2 v36 runtime contract without Unity."""
+"""Validate the BottleFullAlignedV2 v37 runtime contract without Unity."""
 
 from __future__ import annotations
 
@@ -59,6 +59,7 @@ def main() -> None:
     controller_path = ROOT / "Assets/Scripts/OrbImageTrackingController.cs"
     native_path = ROOT / "Native/UrpOrbNative/src/urp_orb_native.cpp"
     setup_path = ROOT / "Assets/Editor/UrpArProjectSetup.cs"
+    calibration_path = ROOT / "Assets/Calibration/CoconutBottleRepairCalibration.asset"
 
     points = read_points(database)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -66,6 +67,7 @@ def main() -> None:
     controller = controller_path.read_text(encoding="utf-8")
     native = native_path.read_text(encoding="utf-8")
     setup = setup_path.read_text(encoding="utf-8")
+    calibration = calibration_path.read_text(encoding="utf-8")
 
     expected_version = "bottle-full-aligned-v2-reference-b-real-observations-v32"
     if manifest.get("version") != expected_version:
@@ -97,6 +99,10 @@ def main() -> None:
         raise ValueError("Blender report hierarchy is invalid")
     if report.get("rigidRelationshipPreserved") is not True:
         raise ValueError("Blender report does not preserve B+C rigidity")
+    manifest_scale = float(manifest.get("meters_per_model_unit", 0.0))
+    report_scale = float(report.get("coordinateFrame", {}).get("metersPerModelUnit", 0.0))
+    if abs(manifest_scale - 0.17) > 1e-6 or abs(report_scale - manifest_scale) > 1e-6:
+        raise ValueError("ORB and Blender B do not share the same physical scale")
     assert_identity(report["referenceB"], "DamagedBottleB")
     assert_identity(report["referenceNeckB"], "ReferenceNeckProxyB")
     assert_identity(report["repairC"], "BottleCapC")
@@ -113,6 +119,25 @@ def main() -> None:
         raise ValueError("BottleCapC is still embedded below the damaged scan cut")
     if registration.get("bToCLocalPosition") != [0.0, 0.0, 0.0]:
         raise ValueError("B-to-C local position changed")
+    body_min = np.asarray(report["referenceB"]["boundsMin"], dtype=np.float32)
+    body_max = np.asarray(report["referenceB"]["boundsMax"], dtype=np.float32)
+    point_min = points.min(axis=0)
+    point_max = points.max(axis=0)
+    coordinate_margin = 0.03
+    if np.any(point_min < body_min - coordinate_margin) or np.any(
+        point_max > body_max + coordinate_margin
+    ):
+        raise ValueError(
+            "ORB 3D points fall outside Blender B bounds; canonical frames diverged"
+        )
+    body_y_span = float(body_max[1] - body_min[1])
+    point_y_span = float(point_max[1] - point_min[1])
+    if body_y_span <= 0.0 or point_y_span / body_y_span < 0.95:
+        raise ValueError("ORB and Blender B vertical axes/scales do not agree")
+    if "orbToModelLocalEulerAngles: {x: 90, y: 0, z: 0}" not in calibration:
+        raise ValueError("The fixed Unity FBX -90 degree X import rotation is not cancelled")
+    if "new Vector3(90f, 0f, 0f)" not in setup:
+        raise ValueError("Scene setup does not preserve the measured FBX axis correction")
 
     prohibited = (
         "displayMatrix",
@@ -123,12 +148,19 @@ def main() -> None:
         "registeredRepairPart.localRotation",
         "registeredRepairPart.localScale",
         "activeProfile.referenceDepthOcclusionMaterial",
+        "hasReadyPoseCandidate",
+        "readyCandidatePosition",
+        "readyCandidateRotation",
+        "readyCandidateTime",
     )
     found = [token for token in prohibited if token in controller]
     if found:
         raise ValueError(f"Production tracker contains prohibited logic: {found}")
     for token in (
         "RestoreProfileCoordinateAlignment",
+        "TryApplyReliablePose",
+        "TrackingState.ReadyForRepair",
+        "AssertStartPoseUnchanged",
         "SetReferenceHierarchyVisible(false)",
         "ShowRepairPresentation",
         "worldPositionDeadbandMeters",
@@ -149,7 +181,7 @@ def main() -> None:
         raise ValueError("Scene generator does not bind only BottleFullAlignedV2")
 
     payload = {
-        "status": "BOTTLE_FULL_ALIGNED_V36_DATA_OK",
+        "status": "BOTTLE_FULL_ALIGNED_V37_DATA_OK",
         "fbx_sha256": sha256(fbx),
         "database_sha256": sha256(database),
         "database_records": len(points),
@@ -161,6 +193,9 @@ def main() -> None:
         "reference_neck_height_meters": 0.010,
         "cap_seated_over_neck": True,
         "device_overlay_verified": False,
+        "orb_points_within_blender_b_bounds": True,
+        "orb_blender_scale_meters_per_unit": manifest_scale,
+        "fbx_axis_correction_euler_x_degrees": 90.0,
     }
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 

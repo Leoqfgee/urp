@@ -23,5 +23,5 @@ MonoBehaviour:
   expectedPhysicalCapDiameter: 0.039
   expectedPhysicalCapHeight: 0.01
   orbToModelLocalPosition: {x: 0, y: 0, z: 0}
-  orbToModelLocalEulerAngles: {x: 0, y: 0, z: 0}
+  orbToModelLocalEulerAngles: {x: 90, y: 0, z: 0}
   orbToModelLocalScale: {x: 1, y: 1, z: 1}

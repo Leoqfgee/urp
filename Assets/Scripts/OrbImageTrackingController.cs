@@ -29,6 +29,8 @@ namespace Urp.ArDemo
             Searching,
             Candidate,
             PoseValidating,
+            StablePoseApplied,
+            ReadyForRepair,
             Repair,
             Lost
         }
@@ -44,6 +46,7 @@ namespace Urp.ArDemo
         [SerializeField] private Transform debugRoot;
         [SerializeField] private Text statusText;
         [SerializeField] private RepairAppearanceConsistencyController appearanceConsistency;
+        [SerializeField] private CapVisibilityDiagnostic capVisibilityDiagnostic;
 
         [Header("Runtime profile")]
         [SerializeField] private RestorationObjectProfile activeProfile;
@@ -110,10 +113,6 @@ namespace Urp.ArDemo
         private Vector3 smoothedRootPosition;
         private Quaternion smoothedRootRotation = Quaternion.identity;
         private float lastRootPoseApplicationTime = float.NegativeInfinity;
-        private bool hasReadyPoseCandidate;
-        private Vector3 readyCandidatePosition;
-        private Quaternion readyCandidateRotation = Quaternion.identity;
-        private float readyCandidateTime = float.NegativeInfinity;
         private TrackingState trackingState = TrackingState.Idle;
 
         public bool HasTrackedPose => registrationEstablished;
@@ -295,6 +294,15 @@ namespace Urp.ArDemo
             {
                 appearanceConsistency.BindRepairRenderers(repairRenderers);
             }
+            if (capVisibilityDiagnostic != null)
+            {
+                capVisibilityDiagnostic.BindRigidTarget(
+                    trackedObjectPoseRoot,
+                    registeredBottlePairRoot,
+                    registeredReferenceModel,
+                    registeredRepairPart,
+                    repairRenderers);
+            }
             if (occlusionRoot != null)
             {
                 occlusionRoot.gameObject.SetActive(false);
@@ -352,40 +360,37 @@ namespace Urp.ArDemo
         {
             if (!modeEnabled
                 || activeProfile == null
-                || !activeProfile.HasTrackingAssets
-                || trackers.Count == 0)
+                || !activeProfile.HasTrackingAssets)
             {
                 UpdateStatus("当前对象尚不具备可用的 A→B 三维跟踪资源。");
                 return;
             }
 
-            repairRequested = true;
-            nextProcessTime = 0f;
-            if (registrationEstablished)
-            {
-                trackingState = TrackingState.Repair;
-                ShowRepairPresentation();
-                UpdateStatus(
-                    "A 与 B 的三维姿态已经稳定。现在隐藏 B 的颜色，只显示瓶盖 C；"
-                    + "B 仍保留完整位置和旋转关系，但其 Renderer 已关闭。");
-            }
-            else if (hasReadyPoseCandidate
-                     && Time.unscaledTime - readyCandidateTime <= 0.75f)
-            {
-                EstablishRegistration(
-                    readyCandidatePosition,
-                    readyCandidateRotation);
-                UpdateStatus(
-                    "已用当前粗对齐自动标定 B 与 ORB 重建坐标系，B 已隐藏且只显示瓶盖 C。"
-                    + "之后 C 只继承 B 的完整三维跟踪位姿。");
-            }
-            else
+            if (!registrationEstablished
+                || trackingState != TrackingState.ReadyForRepair)
             {
                 ShowPreAlignmentPair();
                 UpdateStatus(
-                    "已收到“开始”。正在继续确认 A 与 B 的稳定三维姿态；"
-                    + "确认完成前保留 B+C，完成后会自动隐藏 B 的颜色。");
+                    "A 与 B 尚未完成稳定对齐，请保持瓶子在画面中。"
+                    + "只有 B+C 已应用可靠 PnP 位姿并正在跟踪时才可开始。");
+                return;
             }
+
+            RigidPoseSnapshot before = CaptureRigidPoseSnapshot();
+            capVisibilityDiagnostic?.LogSnapshot("start-before");
+
+            // Start is a pure presentation gate. The stable A-to-B pose was
+            // already applied before this method became eligible to run.
+            repairRequested = true;
+            trackingState = TrackingState.Repair;
+            ShowRepairPresentation();
+
+            RigidPoseSnapshot after = CaptureRigidPoseSnapshot();
+            AssertStartPoseUnchanged(before, after);
+            capVisibilityDiagnostic?.LogSnapshot("start-after");
+            UpdateStatus(
+                "已隐藏参考瓶 B；瓶盖 C 保持 Start 前完全相同的三维位姿。"
+                + "ORB/PnP 将继续驱动整个 B+C 刚性根节点。");
         }
 
         public void ResetTracking()
@@ -593,11 +598,6 @@ namespace Urp.ArDemo
                 SetRepairHierarchyVisible(false);
                 return;
             }
-            ApplyMaterial(
-                repairRenderers,
-                activeProfile.repairMaterial != null
-                    ? activeProfile.repairMaterial
-                    : activeProfile.viewerMaterial);
             // Start changes visibility only. B and C remain rigid siblings,
             // but every B renderer is removed from both colour and depth so
             // the scanned bottle/neck can never z-occlude the clean cap C.
@@ -722,92 +722,31 @@ namespace Urp.ArDemo
                         best.sampledConfidence);
                 }
 
-                if (!registrationEstablished)
+                if (!TryApplyReliablePose(
+                        targetPosition,
+                        targetRotation,
+                        out string poseApplicationReason))
                 {
-                    float initialPositionCorrection =
-                        Vector3.Distance(trackedObjectPoseRoot.position, targetPosition);
-                    float initialRotationCorrection =
-                        Quaternion.Angle(trackedObjectPoseRoot.rotation, targetRotation);
-                    if (initialPositionCorrection > maximumInitialCorrectionMeters)
-                    {
-                        trackingState = TrackingState.Candidate;
-                        UpdateStatus(
-                            $"识别姿态与当前 B 粗对齐差异过大："
-                            + $"{initialPositionCorrection:F2}m，"
-                            + $"{initialRotationCorrection:F0}°。"
-                            + "请重置后先让 B 大致覆盖 A。");
-                        return;
-                    }
-
-                    ShowPresentationForCurrentState();
-                    trackingState = TrackingState.PoseValidating;
-                    if (!TryAccumulateStableRegistration(
-                            targetPosition,
-                            targetRotation,
-                            out Vector3 stablePosition,
-                            out Quaternion stableRotation,
-                            out string stabilityReason))
-                    {
-                        UpdateStatus(stabilityReason);
-                        return;
-                    }
-
-                    hasReadyPoseCandidate = true;
-                    readyCandidatePosition = stablePosition;
-                    readyCandidateRotation = stableRotation;
-                    readyCandidateTime = Time.unscaledTime;
-                    if (!repairRequested)
-                    {
-                        trackingState = TrackingState.Candidate;
-                        UpdateStatus(
-                            $"已在点击开始前识别到稳定瓶身姿态：内点 {best.poseInliers}/"
-                            + $"{best.uniqueMatches}，误差 {best.reprojectionError:F2}px。"
-                            + "请让半透明 B 粗略覆盖真实 A，然后点击“开始”。");
-                        return;
-                    }
-
-                    EstablishRegistration(stablePosition, stableRotation);
-                }
-                else
-                {
-                    float positionJump =
-                        Vector3.Distance(lastAcceptedPosition, targetPosition);
-                    float rotationJump =
-                        Quaternion.Angle(lastAcceptedRotation, targetRotation);
-                    if (positionJump > registrationPositionToleranceMeters * 2f
-                        || rotationJump > registrationRotationToleranceDegrees * 2f)
-                    {
-                        HandleTrackingLoss();
-                        UpdateStatus(
-                            $"A→B 位姿跳变被拒绝：{positionJump:F3}m，"
-                            + $"{rotationJump:F1}°。");
-                        return;
-                    }
-                    ApplyTrackedRootPose(targetPosition, targetRotation, true);
+                    UpdateStatus(poseApplicationReason);
+                    return;
                 }
 
-                lastAcceptedPosition = targetPosition;
-                lastAcceptedRotation = targetRotation;
-                lastValidPoseTime = Time.unscaledTime;
-                trackingState = repairRequested
-                    ? TrackingState.Repair
-                    : TrackingState.PreAlignment;
-                ShowPresentationForCurrentState();
                 if (repairRequested)
                 {
                     UpdateStatus(
-                        $"A 与 B 已稳定跟踪：有效内点 {best.poseInliers}/"
+                        $"Repair 跟踪中：有效内点 {best.poseInliers}/"
                         + $"{best.uniqueMatches}，重投影误差 "
                         + $"{best.reprojectionError:F2}px。"
-                        + "B 的 Renderer 已关闭；C 继承 B 的完整三维姿态。");
+                        + "B 已隐藏；C 保持 Start 前的刚性关系并随共同根节点更新。");
                 }
                 else
                 {
                     UpdateStatus(
-                        $"已识别并稳定跟踪瓶子：有效内点 {best.poseInliers}/"
+                        $"已完成 A→B 稳定三维配准：有效内点 {best.poseInliers}/"
                         + $"{best.uniqueMatches}，误差 "
                         + $"{best.reprojectionError:F2}px。"
-                        + "请确认 B 覆盖真实瓶身 A，然后点击“开始”。");
+                        + "B+C 已应用该 Pose 并正在跟随真实瓶体；"
+                        + "请确认虚拟 B 与真实 A 重合后点击“开始”。");
                 }
             }
             finally
@@ -875,6 +814,74 @@ namespace Urp.ArDemo
             return true;
         }
 
+        private bool TryApplyReliablePose(
+            Vector3 targetPosition,
+            Quaternion targetRotation,
+            out string reason)
+        {
+            if (!registrationEstablished)
+            {
+                float initialPositionCorrection =
+                    Vector3.Distance(trackedObjectPoseRoot.position, targetPosition);
+                float initialRotationCorrection =
+                    Quaternion.Angle(trackedObjectPoseRoot.rotation, targetRotation);
+                if (initialPositionCorrection > maximumInitialCorrectionMeters)
+                {
+                    trackingState = TrackingState.Candidate;
+                    reason =
+                        $"Pose candidate 与初始 B 粗对齐差异过大："
+                        + $"{initialPositionCorrection:F2}m，"
+                        + $"{initialRotationCorrection:F0}°。"
+                        + "尚未应用到 B+C；请让瓶体进入正确视野。";
+                    return false;
+                }
+
+                ShowPreAlignmentPair();
+                trackingState = TrackingState.PoseValidating;
+                if (!TryAccumulateStableRegistration(
+                        targetPosition,
+                        targetRotation,
+                        out Vector3 stablePosition,
+                        out Quaternion stableRotation,
+                        out reason))
+                {
+                    return false;
+                }
+
+                // Stable A-to-B PnP is applied immediately, before Start.
+                // Both B and C stay visible so the user can visually verify
+                // the complete coordinate chain against the real bottle A.
+                EstablishRegistration(stablePosition, stableRotation);
+            }
+            else
+            {
+                float positionJump =
+                    Vector3.Distance(lastAcceptedPosition, targetPosition);
+                float rotationJump =
+                    Quaternion.Angle(lastAcceptedRotation, targetRotation);
+                if (positionJump > registrationPositionToleranceMeters * 2f
+                    || rotationJump > registrationRotationToleranceDegrees * 2f)
+                {
+                    HandleTrackingLoss();
+                    reason =
+                        $"A→B Pose 跳变被拒绝：{positionJump:F3}m，"
+                        + $"{rotationJump:F1}°。";
+                    return false;
+                }
+                ApplyTrackedRootPose(targetPosition, targetRotation, true);
+            }
+
+            lastAcceptedPosition = targetPosition;
+            lastAcceptedRotation = targetRotation;
+            lastValidPoseTime = Time.unscaledTime;
+            trackingState = repairRequested
+                ? TrackingState.Repair
+                : TrackingState.ReadyForRepair;
+            ShowPresentationForCurrentState();
+            reason = string.Empty;
+            return true;
+        }
+
         private bool TryAccumulateStableRegistration(
             Vector3 position,
             Quaternion rotation,
@@ -926,9 +933,9 @@ namespace Urp.ArDemo
             if (registrationStableFrames < requiredFrames)
             {
                 reason =
-                    $"正在确认 A→B 六自由度位姿 "
+                    $"正在检查 Pose stability：A→B 六自由度位姿 "
                     + $"{registrationStableFrames}/{requiredFrames}；"
-                    + "B 与 C 保持 Blender 固定关系并共同跟随候选位姿。";
+                    + "稳定确认完成前 B+C 保持初始粗对齐位姿。";
                 return false;
             }
             reason = string.Empty;
@@ -1022,10 +1029,12 @@ namespace Urp.ArDemo
             lastAcceptedPosition = orbRootPosition;
             lastAcceptedRotation = orbRootRotation;
             lastValidPoseTime = Time.unscaledTime;
+            trackingState = TrackingState.StablePoseApplied;
+            ShowPresentationForCurrentState();
+            capVisibilityDiagnostic?.LogSnapshot("registration-established");
             trackingState = repairRequested
                 ? TrackingState.Repair
-                : TrackingState.PreAlignment;
-            ShowPresentationForCurrentState();
+                : TrackingState.ReadyForRepair;
         }
 
         private void HandleTrackingLoss()
@@ -1071,10 +1080,6 @@ namespace Urp.ArDemo
             lastCandidateRotation = Quaternion.identity;
             lastAcceptedPosition = Vector3.zero;
             lastAcceptedRotation = Quaternion.identity;
-            hasReadyPoseCandidate = false;
-            readyCandidatePosition = Vector3.zero;
-            readyCandidateRotation = Quaternion.identity;
-            readyCandidateTime = float.NegativeInfinity;
             lastRootPoseApplicationTime = float.NegativeInfinity;
             RestoreProfileCoordinateAlignment();
         }
@@ -1453,6 +1458,113 @@ namespace Urp.ArDemo
                 }
             }
             return false;
+        }
+
+        private readonly struct RigidPoseSnapshot
+        {
+            public readonly Matrix4x4 root;
+            public readonly Matrix4x4 pair;
+            public readonly Matrix4x4 reference;
+            public readonly Matrix4x4 cap;
+
+            public RigidPoseSnapshot(
+                Matrix4x4 root,
+                Matrix4x4 pair,
+                Matrix4x4 reference,
+                Matrix4x4 cap)
+            {
+                this.root = root;
+                this.pair = pair;
+                this.reference = reference;
+                this.cap = cap;
+            }
+        }
+
+        private RigidPoseSnapshot CaptureRigidPoseSnapshot()
+        {
+            if (trackedObjectPoseRoot == null
+                || registeredBottlePairRoot == null
+                || registeredReferenceModel == null
+                || registeredRepairPart == null)
+            {
+                throw new InvalidOperationException(
+                    "Cannot capture the rigid B+C pose because the hierarchy is incomplete.");
+            }
+            return new RigidPoseSnapshot(
+                trackedObjectPoseRoot.localToWorldMatrix,
+                registeredBottlePairRoot.localToWorldMatrix,
+                registeredReferenceModel.localToWorldMatrix,
+                registeredRepairPart.localToWorldMatrix);
+        }
+
+        private static void AssertStartPoseUnchanged(
+            RigidPoseSnapshot before,
+            RigidPoseSnapshot after)
+        {
+            AssertMatrixUnchanged("TrackedBottleRoot", before.root, after.root);
+            AssertMatrixUnchanged("BottleRepairRoot", before.pair, after.pair);
+            AssertMatrixUnchanged("DamagedBottleB", before.reference, after.reference);
+            AssertMatrixUnchanged("BottleCapC", before.cap, after.cap);
+
+            if (Debug.isDebugBuild || Application.isEditor)
+            {
+                Debug.Log(
+                    "[URP_CAP_DIAG] StartPoseDelta "
+                    + $"rootPositionMm={MatrixPositionDeltaMeters(before.root, after.root) * 1000f:F6} "
+                    + $"rootRotationDeg={Quaternion.Angle(before.root.rotation, after.root.rotation):F6} "
+                    + $"capPositionMm={MatrixPositionDeltaMeters(before.cap, after.cap) * 1000f:F6} "
+                    + $"capRotationDeg={Quaternion.Angle(before.cap.rotation, after.cap.rotation):F6} "
+                    + $"capScaleDelta={Vector3.Distance(MatrixScale(before.cap), MatrixScale(after.cap)):E6}");
+            }
+        }
+
+        private static void AssertMatrixUnchanged(
+            string label,
+            Matrix4x4 before,
+            Matrix4x4 after)
+        {
+            float positionMeters = MatrixPositionDeltaMeters(before, after);
+            float rotationDegrees = Quaternion.Angle(before.rotation, after.rotation);
+            float scaleDelta = Vector3.Distance(MatrixScale(before), MatrixScale(after));
+            float matrixDelta = MaximumMatrixElementDelta(before, after);
+            if (positionMeters >= 0.00001f
+                || rotationDegrees >= 0.01f
+                || scaleDelta >= 0.000001f
+                || matrixDelta >= 0.00001f)
+            {
+                throw new InvalidOperationException(
+                    $"Start changed {label}: position={positionMeters * 1000f:F6}mm, "
+                    + $"rotation={rotationDegrees:F6}deg, scale={scaleDelta:E6}, "
+                    + $"matrix={matrixDelta:E6}.");
+            }
+        }
+
+        private static float MatrixPositionDeltaMeters(Matrix4x4 a, Matrix4x4 b)
+        {
+            return Vector3.Distance(a.GetColumn(3), b.GetColumn(3));
+        }
+
+        private static Vector3 MatrixScale(Matrix4x4 matrix)
+        {
+            return new Vector3(
+                matrix.GetColumn(0).magnitude,
+                matrix.GetColumn(1).magnitude,
+                matrix.GetColumn(2).magnitude);
+        }
+
+        private static float MaximumMatrixElementDelta(Matrix4x4 a, Matrix4x4 b)
+        {
+            float maximum = 0f;
+            for (int row = 0; row < 4; row++)
+            {
+                for (int column = 0; column < 4; column++)
+                {
+                    maximum = Mathf.Max(
+                        maximum,
+                        Mathf.Abs(a[row, column] - b[row, column]));
+                }
+            }
+            return maximum;
         }
 
         private static bool IsFinite(Vector3 value)

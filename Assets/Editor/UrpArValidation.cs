@@ -41,6 +41,8 @@ namespace Urp.ArDemo.Editor
             "Assets/Editor/UrpArProjectSetup.cs";
         private const string NativeSourcePath =
             "Native/UrpOrbNative/src/urp_orb_native.cpp";
+        private const string CapDiagnosticPath =
+            "Assets/Scripts/CapVisibilityDiagnostic.cs";
         private const string PlayModeSessionKey =
             "UrpArValidation.PlayModeSmokeRunning";
 
@@ -243,7 +245,7 @@ namespace Urp.ArDemo.Editor
                 && catalog.objects.Count(item => item == profile) == 1,
                 "The formal catalog must contain the new bottle profile exactly once.");
             Require(
-                profile.objectId == "bottle_full_aligned_v2_v36",
+                profile.objectId == "bottle_full_aligned_v2_v37",
                 "The formal bottle profile still has the legacy object id.");
             Require(
                 AssetDatabase.GetAssetPath(profile.registeredBottlePairPrefab) == NewPairPath,
@@ -260,6 +262,9 @@ namespace Urp.ArDemo.Editor
                 profile.calibration != null
                 && profile.calibration.HasValidFrame
                 && Mathf.Abs(profile.calibration.metersPerModelUnit - 0.17f) < 0.0001f
+                && Quaternion.Angle(
+                    Quaternion.Euler(profile.calibration.orbToModelLocalEulerAngles),
+                    Quaternion.Euler(90f, 0f, 0f)) < 0.01f
                 && Mathf.Abs(
                     profile.calibration.mouthCenterInModel.y - 0.05882353f) < 0.0001f,
                 "The new canonical B frame or physical scale is invalid.");
@@ -332,6 +337,27 @@ namespace Urp.ArDemo.Editor
                 body.GetComponentsInChildren<Renderer>(true).Length > 0
                 && cap.GetComponentsInChildren<Renderer>(true).Length > 0,
                 "B or C has no Renderer.");
+            Bounds importedBodyBounds = CalculateMeshBoundsInRoot(
+                root,
+                body.GetComponentsInChildren<Renderer>(true));
+            Vector3 expectedBodyMin =
+                new Vector3(-0.0021447852f, -0.0119999993f, -0.0026533404f);
+            Vector3 expectedBodyMax =
+                new Vector3(0.0028399414f, 0.0005882353f, 0.0022504458f);
+            Require(
+                Vector3.Distance(importedBodyBounds.min, expectedBodyMin) < 0.00005f
+                && Vector3.Distance(importedBodyBounds.max, expectedBodyMax) < 0.00005f
+                && Vector3.Distance(root.localScale, Vector3.one * 100f) < 0.01f,
+                "Unity FBX import changed the Blender B canonical axes, origin, or scale: "
+                + $"min=({importedBodyBounds.min.x:F9},{importedBodyBounds.min.y:F9},{importedBodyBounds.min.z:F9}), "
+                + $"max=({importedBodyBounds.max.x:F9},{importedBodyBounds.max.y:F9},{importedBodyBounds.max.z:F9}), "
+                + $"rootScale={root.localScale}.");
+            Debug.Log(
+                "FBX_CANONICAL_BOUNDS_OK "
+                + $"min={importedBodyBounds.min} max={importedBodyBounds.max} "
+                + $"rootRotation=({root.localRotation.x:F9},{root.localRotation.y:F9},"
+                + $"{root.localRotation.z:F9},{root.localRotation.w:F9}) "
+                + $"rootEuler={root.localRotation.eulerAngles} rootScale={root.localScale}");
             UnityEngine.Object.DestroyImmediate(pair);
         }
 
@@ -351,7 +377,10 @@ namespace Urp.ArDemo.Editor
                 "ARAnchor",
                 "registeredRepairPart.localPosition",
                 "registeredRepairPart.localRotation",
-                "registeredRepairPart.localScale"
+                "registeredRepairPart.localScale",
+                "hasReadyPoseCandidate",
+                "readyCandidatePosition",
+                "readyCandidateRotation"
             };
             foreach (string token in prohibitedControllerTokens)
             {
@@ -370,7 +399,11 @@ namespace Urp.ArDemo.Editor
                 && controller.Contains("RestoreProfileCoordinateAlignment")
                 && !controller.Contains("CalibrateSessionCoordinateFrame")
                 && !controller.Contains("sessionCoordinateFrameCalibrated")
-                && controller.Contains("hasReadyPoseCandidate")
+                && controller.Contains("TryApplyReliablePose")
+                && controller.Contains("TrackingState.StablePoseApplied")
+                && controller.Contains("TrackingState.ReadyForRepair")
+                && controller.Contains("CaptureRigidPoseSnapshot")
+                && controller.Contains("AssertStartPoseUnchanged")
                 && controller.Contains("repairRequested")
                 && controller.Contains("recognitionRunning = true")
                 && controller.Contains("SetReferenceHierarchyVisible(false)")
@@ -384,6 +417,31 @@ namespace Urp.ArDemo.Editor
                 && !controller.Contains("ShowReferenceValidation")
                 && !controller.Contains("SetRepairVisible"),
                 "Production tracker still exposes the removed manual B/C stage controls.");
+            int repairPresentationStart = controller.IndexOf(
+                "public void ShowRepairPresentation()",
+                StringComparison.Ordinal);
+            int preAlignmentStart = controller.IndexOf(
+                "private void ShowPreAlignmentPair()",
+                repairPresentationStart,
+                StringComparison.Ordinal);
+            string repairPresentation = controller.Substring(
+                repairPresentationStart,
+                preAlignmentStart - repairPresentationStart);
+            Require(
+                repairPresentation.Contains("SetReferenceHierarchyVisible(false)")
+                && repairPresentation.Contains("SetRepairHierarchyVisible(true)")
+                && !repairPresentation.Contains("ApplyMaterial")
+                && !repairPresentation.Contains("ApplyTrackedRootPose")
+                && !repairPresentation.Contains("RestoreProfileCoordinateAlignment"),
+                "Start presentation must only hide B and retain C.");
+            string capDiagnostic = File.ReadAllText(CapDiagnosticPath);
+            Require(
+                capDiagnostic.Contains("[URP_CAP_DIAG]")
+                && capDiagnostic.Contains("CalculateFrustumPlanes")
+                && capDiagnostic.Contains("currentEnvironmentDepthMode")
+                && capDiagnostic.Contains("forceCapDiagnosticMaterial")
+                && capDiagnostic.Contains("BottleCapC.corner"),
+                "Android cap diagnostics are incomplete.");
             string native = File.ReadAllText(NativeSourcePath);
             Require(
                 native.Contains("SetPosePrior")
@@ -424,8 +482,9 @@ namespace Urp.ArDemo.Editor
                 && setup.Contains("BottlePhotogrammetryLit")
                 && setup.Contains("CleanBottleCapLit")
                 && setup.Contains("AROcclusionManager")
-                && setup.Contains("RepairAppearanceConsistencyController"),
-                "Scene generator does not bind texture, optional depth resources, and light consistency.");
+                && setup.Contains("RepairAppearanceConsistencyController")
+                && setup.Contains("CapVisibilityDiagnostic"),
+                "Scene generator does not bind texture, AR diagnostics, and light consistency.");
             int buildStart = setup.IndexOf(
                 "public static void BuildAndroidFromCommandLine()",
                 StringComparison.Ordinal);
@@ -494,6 +553,16 @@ namespace Urp.ArDemo.Editor
                     body.TransformDirection(Vector3.up),
                     camera.transform.up) > 0.99f,
                 "Initial B+C pose must show the imported B mesh front-facing and upright.");
+            MethodInfo getCanonicalRotation =
+                typeof(OrbImageTrackingController).GetMethod(
+                    "GetCanonicalModelRotationInTrackedRoot",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+            Quaternion canonicalRotation =
+                (Quaternion)getCanonicalRotation.Invoke(controller, null);
+            Require(
+                Quaternion.Angle(canonicalRotation, Quaternion.identity) < 0.01f,
+                "ModelCoordinateAlignment did not cancel the fixed FBX -90 degree axis conversion.");
+            Debug.Log("FBX_AXIS_CONVERSION_CANCELLED_OK");
             Require(body.parent == pair && neck.IsChildOf(body) && cap.parent == pair,
                 "Runtime changed the Blender-authored B/C parent relationship.");
             Require(
@@ -515,17 +584,29 @@ namespace Urp.ArDemo.Editor
 
             Vector3 measuredPosition = new Vector3(0.08f, -0.03f, 0.62f);
             Quaternion measuredRotation = Quaternion.Euler(24f, 37f, -12f);
-            MethodInfo establishRegistration =
+            SetPrivateField(controller, "registrationConfirmationFrames", 3);
+            SetPrivateField(controller, "maximumInitialCorrectionMeters", 10f);
+            MethodInfo applyReliablePose =
                 typeof(OrbImageTrackingController).GetMethod(
-                    "EstablishRegistration",
+                    "TryApplyReliablePose",
                     BindingFlags.Instance | BindingFlags.NonPublic);
-            Require(establishRegistration != null,
-                "Direct full-pose registration path is missing.");
-            establishRegistration.Invoke(
-                controller,
-                new object[] { measuredPosition, measuredRotation });
+            Require(applyReliablePose != null,
+                "Reliable pre-Start pose application path is missing.");
+            for (int frame = 0; frame < 3; frame++)
+            {
+                object[] poseArguments =
+                    { measuredPosition, measuredRotation, null };
+                bool applied = (bool)applyReliablePose.Invoke(
+                    controller,
+                    poseArguments);
+                Require(
+                    applied == (frame == 2),
+                    "Stable Pose must be applied exactly when the confirmation window completes.");
+            }
             Require(
-                Vector3.Distance(rootObject.transform.position, measuredPosition) < 0.0001f
+                controller.IsRigidRegistrationEstablished
+                && controller.State == OrbImageTrackingController.TrackingState.ReadyForRepair
+                && Vector3.Distance(rootObject.transform.position, measuredPosition) < 0.0001f
                 && Quaternion.Angle(rootObject.transform.rotation, measuredRotation) < 0.1f
                 && Vector3.Distance(
                     alignmentObject.transform.localPosition,
@@ -534,8 +615,89 @@ namespace Urp.ArDemo.Editor
                     alignmentObject.transform.localRotation,
                     Quaternion.Euler(
                         profile.calibration.orbToModelLocalEulerAngles)) < 0.1f,
-                "PnP position/rotation must apply directly to TrackedBottleRoot without an upright override.");
-            controller.ShowRepairPresentation();
+                "PreStartStablePoseIsActuallyApplied failed: B+C did not receive the stable PnP Pose.");
+            Require(
+                AnyEnabled(body.GetComponentsInChildren<Renderer>(true))
+                && AnyEnabled(cap.GetComponentsInChildren<Renderer>(true)),
+                "Stable pre-Start registration must keep both B and C visible.");
+            object[] registeredPriorArguments = { null };
+            Require(
+                (bool)buildPrior.Invoke(controller, registeredPriorArguments),
+                "Registered B root did not produce a canonical ORB pose prior.");
+            float[] registeredPrior = registeredPriorArguments[0] as float[];
+            NativeOrbResult roundTripResult = new NativeOrbResult
+            {
+                poseValid = 1,
+                tvecX = registeredPrior[3],
+                tvecY = registeredPrior[7],
+                tvecZ = registeredPrior[11],
+                r00 = registeredPrior[0],
+                r01 = registeredPrior[1],
+                r02 = registeredPrior[2],
+                r10 = registeredPrior[4],
+                r11 = registeredPrior[5],
+                r12 = registeredPrior[6],
+                r20 = registeredPrior[8],
+                r21 = registeredPrior[9],
+                r22 = registeredPrior[10]
+            };
+            Require(
+                OpenCvUnityPoseConverter.TryGetObjectPose(
+                    roundTripResult,
+                    0,
+                    camera,
+                    profile.calibration,
+                    out Vector3 roundTripPosition,
+                    out Quaternion roundTripRotation)
+                && Vector3.Distance(
+                    rootObject.transform.position,
+                    roundTripPosition) < 0.00001f
+                && Quaternion.Angle(
+                    rootObject.transform.rotation,
+                    roundTripRotation) < 0.01f,
+                "ORB R,t -> ARCamera -> TrackedBottleRoot round trip changed the canonical B pose.");
+            Debug.Log("ORB_BLENDER_COORDINATE_CHAIN_ROUNDTRIP_OK");
+
+            Vector3 trackedPositionBeforeUpdate = rootObject.transform.position;
+            object[] updateArguments =
+            {
+                measuredPosition + new Vector3(0.005f, 0f, 0f),
+                measuredRotation * Quaternion.Euler(0f, 2f, 0f),
+                null
+            };
+            Require(
+                (bool)applyReliablePose.Invoke(controller, updateArguments)
+                && Vector3.Distance(
+                    trackedPositionBeforeUpdate,
+                    rootObject.transform.position) > 0.000001f
+                && controller.State
+                    == OrbImageTrackingController.TrackingState.ReadyForRepair,
+                "New reliable pre-Start PnP poses must continue moving the whole B+C root.");
+
+            Matrix4x4 rootBeforeStart = rootObject.transform.localToWorldMatrix;
+            Matrix4x4 pairBeforeStart = pair.localToWorldMatrix;
+            Matrix4x4 bodyBeforeStart = body.localToWorldMatrix;
+            Matrix4x4 capBeforeStart = cap.localToWorldMatrix;
+            controller.StartRecognition();
+            Require(
+                controller.State == OrbImageTrackingController.TrackingState.Repair,
+                "Start did not enter Repair from ReadyForRepair.");
+            RequireStartMatrixUnchanged(
+                "TrackedBottleRoot",
+                rootBeforeStart,
+                rootObject.transform.localToWorldMatrix);
+            RequireStartMatrixUnchanged(
+                "BottleRepairRoot",
+                pairBeforeStart,
+                pair.localToWorldMatrix);
+            RequireStartMatrixUnchanged(
+                "DamagedBottleB",
+                bodyBeforeStart,
+                body.localToWorldMatrix);
+            RequireStartMatrixUnchanged(
+                "BottleCapC",
+                capBeforeStart,
+                cap.localToWorldMatrix);
             Renderer[] bodyRenderers =
                 body.GetComponentsInChildren<Renderer>(true);
             Renderer[] capRenderersAfterStart =
@@ -570,19 +732,19 @@ namespace Urp.ArDemo.Editor
                 Renderer[] capRenderers =
                     cap.GetComponentsInChildren<Renderer>(true);
                 int repairPixels =
-                    CountRepairPixelDifference(camera, capRenderers);
+                    CountEditorSyntheticRepairPixelDifference(camera, capRenderers);
                 Require(
                     repairPixels >= 32,
                     "C is enabled but does not produce visible colour pixels after B is hidden.");
                 Debug.Log(
-                    $"REPAIR_C_PIXEL_VISIBILITY_OK pixels={repairPixels} "
-                    + "stage=C-only-after-B-renderers-hidden");
+                    $"EDITOR_SYNTHETIC_CAP_RENDER_SMOKE_OK pixels={repairPixels} "
+                    + "notDeviceVerification=true");
             }
             else
             {
                 Debug.Log(
-                    "REPAIR_C_PIXEL_VISIBILITY_SKIPPED graphicsDevice=Null; "
-                    + "run this validator without -nographics for colour evidence.");
+                    "EDITOR_SYNTHETIC_CAP_RENDER_SMOKE_SKIPPED graphicsDevice=Null; "
+                    + "this is never real-device overlay evidence.");
             }
 
             UnityEngine.Object.DestroyImmediate(controllerObject);
@@ -705,6 +867,95 @@ namespace Urp.ArDemo.Editor
             return true;
         }
 
+        private static Bounds CalculateMeshBoundsInRoot(
+            Transform root,
+            Renderer[] renderers)
+        {
+            Bounds result = default;
+            bool found = false;
+            foreach (Renderer renderer in renderers)
+            {
+                if (renderer == null)
+                    continue;
+                Bounds localBounds;
+                MeshFilter filter = renderer.GetComponent<MeshFilter>();
+                if (filter != null && filter.sharedMesh != null)
+                {
+                    localBounds = filter.sharedMesh.bounds;
+                }
+                else if (renderer is SkinnedMeshRenderer skinned)
+                {
+                    localBounds = skinned.localBounds;
+                }
+                else
+                {
+                    continue;
+                }
+                Matrix4x4 toRoot =
+                    root.worldToLocalMatrix * renderer.transform.localToWorldMatrix;
+                Vector3 min = localBounds.min;
+                Vector3 max = localBounds.max;
+                for (int x = 0; x <= 1; x++)
+                {
+                    for (int y = 0; y <= 1; y++)
+                    {
+                        for (int z = 0; z <= 1; z++)
+                        {
+                            Vector3 point = toRoot.MultiplyPoint3x4(new Vector3(
+                                x == 0 ? min.x : max.x,
+                                y == 0 ? min.y : max.y,
+                                z == 0 ? min.z : max.z));
+                            if (!found)
+                            {
+                                result = new Bounds(point, Vector3.zero);
+                                found = true;
+                            }
+                            else
+                            {
+                                result.Encapsulate(point);
+                            }
+                        }
+                    }
+                }
+            }
+            Require(found, "Could not calculate imported mesh bounds.");
+            return result;
+        }
+
+        private static void RequireStartMatrixUnchanged(
+            string label,
+            Matrix4x4 before,
+            Matrix4x4 after)
+        {
+            Vector3 beforePosition = before.GetColumn(3);
+            Vector3 afterPosition = after.GetColumn(3);
+            float positionMeters = Vector3.Distance(beforePosition, afterPosition);
+            float rotationDegrees = Quaternion.Angle(before.rotation, after.rotation);
+            Vector3 beforeScale = MatrixScale(before);
+            Vector3 afterScale = MatrixScale(after);
+            float scaleDelta = Vector3.Distance(beforeScale, afterScale);
+            Require(
+                positionMeters < 0.00001f
+                && rotationDegrees < 0.01f
+                && scaleDelta < 0.000001f
+                && MatrixApproximately(before, after),
+                $"StartDoesNotChangeRigidPose failed for {label}: "
+                + $"position={positionMeters * 1000f:F6}mm, "
+                + $"rotation={rotationDegrees:F6}deg, scale={scaleDelta:E6}.");
+            Debug.Log(
+                $"START_POSE_ZERO_DELTA_OK target={label} "
+                + $"positionMm={positionMeters * 1000f:F6} "
+                + $"rotationDeg={rotationDegrees:F6} scaleDelta={scaleDelta:E6}");
+        }
+
+        private static Vector3 MatrixScale(Matrix4x4 matrix)
+        {
+            return new Vector3(
+                matrix.GetColumn(0).magnitude,
+                matrix.GetColumn(1).magnitude,
+                matrix.GetColumn(2).magnitude);
+        }
+
         private static bool AnyEnabled(Renderer[] renderers)
         {
             return renderers.Any(renderer =>
@@ -714,7 +965,7 @@ namespace Urp.ArDemo.Editor
                 && renderer.gameObject.activeInHierarchy);
         }
 
-        private static int CountRepairPixelDifference(
+        private static int CountEditorSyntheticRepairPixelDifference(
             Camera camera,
             Renderer[] capRenderers)
         {
