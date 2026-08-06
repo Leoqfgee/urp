@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the BottleFullAlignedV2 v35 runtime contract without Unity."""
+"""Validate the BottleFullAlignedV2 v36 runtime contract without Unity."""
 
 from __future__ import annotations
 
@@ -122,13 +122,14 @@ def main() -> None:
         "registeredRepairPart.localPosition",
         "registeredRepairPart.localRotation",
         "registeredRepairPart.localScale",
+        "activeProfile.referenceDepthOcclusionMaterial",
     )
     found = [token for token in prohibited if token in controller]
     if found:
         raise ValueError(f"Production tracker contains prohibited logic: {found}")
     for token in (
         "RestoreProfileCoordinateAlignment",
-        "SetRenderersEnabled(referenceNeckRenderers, false)",
+        "SetReferenceHierarchyVisible(false)",
         "ShowRepairPresentation",
         "worldPositionDeadbandMeters",
     ):
@@ -148,7 +149,7 @@ def main() -> None:
         raise ValueError("Scene generator does not bind only BottleFullAlignedV2")
 
     payload = {
-        "status": "BOTTLE_FULL_ALIGNED_V35_DATA_OK",
+        "status": "BOTTLE_FULL_ALIGNED_V36_DATA_OK",
         "fbx_sha256": sha256(fbx),
         "database_sha256": sha256(database),
         "database_records": len(points),

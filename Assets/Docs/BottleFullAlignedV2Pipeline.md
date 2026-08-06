@@ -1,4 +1,4 @@
-# BottleFullAlignedV2 v35 A-to-B-to-C contract
+# BottleFullAlignedV2 v36 A-to-B-to-C contract
 
 ## Rigid asset contract
 
@@ -42,18 +42,17 @@ and top views. C is excluded from recognition and inherits B exactly.
 
 Start changes rendering only. It does not create, move, or reparent C:
 
-- B colour is removed, including `ReferenceNeckProxyB`;
-- the damaged B body writes depth only;
-- the neck proxy does not write depth because it lies inside C;
+- every B renderer is disabled for colour and depth, including
+  `ReferenceNeckProxyB`;
 - C remains in the colour pass and its visibility is reasserted every frame.
 
 ## Paper-aligned consistency
 
 - Geometry follows thesis section 3.3: the recovered B pose drives the repaired
   model in the same rigid object frame.
-- Occlusion follows section 3.4.1: B and C are rendered at the same pose and
-  compared by the depth buffer. Only the real damaged body is the invisible
-  depth occluder, avoiding the previous synthetic-neck self-occlusion.
+- Occlusion is deliberately limited to environment/AR depth. The scanned B
+  mesh is not used as a depth proxy because its reconstructed shoulder and
+  neck overlap C and erase the required cap pixels on the real device.
 - Illumination follows chapter 4: low-saturation B pixels around verified ORB
   inliers provide HSV correction, combined with AR Foundation ambient colour,
   intensity, spherical harmonics, and main-light estimates. Smoothing affects

@@ -35,8 +35,6 @@ namespace Urp.ArDemo.Editor
             + "Textures/bottle_full_clean_v2_albedo.png";
         private const string BottleCapMaterialPath =
             "Assets/Materials/CleanBottleCapLit.mat";
-        private const string BottleDepthMaterialPath =
-            "Assets/Materials/BottleDepthOccluder.mat";
         private const string ControllerPath =
             "Assets/Scripts/OrbImageTrackingController.cs";
         private const string SetupPath =
@@ -234,8 +232,6 @@ namespace Urp.ArDemo.Editor
                 $"Missing bottle photogrammetry texture: {BottleAlbedoPath}");
             Require(File.Exists(BottleCapMaterialPath),
                 $"Missing clean C material: {BottleCapMaterialPath}");
-            Require(File.Exists(BottleDepthMaterialPath),
-                $"Missing B depth occlusion material: {BottleDepthMaterialPath}");
 
             RestorationObjectCatalog catalog =
                 AssetDatabase.LoadAssetAtPath<RestorationObjectCatalog>(CatalogPath);
@@ -247,7 +243,7 @@ namespace Urp.ArDemo.Editor
                 && catalog.objects.Count(item => item == profile) == 1,
                 "The formal catalog must contain the new bottle profile exactly once.");
             Require(
-                profile.objectId == "bottle_full_aligned_v2_v35",
+                profile.objectId == "bottle_full_aligned_v2_v36",
                 "The formal bottle profile still has the legacy object id.");
             Require(
                 AssetDatabase.GetAssetPath(profile.registeredBottlePairPrefab) == NewPairPath,
@@ -284,11 +280,8 @@ namespace Urp.ArDemo.Editor
                 && profile.preAlignmentMaterial.GetColor("_BaseColor").a > 0.95f,
                 "Pre-alignment B+C must use the requested opaque textured material.");
             Require(
-                profile.referenceDepthOcclusionMaterial != null
-                && AssetDatabase.GetAssetPath(
-                    profile.referenceDepthOcclusionMaterial)
-                    == BottleDepthMaterialPath,
-                "The bottle body must use the dedicated colour-invisible depth material after Start.");
+                profile.referenceDepthOcclusionMaterial == null,
+                "B must not retain a depth material that can occlude C after Start.");
 
             byte[] database = File.ReadAllBytes(DatabasePath);
             Require(
@@ -380,7 +373,7 @@ namespace Urp.ArDemo.Editor
                 && controller.Contains("hasReadyPoseCandidate")
                 && controller.Contains("repairRequested")
                 && controller.Contains("recognitionRunning = true")
-                && controller.Contains("SetRenderersEnabled(referenceNeckRenderers, false)")
+                && controller.Contains("SetReferenceHierarchyVisible(false)")
                 && controller.Contains("worldPositionDeadbandMeters")
                 && controller.Contains("maximumWorldRotationCorrectionDegreesPerSecond")
                 && controller.Contains("trackingState = TrackingState.Repair")
@@ -543,20 +536,20 @@ namespace Urp.ArDemo.Editor
                         profile.calibration.orbToModelLocalEulerAngles)) < 0.1f,
                 "PnP position/rotation must apply directly to TrackedBottleRoot without an upright override.");
             controller.ShowRepairPresentation();
-            Renderer[] bodyDepthRenderers =
-                GetPrivateField<Renderer[]>(controller, "referenceBodyRenderers");
-            Renderer[] neckRenderers =
-                GetPrivateField<Renderer[]>(controller, "referenceNeckRenderers");
+            Renderer[] bodyRenderers =
+                body.GetComponentsInChildren<Renderer>(true);
+            Renderer[] capRenderersAfterStart =
+                cap.GetComponentsInChildren<Renderer>(true);
             Require(
-                AnyEnabled(bodyDepthRenderers)
-                && !AnyEnabled(neckRenderers)
-                && AnyEnabled(cap.GetComponentsInChildren<Renderer>(true)),
-                "Repair stage must hide the B neck colour, retain body depth, and keep C visible.");
-            Require(
-                AllUseMaterial(
-                    bodyDepthRenderers,
-                    profile.referenceDepthOcclusionMaterial),
-                "Only the damaged B body may remain as the thesis depth occluder.");
+                bodyRenderers.All(renderer =>
+                    renderer != null
+                    && !renderer.enabled
+                    && renderer.forceRenderingOff)
+                && capRenderersAfterStart.All(renderer =>
+                    renderer != null
+                    && renderer.enabled
+                    && !renderer.forceRenderingOff),
+                "Repair stage must disable every B renderer while keeping C visible.");
             Require(
                 AllUseMaterial(
                     cap.GetComponentsInChildren<Renderer>(true),

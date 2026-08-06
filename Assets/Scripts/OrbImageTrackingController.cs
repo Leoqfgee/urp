@@ -598,20 +598,11 @@ namespace Urp.ArDemo
                 activeProfile.repairMaterial != null
                     ? activeProfile.repairMaterial
                     : activeProfile.viewerMaterial);
-            // B's bottle body remains as a colour-invisible depth proxy, which
-            // is the z-buffer comparison used by the thesis for geometric
-            // occlusion. The synthetic neck proxy is excluded because it is
-            // inside C and would erase the repair. If no depth material is
-            // configured, fail safe by disabling the body colour renderers.
-            bool useBodyDepth = activeProfile.referenceDepthOcclusionMaterial != null;
-            if (useBodyDepth)
-            {
-                ApplyMaterial(
-                    referenceBodyRenderers,
-                    activeProfile.referenceDepthOcclusionMaterial);
-            }
-            SetRenderersEnabled(referenceBodyRenderers, useBodyDepth);
-            SetRenderersEnabled(referenceNeckRenderers, false);
+            // Start changes visibility only. B and C remain rigid siblings,
+            // but every B renderer is removed from both colour and depth so
+            // the scanned bottle/neck can never z-occlude the clean cap C.
+            // SetRenderersEnabled updates enabled and forceRenderingOff.
+            SetReferenceHierarchyVisible(false);
             SetRepairHierarchyVisible(true);
         }
 
