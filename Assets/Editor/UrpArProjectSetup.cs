@@ -38,7 +38,7 @@ namespace Urp.ArDemo.Editor
             "Assets/Materials/CleanBottleCapLit.mat";
         private const string BottleDepthMaterialPath =
             "Assets/Materials/BottleDepthOccluder.mat";
-        private const string AndroidApkPath = "Builds/BottleRepairAR_v34.apk";
+        private const string AndroidApkPath = "Builds/BottleRepairAR_v35.apk";
         private const string BottleReferenceOrbPath =
             "Assets/OrbModels/bottle_reference_b.bytes";
         private const string BottleCalibrationPath =
@@ -192,14 +192,14 @@ namespace Urp.ArDemo.Editor
 
         private static void ConfigureAndroidProject()
         {
-            PlayerSettings.productName = "瓶盖AR修复 v34";
+            PlayerSettings.productName = "瓶盖AR修复 v35";
             PlayerSettings.companyName = "qfgeeee";
-            PlayerSettings.bundleVersion = "4.3.4";
+            PlayerSettings.bundleVersion = "4.3.5";
             PlayerSettings.SetApplicationIdentifier(
                 BuildTargetGroup.Android, "com.qfgeeee.paper52objecttrackingar");
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
-            PlayerSettings.Android.bundleVersionCode = 434;
+            PlayerSettings.Android.bundleVersionCode = 435;
             PlayerSettings.SetScriptingBackend(
                 BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
@@ -368,7 +368,7 @@ namespace Urp.ArDemo.Editor
 
             RestorationObjectProfile bottle = LoadOrCreate<RestorationObjectProfile>(
                 BottleProfilePath);
-            bottle.objectId = "bottle_full_aligned_v2_v34";
+            bottle.objectId = "bottle_full_aligned_v2_v35";
             bottle.displayName = "新重建无盖饮料瓶与瓶盖";
             bottle.shortDescription =
                 "Blender 中刚性对齐的无盖瓶身 B 与干净白色瓶盖 C。";

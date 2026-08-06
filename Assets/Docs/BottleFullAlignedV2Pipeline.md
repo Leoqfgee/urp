@@ -1,4 +1,4 @@
-# BottleFullAlignedV2 v34 A-to-B-to-C contract
+# BottleFullAlignedV2 v35 A-to-B-to-C contract
 
 ## Rigid asset contract
 
@@ -28,12 +28,12 @@ TrackedBottleRoot                 complete accepted PnP world pose
 ```
 
 Before Start, opaque B+C is placed once in world space, upright and centred.
-ORB recognition already runs. The production database is `URP3DM2`: 73,047
-real open-bottle observations split into 188 calibrated view groups. A dense
-10-level ORB pyramid handles scale and oblique views. Candidate view groups are
-solved independently with SQPnP, EPNP, and iterative RANSAC, refined with LM,
-and gated by inlier consensus, spatial coverage, positive depth, reprojection
-error, and temporal orientation continuity.
+ORB recognition already runs. The production database is the `URP3DM1`
+4,100-record real-photo baseline used by v33 and previously shown to recognize
+this physical bottle. Its multi-point correspondences are solved with PnP and
+gated by inlier consensus, spatial coverage, positive depth, and reprojection
+error. The experimental grouped database is not used at runtime because it
+regressed real-device pose acceptance.
 
 The full six-degree-of-freedom PnP pose is applied directly to
 `TrackedBottleRoot`. There is no session upright/yaw correction. This preserves

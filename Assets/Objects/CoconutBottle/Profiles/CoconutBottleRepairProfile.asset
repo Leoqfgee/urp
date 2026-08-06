@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7155bfc119d520b4f8912cd4f4e7b4eb, type: 3}
   m_Name: CoconutBottleRepairProfile
   m_EditorClassIdentifier: 
-  objectId: bottle_full_aligned_v2_v34
+  objectId: bottle_full_aligned_v2_v35
   displayName: "\u65B0\u91CD\u5EFA\u65E0\u76D6\u996E\u6599\u74F6\u4E0E\u74F6\u76D6"
   shortDescription: "Blender \u4E2D\u521A\u6027\u5BF9\u9F50\u7684\u65E0\u76D6\u74F6\u8EAB
     B \u4E0E\u5E72\u51C0\u767D\u8272\u74F6\u76D6 C\u3002"

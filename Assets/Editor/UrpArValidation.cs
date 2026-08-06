@@ -247,7 +247,7 @@ namespace Urp.ArDemo.Editor
                 && catalog.objects.Count(item => item == profile) == 1,
                 "The formal catalog must contain the new bottle profile exactly once.");
             Require(
-                profile.objectId == "bottle_full_aligned_v2_v34",
+                profile.objectId == "bottle_full_aligned_v2_v35",
                 "The formal bottle profile still has the legacy object id.");
             Require(
                 AssetDatabase.GetAssetPath(profile.registeredBottlePairPrefab) == NewPairPath,
@@ -292,21 +292,19 @@ namespace Urp.ArDemo.Editor
 
             byte[] database = File.ReadAllBytes(DatabasePath);
             Require(
-                database.Length >= 16
+                database.Length >= 12
                 && database.Take(8).SequenceEqual(
-                    new byte[] { 0x55, 0x52, 0x50, 0x33, 0x44, 0x4D, 0x32, 0x00 }),
-                "B database has invalid URP3DM2 magic.");
+                    new byte[] { 0x55, 0x52, 0x50, 0x33, 0x44, 0x4D, 0x31, 0x00 }),
+                "B database has invalid URP3DM1 magic.");
             int records = BitConverter.ToInt32(database, 8);
-            int viewGroups = BitConverter.ToInt32(database, 12);
             Require(
-                records == 73047 && viewGroups == 188,
-                $"B grouped database is invalid: {records} records/{viewGroups} groups.");
+                records == 4100 && database.Length == 12 + records * 44,
+                $"B device-proven database is invalid: {records} records.");
             string manifest = File.ReadAllText(DatabaseManifestPath);
             Require(
-                manifest.Contains("bottle-no-cap-grouped-multiview-v34")
+                manifest.Contains("bottle-full-aligned-v2-reference-b-real-observations-v32")
                 && manifest.Contains("\"rendered_mesh_descriptors_used\": false")
                 && manifest.Contains("bottle_damaged")
-                && manifest.Contains("\"view_group_count\": 188")
                 && manifest.Contains("\"repair_c_excluded_from_matching\": true")
                 && manifest.Contains("\"device_overlay_verified\": false"),
                 "B database manifest does not describe the real-photo B-only pipeline.");
@@ -397,14 +395,10 @@ namespace Urp.ArDemo.Editor
             Require(
                 native.Contains("SetPosePrior")
                 && native.Contains("guidedMatches")
-                && native.Contains("strictRatioMatches")
-                && native.Contains("groupSolution")
+                && native.Contains("strictSolution")
                 && native.Contains("guidedSolution")
                 && native.Contains("SOLVEPNP_SQPNP")
                 && native.Contains("SampleReferenceHsv")
-                && native.Contains("priorRotationErrorDegrees")
-                && native.Contains("1.15f")
-                && native.Contains("cv::ORB::HARRIS_SCORE")
                 && !native.Contains("frameToTarget")
                 && !native.Contains("repairAnchor")
                 && !native.Contains("set_repair_anchor"),
