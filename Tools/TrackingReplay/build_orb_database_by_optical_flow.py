@@ -37,6 +37,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--view-residue", type=int, default=0)
     parser.add_argument("--minimum-gap", type=int, default=3)
     parser.add_argument("--maximum-gap", type=int, default=9)
+    parser.add_argument(
+        "--canonical-transform-json",
+        type=Path,
+        help=(
+            "Registration artifact containing sfm_to_orb_matrix and canonical "
+            "bounds. When supplied, geometry-measured v41 coordinates replace "
+            "the legacy percentile-derived canonical frame."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -288,20 +297,26 @@ def select_records(
     descriptors: np.ndarray,
     responses: np.ndarray,
     maximum: int,
+    bounds_minimum: np.ndarray | None = None,
+    bounds_maximum: np.ndarray | None = None,
 ) -> np.ndarray:
-    # Reject triangulated outliers with the physical canonical bottle envelope.
-    radial = np.hypot(points[:, 0], points[:, 2])
-    valid = (
-        (points[:, 1] >= -1.28)
-        & (points[:, 1] <= 0.06)
-        & (radial <= 0.34)
+    # Reject triangulated outliers with the measured production-B envelope.
+    if bounds_minimum is None or bounds_maximum is None:
+        bounds_minimum = np.asarray([-0.34, -1.28, -0.34])
+        bounds_maximum = np.asarray([0.34, 0.06, 0.34])
+    span = np.maximum(bounds_maximum - bounds_minimum, 1e-9)
+    margin = np.maximum(span * 0.04, 0.01)
+    valid = np.all(
+        (points >= bounds_minimum - margin)
+        & (points <= bounds_maximum + margin),
+        axis=1,
     )
     indices = np.flatnonzero(valid)
     if len(indices) <= maximum:
         return indices
     selected_points = points[indices]
-    minimum = np.asarray([-0.34, -1.28, -0.34])
-    span = np.asarray([0.68, 1.34, 0.68])
+    minimum = bounds_minimum - margin
+    span = bounds_maximum - bounds_minimum + margin * 2.0
     cells = np.floor(
         np.clip((selected_points - minimum) / span, 0.0, 0.999999)
         * np.asarray([10, 20, 10])
@@ -377,7 +392,28 @@ def main() -> None:
     )
     first_pose_view = views[pose_indices[0]]
     first_center = camera_projection(first_pose_view, poses)[1]
-    transform, transform_report = canonical_transform(structure_points, first_center)
+    bounds_minimum = None
+    bounds_maximum = None
+    if args.canonical_transform_json is not None:
+        registration = json.loads(
+            args.canonical_transform_json.read_text(encoding="utf-8")
+        )
+        transform = np.asarray(
+            registration["sfm_to_orb_matrix"], dtype=np.float64
+        ).reshape(4, 4)
+        bounds_minimum = np.asarray(
+            registration["canonical_bounds_min"], dtype=np.float64
+        )
+        bounds_maximum = np.asarray(
+            registration["canonical_bounds_max"], dtype=np.float64
+        )
+        transform_report = {
+            "source": "independent same-reconstruction geometry measurement v41",
+            "artifact": str(args.canonical_transform_json),
+            "matrixRowMajor": transform.reshape(-1).tolist(),
+        }
+    else:
+        transform, transform_report = canonical_transform(structure_points, first_center)
     orb = cv2.ORB_create(
         5000,
         1.15,
@@ -447,7 +483,14 @@ def main() -> None:
     descriptors = np.concatenate(all_descriptors)
     responses = np.concatenate(all_responses)
     group_ids = np.concatenate(all_group_ids)
-    selected = select_records(points, descriptors, responses, args.max_records)
+    selected = select_records(
+        points,
+        descriptors,
+        responses,
+        args.max_records,
+        bounds_minimum,
+        bounds_maximum,
+    )
     points = points[selected]
     descriptors = descriptors[selected]
     group_ids = group_ids[selected]
@@ -471,6 +514,8 @@ def main() -> None:
                 unselected_descriptors[group_indices],
                 unselected_responses[group_indices],
                 args.maximum_records_per_group,
+                bounds_minimum,
+                bounds_maximum,
             )
             if len(local_selection) >= 8:
                 grouped_selections.append(group_indices[local_selection])

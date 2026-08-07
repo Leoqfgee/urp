@@ -1,15 +1,17 @@
-# Bottle v40 registration tools
+# Bottle v41 registration tools
 
-The 4,100-record ORB database and `bottle_full_clean_v2` B are different
-Meshroom reconstructions. Do not claim same-reconstruction identity.
+v41 replaces the v40 two-reconstruction fit with the actual Meshroom
+reconstruction that owns the ORB observations.
 
-1. `export_b_registration_surface.py` exports actual legacy/runtime rendered B
-   triangles in explicit coordinate frames.
-2. `compute_cross_reconstruction_registration_v40.py` validates the measured
-   cross-reconstruction Sim(3), real triangle distances, semantic axes, hashes,
-   and writes the registration/frame-contract JSON files.
-3. `package_bottle_orb_pair_v40.py` applies that one matrix to B, neck and C
-   vertices together and exports the identity-local runtime hierarchy.
+1. AliceVision meshing/filtering/texturing produces B from
+   `F:\Meshroom_work\bottle_damaged`.
+2. `compute_same_reconstruction_registration_v41.py` independently measures
+   raw and production mouth/base rings, scale, long axis, red-logo front, and
+   barcode side. It writes the strict registration and frame artifacts.
+3. `build_orb_database_by_optical_flow.py --canonical-transform-json ...`
+   triangulates real-photo ORB features directly into that measured frame.
+4. `package_same_reconstruction_pair_v41.py` replaces B, keeps C geometry and
+   local matrix unchanged, and exports the identity-local rigid hierarchy.
 
-`prepare_bottle_full_aligned_v2.py` documents the pre-v40 source authoring
-asset; it is not the final ORB↔B registration step. C is never moved by itself.
+The v40 scripts remain as historical evidence of the rejected forced-mouth
+approach. They are not part of the v41 build.

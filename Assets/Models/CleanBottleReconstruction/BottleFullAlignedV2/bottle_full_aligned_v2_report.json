@@ -1,81 +1,39 @@
 {
-  "version": "bottle-orb-cross-reconstruction-rigid-pair-v40",
+  "version": "bottle-orb-same-reconstruction-rigid-pair-v41",
   "runtimeHierarchy": {
     "root": "BottleRepairRoot",
     "referenceB": "DamagedBottleB",
-    "referenceNeckB": "ReferenceNeckProxyB",
+    "referenceNeckCompatibilityNode": "ReferenceNeckProxyB",
     "repairC": "BottleCapC"
   },
   "coordinateFrame": {
-    "origin": "physical bottle mouth centre",
-    "physicalMouthCentreModel": [
-      0.0,
-      0.0,
-      0.0
-    ],
-    "upAxis": "+Y base to mouth",
-    "printedFrontAxis": "+Z red-logo/front side",
+    "origin": "independently measured physical bottle mouth-ring centroid",
+    "upAxis": "+Y measured base-to-mouth center-line",
+    "printedFrontAxis": "+Z red-logo semantic direction",
     "metersPerModelUnit": 0.17
   },
   "referenceB": {
-    "source": "Assets\\Models\\CleanBottleReconstruction\\BottleFullAlignedV2\\bottle_full_aligned_v2.fbx",
-    "sourceReconstruction": "F:\\Meshroom_work\\bottle_full_clean_v2",
+    "source": "F:\\Meshroom_work\\bottle_damaged\\v41_same_reconstruction_textured\\texturedMesh.obj",
+    "sourceReconstruction": "F:\\Meshroom_work\\bottle_damaged",
     "boundsMin": [
-      -0.24784959852695465,
-      -1.2452011108398438,
-      -0.24484294652938843
+      -0.29551637172698975,
+      -1.4966118335723877,
+      -0.2766771912574768
     ],
     "boundsMax": [
-      0.2504173219203949,
-      -0.057069674134254456,
-      0.2544397711753845
+      0.2531318664550781,
+      0.035488009452819824,
+      0.24008381366729736
     ],
-    "localPosition": [
-      0.0,
-      0.0,
-      0.0
-    ],
-    "localRotationRadians": [
-      0.0,
-      0.0,
-      0.0
-    ],
-    "localScale": [
-      1.0,
-      1.0,
-      1.0
-    ]
+    "containsReconstructedPhysicalNeck": true
   },
   "referenceNeckB": {
-    "boundsMin": [
-      -0.11208304762840271,
-      -0.06154286488890648,
-      -0.10994289815425873
-    ],
-    "boundsMax": [
-      0.11046388000249863,
-      0.0036759525537490845,
-      0.11265447735786438
-    ],
-    "localPosition": [
-      0.0,
-      0.0,
-      0.0
-    ],
-    "localRotationRadians": [
-      0.0,
-      0.0,
-      0.0
-    ],
-    "localScale": [
-      1.0,
-      1.0,
-      1.0
-    ]
+    "emptyCompatibilityNode": true,
+    "reason": "physical neck is part of the same-reconstruction DamagedBottleB mesh"
   },
   "repairC": {
-    "source": "Assets\\Models\\CleanBottleReconstruction\\BottleFullAlignedV2\\bottle_full_aligned_v2.fbx",
-    "geometryPolicy": "same T_ORB_FROM_B baked into B, neck and C vertices; no independent C offset/rotation/scale",
+    "geometrySha256Before": "17BAF9AC079CA2502C92783EAFF2572E23569557B6F90EC3CA761FA31626A945",
+    "geometrySha256After": "17BAF9AC079CA2502C92783EAFF2572E23569557B6F90EC3CA761FA31626A945",
     "boundsMin": [
       -0.11542869359254837,
       -0.055418629199266434,
@@ -86,37 +44,59 @@
       0.011889807879924774,
       0.1160384938120842
     ],
-    "localPosition": [
-      0.0,
-      0.0,
-      0.0
-    ],
-    "localRotationRadians": [
-      0.0,
-      0.0,
-      0.0
-    ],
-    "localScale": [
+    "localMatrixBefore": [
       1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
       1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
       1.0
-    ]
+    ],
+    "localMatrixAfter": [
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "geometryPolicy": "C geometry/local transform unchanged; shared canonical mouth frame only"
   },
   "registration": {
-    "method": "cross-reconstruction Sim(3): historical real ORB-to-legacy-B robust Umeyama (commit 65d64d1), current-B-to-legacy-B trimmed surface ICP, red-logo texture fixes current +X to ORB +Z yaw, physical mouth center imposed exactly",
+    "method": "same Meshroom reconstruction; raw surface and filtered production B measured independently; robust mouth/base rings plus center-line axis; red-logo front and barcode side use real source frames; 34 mm measured neck diameter establishes physical scale",
     "sourceT_ORB_FROM_B": [
-      -0.0419322104632083,
-      0.018853338881553793,
-      -0.992102548022601,
-      -0.0011090199383404678,
-      0.03234640302738032,
-      0.9924862280813386,
-      0.017493476907616004,
-      -0.05838154304580223,
-      0.9917543165477568,
-      -0.03157313947241066,
-      -0.042517489660092354,
-      0.0018572435052958687,
+      0.4111296212994733,
+      0.03137443509998305,
+      -1.3221410313209494,
+      -0.843349955297806,
+      -0.05368715024064648,
+      1.3838084796721069,
+      0.016143384921553507,
+      -1.6123229182896726,
+      1.3214230782680108,
+      0.04646034653168376,
+      0.4120088734614414,
+      0.5140945173747211,
       0.0,
       0.0,
       0.0,
@@ -139,8 +119,7 @@
       0.0,
       0.0,
       1.0
-    ],
-    "registrationArtifact": "Assets\\Calibration\\bottle_orb_to_b_registration.json"
+    ]
   },
   "rigidContract": {
     "rootLocalMatrix": [
@@ -217,8 +196,7 @@
     ],
     "cIsNeverPositionedIndependentlyAtRuntime": true
   },
-  "sourceFbxSha256": "573D7583033B6D1B5AD2103DA5B2D095C0F475E2A48E8585D883EDC11A4DCED9",
-  "runtimeFbxSha256": "54DB65AF31DB2286BB619B8982C8AB83F1EBE7B0A4B22F910EA7D210012F7180",
+  "runtimeFbxSha256": "AAA471C5BFBBCEA20F7F3C636BC5080FAA00A62FB8652732642BCA01D7B17F62",
   "rigidRelationshipPreserved": true,
   "deviceOverlayVerified": false
 }

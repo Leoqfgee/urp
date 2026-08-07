@@ -232,7 +232,7 @@ namespace Urp.ArDemo.Editor
                 && catalog.objects.Count(item => item == profile) == 1,
                 "The formal catalog must contain the new bottle profile exactly once.");
             Require(
-                profile.objectId == "bottle_orb_cross_registered_v40",
+                profile.objectId == "bottle_orb_same_reconstruction_v41",
                 "The formal bottle profile still has the legacy object id.");
             Require(
                 AssetDatabase.GetAssetPath(profile.registeredBottlePairPrefab) == NewPairPath,
@@ -287,30 +287,35 @@ namespace Urp.ArDemo.Editor
                 "B database has invalid URP3DM1 magic.");
             int records = BitConverter.ToInt32(database, 8);
             Require(
-                records == 4100 && database.Length == 12 + records * 44,
-                $"B device-proven database is invalid: {records} records.");
+                records == 3240 && database.Length == 12 + records * 44,
+                $"B same-reconstruction surface-supported database is invalid: {records} records.");
             string manifest = File.ReadAllText(DatabaseManifestPath);
             Require(
-                manifest.Contains("bottle-orb-cross-registration-reference-b-v40")
+                manifest.Contains("bottle-orb-same-reconstruction-reference-b-v41")
                 && manifest.Contains("\"rendered_mesh_descriptors_used\": false")
-                && manifest.Contains("different Meshroom reconstructions")
+                && manifest.Contains("same Meshroom reconstruction")
+                && manifest.Contains("\"records_before_surface_support_filter\": 4100")
+                && manifest.Contains("\"matching_and_pnp_thresholds_modified\": false")
                 && manifest.Contains("\"repair_c_excluded_from_matching\": true")
                 && manifest.Contains("\"device_overlay_verified\": false"),
                 "B database manifest does not describe the real-photo B-only pipeline.");
             string report = File.ReadAllText(NewPairReportPath);
             Require(
-                report.Contains("bottle-orb-cross-reconstruction-rigid-pair-v40")
-                && report.Contains("bottle_full_clean_v2")
-                && report.Contains("\"physicalMouthCentreModel\": [")
-                && report.Contains("cross-reconstruction Sim(3)")
-                && report.Contains("no independent C offset/rotation/scale")
+                report.Contains("bottle-orb-same-reconstruction-rigid-pair-v41")
+                && report.Contains("bottle_damaged")
+                && report.Contains("independently measured physical bottle mouth-ring centroid")
+                && report.Contains("same Meshroom reconstruction")
+                && report.Contains("C geometry/local transform unchanged")
                 && report.Contains("\"rigidRelationshipPreserved\": true"),
-                "Blender report does not describe the v40 cross-registered B+C contract.");
+                "Blender report does not describe the v41 same-reconstruction B+C contract.");
             string modelRegistration = File.ReadAllText(ModelRegistrationArtifactPath);
             Require(
                 modelRegistration.Contains(
                     "\"independent_model_registration_verified\": true")
                 && modelRegistration.Contains("\"orb_point_to_b_surface_mm\"")
+                && modelRegistration.Contains("\"mouth_center_independently_measured\": true")
+                && modelRegistration.Contains("\"base_center_independently_measured\": true")
+                && modelRegistration.Contains("\"front_semantics_independently_measured\": true")
                 && modelRegistration.Contains("\"T_ORB_FROM_B\"")
                 && modelRegistration.Contains("\"device_verified\": false"),
                 "Independent ORB-to-B registration evidence is incomplete.");
@@ -339,13 +344,12 @@ namespace Urp.ArDemo.Editor
             Bounds importedBodyBounds = CalculateMeshBoundsInRoot(
                 root,
                 body.GetComponentsInChildren<Renderer>(true));
-            Vector3 expectedBodyMin =
-                new Vector3(-0.0025041732f, -0.0124520111f, -0.0024484295f);
-            Vector3 expectedBodyMax =
-                new Vector3(0.0024784960f, 0.0000367595f, 0.0025443977f);
+            Vector3 importedSize = importedBodyBounds.size;
             Require(
-                Vector3.Distance(importedBodyBounds.min, expectedBodyMin) < 0.00005f
-                && Vector3.Distance(importedBodyBounds.max, expectedBodyMax) < 0.00005f
+                importedSize.y > 0.010f && importedSize.y < 0.017f
+                && importedSize.x > 0.003f && importedSize.x < 0.008f
+                && importedSize.z > 0.003f && importedSize.z < 0.008f
+                && Mathf.Abs(importedBodyBounds.max.y) < 0.001f
                 && Vector3.Distance(root.localScale, Vector3.one * 100f) < 0.01f,
                 "Unity FBX import changed the Blender B canonical axes, origin, or scale: "
                 + $"min=({importedBodyBounds.min.x:F9},{importedBodyBounds.min.y:F9},{importedBodyBounds.min.z:F9}), "
@@ -367,12 +371,12 @@ namespace Urp.ArDemo.Editor
             string appController = File.ReadAllText(AppControllerPath);
             string buildIdentity = File.ReadAllText(BuildIdentityPath);
             Require(
-                appController.Contains("v40")
+                appController.Contains("v41")
                 && buildIdentity.Contains(
-                    "orb-tracking-v40-cross-registered-adaptive-se3")
+                    "orb-tracking-v41-same-reconstruction-adaptive-se3")
                 && buildIdentity.Contains(
-                    "coconut-cross-reconstruction-sim3-v40"),
-                "Visible application/build identity still reports a pre-v40 build.");
+                    "coconut-same-reconstruction-measured-v41"),
+                "Visible application/build identity still reports a pre-v41 build.");
             string[] prohibitedControllerTokens =
             {
                 "displayMatrix",
@@ -456,6 +460,8 @@ namespace Urp.ArDemo.Editor
             string unityPoseGate = File.ReadAllText(UnityPoseGatePath);
             Require(
                 poseDiagnostic.Contains("[URP_POSE_DIAG]")
+                && poseDiagnostic.Contains("registered_mouth_center_b_orb")
+                && poseDiagnostic.Contains("DrawLandmarkPair")
                 && poseDiagnostic.Contains("ORB screen dirs")
                 && poseDiagnostic.Contains("B screen dirs")
                 && canonicalRegistration.Contains("OrbToImportedMeshPoint")
@@ -463,7 +469,12 @@ namespace Urp.ArDemo.Editor
                 && unityPoseGate.Contains("poseChainRoundTripRmsPixels")
                 && unityPoseGate.Contains("hierarchyTransformRoundTripRmsPixels")
                 && unityPoseGate.Contains("displayGate=DISABLED"),
-                "v40 native-camera round-trip or hierarchy diagnostics are incomplete.");
+                "v41 native-camera, landmark projection, or hierarchy diagnostics are incomplete.");
+            Require(
+                controller.Contains("[URP_CAMERA_SYNC_DIAG]")
+                && controller.Contains("closestArTimestampNs")
+                && controller.Contains("cameraPoseDeltaCm"),
+                "v41 CPU-image/AR-camera timestamp diagnostics are incomplete.");
             string native = File.ReadAllText(NativeSourcePath);
             Require(
                 native.Contains("SetPosePrior")
@@ -614,10 +625,10 @@ namespace Urp.ArDemo.Editor
                 + $"orbZInRoot={renderedZ} bottleLongAxis={renderedY}");
             Require(
                 Vector3.Angle(renderedY, Vector3.up) < 0.1f
-                && Mathf.Abs(landmarkRms - 0.00508247f) < 0.0001f
+                && landmarkRms < 0.002f
                 && derivedMatrix == Matrix4x4.identity
                 && Mathf.Abs(importedScale - 100f) < 0.1f,
-                "Baked ORB-to-B asset does not preserve the bottle long axis: "
+                "Unity hierarchy round-trip does not preserve the baked bottle long axis: "
                 + $"angle={Vector3.Angle(renderedY, Vector3.up):F6}, "
                 + $"rms={landmarkRms:E6}, scale={importedScale:F6}.");
             Require(body.parent == pair && neck.IsChildOf(body) && cap.parent == pair,

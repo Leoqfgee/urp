@@ -21,7 +21,7 @@ namespace Urp.ArDemo
         private Transform pairRoot;
         private Transform renderedB;
         private RepairCalibrationProfile calibration;
-        private readonly LineRenderer[] axisLines = new LineRenderer[6];
+        private readonly LineRenderer[] axisLines = new LineRenderer[12];
         private Vector2 orbX;
         private Vector2 orbY;
         private Vector2 orbZ;
@@ -37,6 +37,7 @@ namespace Urp.ArDemo
         private Vector3 appliedRelativeEuler;
         private float poseLagCentimetres;
         private float poseLagDegrees;
+        private ModelRegistrationEvidence modelRegistration;
 
         public void Bind(
             Camera camera,
@@ -54,6 +55,13 @@ namespace Urp.ArDemo
             pairRoot = bottlePair;
             renderedB = referenceB;
             calibration = profile;
+            if (profile != null)
+            {
+                ModelRegistrationEvidence.TryParse(
+                    profile.modelRegistrationArtifact,
+                    out modelRegistration,
+                    out _);
+            }
         }
 
         public string CompactSummary =>
@@ -123,6 +131,7 @@ namespace Urp.ArDemo
             UpdateLine(3, "B X", new Color(1f, 0.4f, 0.4f), bOriginWorld, bWorld[0], 0.0015f);
             UpdateLine(4, "B Y", new Color(0.4f, 1f, 0.4f), bOriginWorld, bWorld[1], 0.0015f);
             UpdateLine(5, "B Z", new Color(0.4f, 0.6f, 1f), bOriginWorld, bWorld[2], 0.0015f);
+            UpdateRegistrationLandmarks(rootMatrix);
 
             StringBuilder log = new StringBuilder(4096);
             log.Append("[URP_POSE_DIAG] ")
@@ -188,6 +197,94 @@ namespace Urp.ArDemo
                     .Append(Format(renderer.bounds.extents)).AppendLine();
             }
             Debug.Log(log.ToString());
+        }
+
+        private void UpdateRegistrationLandmarks(Matrix4x4 candidateRoot)
+        {
+            if (modelRegistration == null)
+            {
+                return;
+            }
+            DrawLandmarkPair(
+                6,
+                7,
+                "Mouth",
+                modelRegistration.mouth_center_orb,
+                modelRegistration.registered_mouth_center_b_orb,
+                Color.yellow,
+                new Color(1f, 0.45f, 0f),
+                candidateRoot);
+            DrawLandmarkPair(
+                8,
+                9,
+                "Base",
+                modelRegistration.base_center_orb,
+                modelRegistration.registered_base_center_b_orb,
+                Color.cyan,
+                new Color(0f, 0.4f, 1f),
+                candidateRoot);
+            DrawLandmarkPair(
+                10,
+                11,
+                "Front",
+                modelRegistration.front_point_orb,
+                modelRegistration.registered_front_point_b_orb,
+                Color.magenta,
+                new Color(1f, 0.35f, 0.75f),
+                candidateRoot);
+        }
+
+        private void DrawLandmarkPair(
+            int orbLine,
+            int bLine,
+            string label,
+            float[] orbValues,
+            float[] registeredBValues,
+            Color orbColor,
+            Color bColor,
+            Matrix4x4 candidateRoot)
+        {
+            if (!TryVector(orbValues, out Vector3 orbPoint)
+                || !TryVector(registeredBValues, out Vector3 bPoint))
+            {
+                return;
+            }
+            float markerLength = 0.035f;
+            Vector3 orbWorld = candidateRoot.MultiplyPoint3x4(orbPoint);
+            // registered_*_b_orb is an independently measured B landmark
+            // already expressed in the ORB root frame. Do not pass it through
+            // OrbToImportedMeshLocalPoint: that would recreate the v39
+            // self-certifying hierarchy round trip.
+            Vector3 bWorld = candidateRoot.MultiplyPoint3x4(bPoint);
+            Vector3 marker = arCamera.transform.up
+                * markerLength * calibration.metersPerModelUnit;
+            UpdateLine(
+                orbLine,
+                $"ORB {label}",
+                orbColor,
+                orbWorld - marker,
+                orbWorld + marker,
+                0.003f);
+            UpdateLine(
+                bLine,
+                $"B {label}",
+                bColor,
+                bWorld - marker,
+                bWorld + marker,
+                0.0015f);
+        }
+
+        private static bool TryVector(float[] values, out Vector3 result)
+        {
+            result = Vector3.zero;
+            if (values == null || values.Length != 3)
+            {
+                return false;
+            }
+            result = new Vector3(values[0], values[1], values[2]);
+            return float.IsFinite(result.x)
+                && float.IsFinite(result.y)
+                && float.IsFinite(result.z);
         }
 
         public void UpdateFusion(

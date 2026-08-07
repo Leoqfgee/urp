@@ -107,7 +107,7 @@ namespace Urp.ArDemo.Tests
         }
 
         [Test]
-        public void ProductionModelRegistrationArtifactIsIndependentAndNonIdentity()
+        public void ProductionModelRegistrationArtifactUsesIndependentStrictEvidence()
         {
             TextAsset asset = AssetDatabase.LoadAssetAtPath<TextAsset>(
                 "Assets/Calibration/bottle_orb_to_b_registration.json");
@@ -118,20 +118,30 @@ namespace Urp.ArDemo.Tests
                     out string reason),
                 Is.True,
                 reason);
-            Assert.That(evidence.landmark_rms_mm, Is.LessThan(2f));
-            Assert.That(evidence.orb_point_to_b_surface_mm.p95_mm, Is.LessThan(12f));
-            Assert.That(evidence.front_axis_agreement, Is.GreaterThan(0.995f));
-            Assert.That(evidence.up_axis_agreement, Is.GreaterThan(0.995f));
+            Assert.That(evidence.mouth_center_independently_measured, Is.True);
+            Assert.That(evidence.base_center_independently_measured, Is.True);
+            Assert.That(evidence.front_semantics_independently_measured, Is.True);
+            Assert.That(evidence.landmark_rms_mm, Is.LessThanOrEqualTo(1f));
+            Assert.That(evidence.mouth_center_error_mm, Is.LessThanOrEqualTo(2f));
+            Assert.That(evidence.base_center_error_mm, Is.LessThanOrEqualTo(3f));
+            Assert.That(
+                evidence.orb_point_to_b_surface_mm.median_mm,
+                Is.LessThanOrEqualTo(2.5f));
+            Assert.That(
+                evidence.orb_point_to_b_surface_mm.p95_mm,
+                Is.LessThanOrEqualTo(5f));
+            Assert.That(evidence.front_axis_error_deg, Is.LessThanOrEqualTo(1.5f));
+            Assert.That(evidence.up_axis_error_deg, Is.LessThanOrEqualTo(1.5f));
             Assert.That(
                 new Vector3(
                     evidence.mouth_center_orb[0],
                     evidence.mouth_center_orb[1],
-                    evidence.mouth_center_orb[2]),
-                Is.EqualTo(Vector3.zero));
+                    evidence.mouth_center_orb[2]).magnitude,
+                Is.LessThan(1e-5f));
             Assert.That(
                 Mathf.Abs(evidence.T_ORB_FROM_B[0] - 1f),
                 Is.GreaterThan(0.1f),
-                "The two Meshroom reconstructions must not be self-certified as identity.");
+                "Offline raw-mesh to canonical baking must remain independently auditable.");
         }
 
         private static void AssertRoundTrip(int rotationClockwise)

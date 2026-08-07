@@ -4,7 +4,7 @@ Native Android ARM64 plugin for the URP AR prototype. It performs the ORB target
 matching used by `OrbImageTrackingController` and returns the target center,
 relative width, match diagnostics and full solvePnPRansac pose to Unity.
 
-The current `r8-multiview-pose-hsv` matcher uses the user-aligned world-space B
+The current `r9-pose-frame-diagnostics` matcher uses the user-aligned world-space B
 pose only to form an additional geometrically guided candidate set. Strict
 real-photo descriptor matches and guided matches are solved independently, so
 an inaccurate coarse projection cannot replace a valid global match set.
@@ -16,10 +16,10 @@ coverage, positive depth and bounded RMS/maximum reprojection error.
 The plugin also samples low-saturation bright pixels around accepted inliers
 and returns normalized HSV statistics to Unity. These statistics are used only
 for the repair cap material's appearance consistency; they never alter pose.
-The formal database contains 4,100 filtered observations from the real
-open/no-cap bottle photo set. Blender-render descriptors are not mixed into
-that database because supplied failure-frame replay showed that the mixed
-geometry reduced PnP consistency.
+The v41 formal database contains 3,240 real-photo observations from the
+open/no-cap bottle set. They are the surface-supported subset of 4,100
+same-reconstruction candidates; descriptors and native matching/PnP thresholds
+are unchanged. Blender-render descriptors are not mixed into the database.
 
 Build inputs used for the current binary:
 

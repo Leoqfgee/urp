@@ -22,6 +22,11 @@ def arguments() -> argparse.Namespace:
     parser.add_argument("--mode", choices=("legacy-blend", "runtime-fbx"), required=True)
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--include-neck",
+        action="store_true",
+        help="Include ReferenceNeckProxyB. The default exports DamagedBottleB only.",
+    )
     return parser.parse_args(argv)
 
 
@@ -53,7 +58,7 @@ def load_source(args: argparse.Namespace) -> list[tuple[bpy.types.Object, Matrix
     # importer coordinates.
     objects = [body]
     neck = bpy.data.objects.get("ReferenceNeckProxyB")
-    if neck is not None:
+    if args.include_neck and neck is not None:
         objects.append(neck)
     return [
         (obj, root.matrix_world.inverted() @ obj.matrix_world)

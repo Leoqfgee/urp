@@ -53,6 +53,8 @@ def main() -> None:
     scene.render.image_settings.file_format = "PNG"
     scene.render.image_settings.color_mode = "RGBA"
     scene.render.film_transparent = False
+    if scene.world is None:
+        scene.world = bpy.data.worlds.new("BottleBCQAWorld")
     scene.world.color = (0.018, 0.022, 0.028)
     scene.view_settings.look = "AgX - Medium High Contrast"
 

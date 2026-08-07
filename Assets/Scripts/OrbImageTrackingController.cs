@@ -134,6 +134,17 @@ namespace Urp.ArDemo
         private Matrix4x4 derivedOrbToRenderedBMatrix = Matrix4x4.identity;
         private float derivedAlignmentLandmarkRms;
         private TrackingState trackingState = TrackingState.Idle;
+        private readonly CameraFrameSample[] cameraFrameSamples =
+            new CameraFrameSample[16];
+        private int cameraFrameSampleCount;
+        private int cameraFrameSampleWriteIndex;
+
+        private struct CameraFrameSample
+        {
+            public long timestampNs;
+            public Vector3 position;
+            public Quaternion rotation;
+        }
 
         public bool HasTrackedPose => registrationEstablished;
         public bool IsRigidRegistrationEstablished => registrationEstablished;
@@ -185,6 +196,22 @@ namespace Urp.ArDemo
                 return;
             }
             ProcessCameraFrame();
+        }
+
+        private void OnEnable()
+        {
+            if (cameraManager != null)
+            {
+                cameraManager.frameReceived += OnCameraFrameReceived;
+            }
+        }
+
+        private void OnDisable()
+        {
+            if (cameraManager != null)
+            {
+                cameraManager.frameReceived -= OnCameraFrameReceived;
+            }
         }
 
         private void LateUpdate()
@@ -732,6 +759,7 @@ namespace Urp.ArDemo
 
             try
             {
+                LogCameraSynchronization(image);
                 Texture2D texture = ConvertCpuImage(image);
                 CameraIntrinsics intrinsics = GetCameraIntrinsics(
                     image.width,
@@ -937,6 +965,69 @@ namespace Urp.ArDemo
             }
             reason = string.Empty;
             return true;
+        }
+
+        private void OnCameraFrameReceived(ARCameraFrameEventArgs args)
+        {
+            if (!args.timestampNs.HasValue || arCamera == null)
+            {
+                return;
+            }
+            cameraFrameSamples[cameraFrameSampleWriteIndex] = new CameraFrameSample
+            {
+                timestampNs = args.timestampNs.Value,
+                position = arCamera.transform.position,
+                rotation = arCamera.transform.rotation
+            };
+            cameraFrameSampleWriteIndex =
+                (cameraFrameSampleWriteIndex + 1) % cameraFrameSamples.Length;
+            cameraFrameSampleCount = Mathf.Min(
+                cameraFrameSampleCount + 1,
+                cameraFrameSamples.Length);
+        }
+
+        private void LogCameraSynchronization(XRCpuImage image)
+        {
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+            if (cameraFrameSampleCount == 0)
+            {
+                Debug.Log(
+                    $"[URP_CAMERA_SYNC_DIAG] cpuTimestampSeconds={image.timestamp:F9} "
+                    + "closestArTimestampNs=unavailable deltaMs=unavailable");
+                return;
+            }
+
+            long cpuTimestampNs = (long)Math.Round(image.timestamp * 1e9);
+            CameraFrameSample closest = cameraFrameSamples[0];
+            long closestDelta = long.MaxValue;
+            for (int i = 0; i < cameraFrameSampleCount; i++)
+            {
+                CameraFrameSample candidate = cameraFrameSamples[i];
+                long delta = Math.Abs(candidate.timestampNs - cpuTimestampNs);
+                if (delta < closestDelta)
+                {
+                    closest = candidate;
+                    closestDelta = delta;
+                }
+            }
+
+            float poseDeltaCentimetres = arCamera != null
+                ? Vector3.Distance(arCamera.transform.position, closest.position) * 100f
+                : 0f;
+            float poseDeltaDegrees = arCamera != null
+                ? Quaternion.Angle(arCamera.transform.rotation, closest.rotation)
+                : 0f;
+            string motionClass = poseDeltaCentimetres < 0.2f
+                && poseDeltaDegrees < 0.2f
+                    ? "STATIC"
+                    : "MOVING";
+            Debug.Log(
+                $"[URP_CAMERA_SYNC_DIAG] cpuTimestampNs={cpuTimestampNs} "
+                + $"closestArTimestampNs={closest.timestampNs} "
+                + $"deltaMs={closestDelta / 1e6:F3} "
+                + $"cameraPoseDeltaCm={poseDeltaCentimetres:F3} "
+                + $"cameraPoseDeltaDeg={poseDeltaDegrees:F3} motion={motionClass}");
+#endif
         }
 
         private bool TryApplyReliablePose(
@@ -1868,9 +1959,11 @@ namespace Urp.ArDemo
             {
                 return "ModelReg: FAIL " + modelRegistrationReason;
             }
-            return $"ModelReg: landmark {modelRegistrationEvidence.landmark_rms_mm:F2}mm, "
-                + $"surface p95 "
-                + $"{modelRegistrationEvidence.orb_point_to_b_surface_mm.p95_mm:F2}mm PASS";
+            return $"Mouth {modelRegistrationEvidence.mouth_center_error_mm:F2}mm "
+                + $"Base {modelRegistrationEvidence.base_center_error_mm:F2}mm | "
+                + $"SurfaceP95 {modelRegistrationEvidence.orb_point_to_b_surface_mm.p95_mm:F2}mm "
+                + $"Front {modelRegistrationEvidence.front_axis_error_deg:F2}deg "
+                + $"Up {modelRegistrationEvidence.up_axis_error_deg:F2}deg PASS";
         }
 
         private void UpdateStatus(string message)

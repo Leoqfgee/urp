@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test the unchanged Android ORB binary and diagnostics ABI packaged by v40."""
+"""Test the unchanged Android ORB binary and diagnostics ABI packaged by v41."""
 
 from __future__ import annotations
 

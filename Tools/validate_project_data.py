@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the v40 measured cross-reconstruction B+C contract."""
+"""Validate the v41 measured same-reconstruction B+C contract."""
 
 from __future__ import annotations
 
@@ -20,25 +20,16 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest().upper()
 
 
-def points(path: Path) -> np.ndarray:
+def points(path: Path, expected_count: int) -> np.ndarray:
     data = path.read_bytes()
     if data[:8] != MAGIC:
         raise ValueError("invalid ORB database")
     count = struct.unpack_from("<I", data, 8)[0]
-    if count != 4100 or len(data) != 12 + count * RECORD_SIZE:
-        raise ValueError("expected the unchanged 4100-record ORB database")
+    if count != expected_count or len(data) != 12 + count * RECORD_SIZE:
+        raise ValueError(f"expected the manifest-declared {expected_count}-record ORB database")
     return np.asarray(
         [struct.unpack_from("<3f", data, 12 + i * RECORD_SIZE) for i in range(count)]
     )
-
-
-def identity(item: dict, label: str) -> None:
-    if item.get("localPosition") != [0.0, 0.0, 0.0]:
-        raise ValueError(f"{label} local position changed")
-    if item.get("localRotationRadians") != [0.0, 0.0, 0.0]:
-        raise ValueError(f"{label} local rotation changed")
-    if item.get("localScale") != [1.0, 1.0, 1.0]:
-        raise ValueError(f"{label} local scale changed")
 
 
 def main() -> None:
@@ -73,22 +64,29 @@ def main() -> None:
     calibration = (
         ROOT / "Assets/Calibration/CoconutBottleRepairCalibration.asset"
     ).read_text(encoding="utf-8")
-    cloud = points(orb)
+    cloud = points(orb, int(manifest["records"]))
 
     if manifest.get("database_sha256") != sha256(orb):
         raise ValueError("ORB binary changed or manifest hash is stale")
     if manifest.get("repair_c_excluded_from_matching") is not True:
         raise ValueError("C entered the ORB database")
-    if report.get("version") != "bottle-orb-cross-reconstruction-rigid-pair-v40":
-        raise ValueError("runtime B is not the v40 cross-registered rigid asset")
-    if "bottle_full_clean_v2" not in report["referenceB"]["sourceReconstruction"]:
-        raise ValueError("B source reconstruction provenance is missing")
+    if manifest.get("records_before_surface_support_filter") != 4100:
+        raise ValueError("v41 surface-support filter provenance is missing")
+    if manifest.get("matching_and_pnp_thresholds_modified") is not False:
+        raise ValueError("v41 must not change matching/PnP thresholds")
+    if report.get("version") != "bottle-orb-same-reconstruction-rigid-pair-v41":
+        raise ValueError("runtime B is not the v41 same-reconstruction rigid asset")
+    if "bottle_damaged" not in report["referenceB"]["sourceReconstruction"]:
+        raise ValueError("same-reconstruction B provenance is missing")
     if report.get("rigidRelationshipPreserved") is not True:
         raise ValueError("B+C rigid contract missing")
-    identity(report["referenceB"], "B")
-    identity(report["repairC"], "C")
-    if report["coordinateFrame"]["physicalMouthCentreModel"] != [0.0, 0.0, 0.0]:
-        raise ValueError("ORB origin is not the physical mouth centre")
+    expected_identity = np.eye(4).reshape(-1).tolist()
+    if report["rigidContract"]["bLocalMatrix"] != expected_identity:
+        raise ValueError("B local matrix is not identity")
+    if report["rigidContract"]["cLocalMatrix"] != expected_identity:
+        raise ValueError("C local matrix changed")
+    if report["repairC"]["geometrySha256Before"] != report["repairC"]["geometrySha256After"]:
+        raise ValueError("C geometry changed during v41 packaging")
 
     if artifact.get("source_orb_sha256") != sha256(orb):
         raise ValueError("registration artifact ORB hash mismatch")
@@ -100,14 +98,24 @@ def main() -> None:
         raise ValueError("offline artifact cannot claim device verification")
     matrix = np.asarray(artifact.get("T_ORB_FROM_B"), dtype=np.float64).reshape(4, 4)
     if np.allclose(matrix, np.eye(4), atol=1e-7):
-        raise ValueError("cross-reconstruction artifact incorrectly claims identity")
+        raise ValueError("raw production B was not baked into the measured canonical frame")
     if abs(np.linalg.det(matrix[:3, :3]) - artifact["determinant"]) > 1e-6:
         raise ValueError("registration determinant does not match T_ORB_FROM_B")
     stats = artifact["orb_point_to_b_surface_mm"]
-    if artifact["landmark_rms_mm"] > 2.0 or stats["p95_mm"] > 12.0:
-        raise ValueError("real landmark/surface registration exceeds contract")
-    if artifact["up_axis_agreement"] < 0.995 or artifact["front_axis_agreement"] < 0.995:
-        raise ValueError("up/front orientation contract failed")
+    if not all(artifact.get(name) is True for name in (
+        "mouth_center_independently_measured",
+        "base_center_independently_measured",
+        "front_semantics_independently_measured",
+    )):
+        raise ValueError("independent mouth/base/front evidence is missing")
+    if (artifact["landmark_rms_mm"] > 1.0
+            or artifact["mouth_center_error_mm"] > 2.0
+            or artifact["base_center_error_mm"] > 3.0
+            or stats["median_mm"] > 2.5
+            or stats["p95_mm"] > 5.0):
+        raise ValueError("strict landmark/surface registration exceeds contract")
+    if artifact["up_axis_error_deg"] > 1.5 or artifact["front_axis_error_deg"] > 1.5:
+        raise ValueError("up/front angular contract failed")
     if contract["orb_database_sha256"] != sha256(orb):
         raise ValueError("frame contract ORB hash mismatch")
     if contract["coordinate_frame_origin"] != artifact["orb_origin_definition"]:
@@ -127,7 +135,7 @@ def main() -> None:
     )
     found = [token for token in prohibited if token in controller]
     if found:
-        raise ValueError(f"runtime contains prohibited v39 logic: {found}")
+        raise ValueError(f"runtime contains prohibited pre-v41 logic: {found}")
     for token in (
         "ModelRegistrationEvidence.TryParse",
         "ConfidenceWeightedPoseFusion.Step",
@@ -137,30 +145,37 @@ def main() -> None:
         "SetReferenceHierarchyVisible(false)",
     ):
         if token not in controller:
-            raise ValueError(f"managed v40 contract missing {token}")
+            raise ValueError(f"managed v41 contract missing {token}")
     for token in ("SetPosePrior", "SOLVEPNP_SQPNP", "urp_orb_get_last_inliers"):
         if token not in native:
             raise ValueError(f"native baseline changed: missing {token}")
-    if "BottleRepairAR_v40.apk" not in setup:
-        raise ValueError("setup does not build v40")
-    if "v40" not in app_controller:
-        raise ValueError("tracking screen does not display v40")
+    if "[URP_CAMERA_SYNC_DIAG]" not in controller:
+        raise ValueError("camera timestamp synchronization diagnostics are missing")
+    if "BottleRepairAR_v41.apk" not in setup:
+        raise ValueError("setup does not build v41")
+    if "v41" not in app_controller:
+        raise ValueError("tracking screen does not display v41")
     for token in (
-        "orb-tracking-v40-cross-registered-adaptive-se3",
-        "coconut-cross-reconstruction-sim3-v40",
-        "bottle-orb-cross-registration-reference-b-v40",
+        "orb-tracking-v41-same-reconstruction-adaptive-se3",
+        "coconut-same-reconstruction-measured-v41",
+        "bottle-orb-same-reconstruction-reference-b-v41",
     ):
         if token not in build_identity:
             raise ValueError(f"build identity is stale: {token}")
 
     print(json.dumps({
-        "status": "BOTTLE_ORB_CROSS_REGISTRATION_V40_DATA_OK",
+        "status": "BOTTLE_ORB_SAME_RECONSTRUCTION_V41_DATA_OK",
         "database_sha256": sha256(orb),
         "fbx_sha256": sha256(fbx),
         "records": len(cloud),
         "orb_bounds_min": cloud.min(axis=0).tolist(),
         "orb_bounds_max": cloud.max(axis=0).tolist(),
         "mouth_center_orb": artifact["mouth_center_orb"],
+        "base_center_orb": artifact["base_center_orb"],
+        "mouth_error_mm": artifact["mouth_center_error_mm"],
+        "base_error_mm": artifact["base_center_error_mm"],
+        "up_axis_error_deg": artifact["up_axis_error_deg"],
+        "front_axis_error_deg": artifact["front_axis_error_deg"],
         "landmark_rms_mm": artifact["landmark_rms_mm"],
         "surface_mm": stats,
         "T_ORB_FROM_B": artifact["T_ORB_FROM_B"],

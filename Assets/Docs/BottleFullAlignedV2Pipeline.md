@@ -1,57 +1,56 @@
-# Bottle v40 A-to-B-to-C coordinate contract
+# Bottle v41 A-to-B-to-C coordinate contract
 
-## Provenance and fixed model registration
+## Provenance and measured model frame
 
-A is the real open bottle. B is `DamagedBottleB` plus
-`ReferenceNeckProxyB`; C is `BottleCapC`. The 4,100 unchanged ORB records and
-the current B mesh come from different Meshroom reconstructions, so v40 does
-not assert an identity frame and does not use copied B landmarks.
+A is the real open bottle, B is `DamagedBottleB`, and C is `BottleCapC`.
+v40 used an independent `bottle_full_clean_v2` reconstruction and forced a
+hard-coded B mouth point onto an older provisional ORB origin. That could make
+an internal landmark error equal zero while the visible bottle remained high.
 
-`Assets/Calibration/bottle_orb_to_b_registration.json` records the measured
-similarity transform `p_orb = T_ORB_FROM_B * p_B`, both source/target hashes,
-independent mouth/right/up/front controls, and all-point triangle-surface
-statistics. The yaw is locked by the red-logo/front texture: source B `+X`
-maps to ORB `+Z`; the barcode side cannot satisfy that contract. The physical
-mouth centre maps exactly to ORB `(0,0,0)`. ORB `+Y` is base-to-mouth and ORB
-`+X` is bottle-right.
+v41 reconstructs B from the same `F:\Meshroom_work\bottle_damaged` Meshroom
+project used to generate the real-photo ORB features. The raw AliceVision mesh
+and the filtered production surface are measured in separate passes. Robust
+mouth and base rings define the bottle endpoints; their line defines +Y. Red
+logo detections in source photographs define printed-front +Z, while separately
+recorded barcode-side views reject the cylindrical yaw ambiguity. The supplied
+34 mm neck diameter establishes scale. The historical
+`[0.419225,-4.514827,0.314265]` mouth origin is explicitly rejected because its
+source correspondence file is marked provisional and physically unverified.
 
-The same matrix is baked offline into the vertices of B, the B neck, and C.
-No object is transformed separately. The runtime hierarchy is therefore:
+`Assets/Calibration/bottle_orb_to_b_registration.json` records the actual
+raw-B-to-canonical matrix, both endpoint measurements, directional residuals,
+file hashes, and ORB-point-to-production-B triangle distances. ModelReg uses
+the strict 1/2/3/2.5/5 mm and 1.5 degree gates; no copied landmark pair can
+create a PASS.
+
+The runtime hierarchy is:
 
 ```text
 TrackedBottleRoot                 accepted six-DoF PnP world pose
-└── ModelCoordinateAlignment      Rx(+90), inverse of imported FBX root Rx(-90)
+└── ModelCoordinateAlignment      exact inverse of Unity FBX import axes
     └── BottleRepairRoot          identity
-        ├── DamagedBottleB        identity local transform
-        │   └── ReferenceNeckProxyB
-        └── BottleCapC            identity local transform
+        ├── DamagedBottleB        same-reconstruction mesh, identity local
+        │   └── ReferenceNeckProxyB (empty compatibility node; neck is in B)
+        └── BottleCapC            unchanged geometry and identity local
 ```
 
-The source-to-ORB Sim(3) is provenance, not a runtime offset. Applying it again
-at runtime would be a coordinate conversion bug.
+## Pose, timing, and Start contract
 
-## Pose and state contract
+The v38 portrait-oriented PnP chain remains unchanged. Stable PnP is applied
+to visible B+C before Start. v40 confidence-weighted SE(3) fusion remains the
+only temporal filter; position/rotation smoothing are active and no fixed
+0.018 m/s or 6 degree/s correction cap exists.
 
-Native rotates CPU pixels and intrinsics before solvePnP. PnP R/t already use
-that oriented tracking-camera frame; final pose conversion does not call
-`UndoImageRotation`. `PoseRT` validates the CV→Unity→CV round trip in the same
-native K. `HierarchyRT` proves only transform arithmetic. Real model
-registration is a separate `ModelReg` gate backed by the JSON artifact.
-Display-space RMS remains diagnostic only.
-
-After stable PnP, B+C immediately receive the pose before Start. Accepted
-updates use confidence-weighted SE(3) EMA based on inliers, ratio, RMS,
-coverage, and continuity. High confidence follows rapidly, marginal confidence
-smooths, and low confidence holds; the former 0.018 m/s and 6°/s freeze caps do
-not exist.
-
-Start is a pure presentation gate. It disables B renderers and retains C. It
-does not change position, rotation, scale, parent, material, or registration.
-`StartDoesNotChangeRigidPose` checks Root/B/C matrices around the call.
+Start is a presentation-only gate: B renderers are hidden and C is retained.
+Root, pair, B, and C matrices are asserted unchanged. Development builds draw
+separate ORB/B mouth, base, and front landmarks and emit
+`[URP_CAMERA_SYNC_DIAG]` with CPU-image timestamp, closest AR frame timestamp,
+time delta, and camera-pose delta. This separates static registration bias from
+motion-dependent capture latency.
 
 ## Evidence boundary
 
-EditMode, PlayMode, offline surface validation, and Editor rendering prove the
-software/asset contract only. `device_verified` remains false until an actual
-Android ARCamera run visibly shows B covering A in front, left/right oblique,
-top, near, and far views and C remaining at the mouth after Start.
+Offline geometry, EditMode, PlayMode, native tests, and synthetic rendering do
+not prove physical-phone overlay. `device_verified` remains false until a real
+Android run confirms B covers A in front, oblique, and top views and C remains
+at the mouth after Start.

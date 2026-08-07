@@ -1,43 +1,33 @@
 {
-  "version": "bottle-orb-cross-registration-reference-b-v40",
-  "restored_from_commit": "bcb344b",
-  "logic": "The unchanged real-observation ORB descriptors/3D points and bottle_full_clean_v2 B are different Meshroom reconstructions. v40 bakes the measured bottle_orb_to_b_registration Sim(3) into B, neck and C together. Runtime ModelCoordinateAlignment contains only Rx(+90), the exact inverse of Unity's measured imported FBX root Rx(-90). solvePnP estimates the ORB object frame only; rigid C is excluded from matching and inherits B.",
+  "version": "bottle-orb-same-reconstruction-reference-b-v41",
+  "logic": "ORB descriptors, sparse 3D points, production DamagedBottleB geometry and texture all originate from the same Meshroom reconstruction: bottle_damaged. The physical mouth/base and printed-front directions are independently measured before canonicalization. Sparse records farther than 5 mm from the same-reconstruction dense surface are rejected; descriptors and runtime matching/PnP thresholds are unchanged.",
   "database": "Assets\\OrbModels\\bottle_reference_b.bytes",
   "database_format": "URP3DM1",
-  "database_sha256": "A046CD3386245B4A255A45088ECD9087366FF32A1352B2E20C3AC713253AC1EF",
-  "records": 4100,
-  "canonical_bounds_min": [
-    -0.23538906872272491,
-    -1.2189726829528809,
-    -0.09627003967761993
-  ],
-  "canonical_bounds_max": [
-    0.23058083653450012,
-    -0.026713119819760323,
-    0.19327491521835327
-  ],
+  "database_sha256": "32913A73152D61CC9312132A1F9D565FC316F811C3D8F4E83E7C9236D5CD9122",
+  "records": 3240,
+  "records_before_surface_support_filter": 4100,
+  "surface_support_filter_max_mm": 5.0,
+  "canonical_bounds_min": [-0.2704600393772125, -1.4855378866195679, -0.23103877902030945],
+  "canonical_bounds_max": [0.22178761661052704, 0.02481761761009693, 0.25069302320480347],
   "source_provenance": {
     "photo_set": "F:\\Meshroom_work\\bottle_damaged (real open/no-cap bottle photographs)",
-    "selected_masked_images": "F:\\Meshroom_work\\bottle_damaged\\meshroom_input",
-    "original_observation_database_sha256": "A046CD3386245B4A255A45088ECD9087366FF32A1352B2E20C3AC713253AC1EF",
+    "dense_sfm": "F:\\Meshroom_work\\bottle_damaged\\bottle_damaged_orb_v27_dense_v41_pruned.sfm",
+    "dense_mesh": "F:\\Meshroom_work\\bottle_damaged\\v41_same_reconstruction_mesh\\mesh_filtered.obj",
+    "production_textured_mesh": "F:\\Meshroom_work\\bottle_damaged\\v41_same_reconstruction_textured\\texturedMesh.obj",
     "complete_bottle_or_cap_images_used": false,
     "rendered_mesh_descriptors_used": false
   },
-  "offline_failure_frame_replay": {
-    "frames": 3,
-    "pose_solutions": 3,
-    "pose_inliers": [19, 14, 19],
-    "reprojection_rms_pixels": [
-      1.4396680984531167,
-      1.3109569107091754,
-      1.2433029540716665
-    ],
-    "runtime_minimum_inlier_ratio": 0.35
+  "surface_support": {
+    "rms_mm": 1.863045772794043,
+    "median_mm": 0.8975328932706665,
+    "p95_mm": 4.127278005872207,
+    "max_mm": 4.999735081481376
   },
   "reference_objects": ["DamagedBottleB"],
   "model_registration_artifact": "Assets\\Calibration\\bottle_orb_to_b_registration.json",
   "repair_c_excluded_from_matching": true,
+  "matching_and_pnp_thresholds_modified": false,
   "meters_per_model_unit": 0.17,
   "device_overlay_verified": false,
-  "generator": "Tools\\TrackingReplay\\filter_bottle_orb_database.py"
+  "generator": "Tools\\TrackingReplay\\build_orb_database_by_optical_flow.py + filter_orb_database_by_surface_v41.py"
 }
