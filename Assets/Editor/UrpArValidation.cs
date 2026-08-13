@@ -232,7 +232,7 @@ namespace Urp.ArDemo.Editor
                 && catalog.objects.Count(item => item == profile) == 1,
                 "The formal catalog must contain the new bottle profile exactly once.");
             Require(
-                profile.objectId == "bottle_orb_same_reconstruction_v41",
+                profile.objectId == "bottle_orb_v42_proven_observations",
                 "The formal bottle profile still has the legacy object id.");
             Require(
                 AssetDatabase.GetAssetPath(profile.registeredBottlePairPrefab) == NewPairPath,
@@ -287,25 +287,26 @@ namespace Urp.ArDemo.Editor
                 "B database has invalid URP3DM1 magic.");
             int records = BitConverter.ToInt32(database, 8);
             Require(
-                records == 3240 && database.Length == 12 + records * 44,
-                $"B same-reconstruction surface-supported database is invalid: {records} records.");
+                records == 4100 && database.Length == 12 + records * 44,
+                $"B device-proven v40 observation database is invalid: {records} records.");
             string manifest = File.ReadAllText(DatabaseManifestPath);
             Require(
-                manifest.Contains("bottle-orb-same-reconstruction-reference-b-v41")
+                manifest.Contains("bottle-orb-device-proven-observations-v42")
+                && manifest.Contains("A046CD3386245B4A255A45088ECD9087366FF32A1352B2E20C3AC713253AC1EF")
                 && manifest.Contains("\"rendered_mesh_descriptors_used\": false")
-                && manifest.Contains("same Meshroom reconstruction")
-                && manifest.Contains("\"records_before_surface_support_filter\": 4100")
+                && manifest.Contains("\"records\": 4100")
+                && manifest.Contains("\"descriptor_stream_byte_identical_to_v40\": true")
                 && manifest.Contains("\"matching_and_pnp_thresholds_modified\": false")
                 && manifest.Contains("\"repair_c_excluded_from_matching\": true")
                 && manifest.Contains("\"device_overlay_verified\": false"),
                 "B database manifest does not describe the real-photo B-only pipeline.");
             string report = File.ReadAllText(NewPairReportPath);
             Require(
-                report.Contains("bottle-orb-same-reconstruction-rigid-pair-v41")
+                report.Contains("bottle-v42-v41-geometry-in-proven-v40-orb-frame")
                 && report.Contains("bottle_damaged")
-                && report.Contains("independently measured physical bottle mouth-ring centroid")
-                && report.Contains("same Meshroom reconstruction")
-                && report.Contains("C geometry/local transform unchanged")
+                && report.Contains("v41 measured B mouth maps exactly to zero")
+                && report.Contains("T_V40_ORB_FROM_V41_B")
+                && report.Contains("no independent C visual offset")
                 && report.Contains("\"rigidRelationshipPreserved\": true"),
                 "Blender report does not describe the v41 same-reconstruction B+C contract.");
             string modelRegistration = File.ReadAllText(ModelRegistrationArtifactPath);
@@ -371,12 +372,12 @@ namespace Urp.ArDemo.Editor
             string appController = File.ReadAllText(AppControllerPath);
             string buildIdentity = File.ReadAllText(BuildIdentityPath);
             Require(
-                appController.Contains("v41")
+                appController.Contains("v42")
                 && buildIdentity.Contains(
-                    "orb-tracking-v41-same-reconstruction-adaptive-se3")
+                    "orb-tracking-v42-proven-global-acquisition")
                 && buildIdentity.Contains(
-                    "coconut-same-reconstruction-measured-v41"),
-                "Visible application/build identity still reports a pre-v41 build.");
+                    "coconut-v41-geometry-v40-orb-frame-v42"),
+                "Visible application/build identity still reports a pre-v42 build.");
             string[] prohibitedControllerTokens =
             {
                 "displayMatrix",
@@ -404,7 +405,9 @@ namespace Urp.ArDemo.Editor
                 controller.Contains("trackedObjectPoseRoot.position")
                 && controller.Contains("trackedObjectPoseRoot.rotation")
                 && controller.Contains("PlacePreAlignmentPose")
-                && controller.Contains("SetCurrentPosePrior")
+                && controller.Contains("SetReliableTrackedPosePrior")
+                && controller.Contains("tracker.ClearPosePrior()")
+                && controller.Contains("!registrationEstablished")
                 && controller.Contains("ShowRepairPresentation")
                 && controller.Contains("ShowPresentationForCurrentState")
                 && controller.Contains("GetCanonicalModelRotationInTrackedRoot")
@@ -424,7 +427,7 @@ namespace Urp.ArDemo.Editor
                 && !controller.Contains("maximumWorldRotationCorrectionDegreesPerSecond")
                 && controller.Contains("trackingState = TrackingState.Repair")
                 && controller.Contains("renderer.enabled = enabled"),
-                "Production tracker does not implement pre-alignment, guided PnP, hidden B, and stabilized C.");
+                "Production tracker does not implement visual pre-alignment, global acquisition, reliable guided PnP, hidden B, and stabilized C.");
             Require(
                 !controller.Contains("ConfirmReferenceAlignment")
                 && !controller.Contains("ShowReferenceValidation")
@@ -560,18 +563,9 @@ namespace Urp.ArDemo.Editor
             object[] priorArguments = { 90, null };
             Require(
                 buildPrior != null
-                && (bool)buildPrior.Invoke(controller, priorArguments),
-                "The world-space B+C pre-alignment pose did not produce a valid PnP prior.");
-            float[] prior = priorArguments[1] as float[];
-            float determinant =
-                prior[0] * (prior[5] * prior[10] - prior[6] * prior[9])
-                - prior[1] * (prior[4] * prior[10] - prior[6] * prior[8])
-                + prior[2] * (prior[4] * prior[9] - prior[5] * prior[8]);
-            Require(
-                prior.Length == 12
-                && Mathf.Abs(determinant - 1f) < 0.01f
-                && prior[11] > 0f,
-                "The coarse model-to-camera prior is not a proper positive-depth rotation.");
+                && !(bool)buildPrior.Invoke(controller, priorArguments)
+                && priorArguments[1] == null,
+                "PreAlignment is visual-only and must not produce a first-acquisition pose prior.");
             Transform body =
                 GetPrivateField<Transform>(controller, "registeredReferenceModel");
             Transform neck =
@@ -580,24 +574,32 @@ namespace Urp.ArDemo.Editor
                 GetPrivateField<Transform>(controller, "registeredRepairPart");
             Transform pair =
                 GetPrivateField<Transform>(controller, "registeredBottlePairRoot");
+            Vector3 calibrationFront =
+                (profile.calibration.mouthFrontInModel
+                 - profile.calibration.mouthCenterInModel).normalized;
+            Vector3 calibrationUp =
+                (profile.calibration.mouthCenterInModel
+                 - profile.calibration.neckAxisPointInModel).normalized;
+            float preAlignFrontAngle = Vector3.Angle(
+                body.TransformDirection(calibrationFront),
+                -camera.transform.forward);
+            float preAlignUpAngle = Vector3.Angle(
+                body.TransformDirection(calibrationUp),
+                camera.transform.up);
             Require(
                 Vector3.Dot(
-                    body.TransformDirection(Vector3.right),
+                    body.TransformDirection(calibrationFront),
                     -camera.transform.forward) > 0.99f
                 && Vector3.Dot(
-                    body.TransformDirection(Vector3.up),
-                    camera.transform.up) > 0.99f,
-                "Initial B+C pose must show the imported B mesh front-facing and upright.");
-            MethodInfo getCanonicalRotation =
-                typeof(OrbImageTrackingController).GetMethod(
-                    "GetCanonicalModelRotationInTrackedRoot",
-                    BindingFlags.Instance | BindingFlags.NonPublic);
-            Quaternion canonicalRotation =
-                (Quaternion)getCanonicalRotation.Invoke(controller, null);
-            Require(
-                Quaternion.Angle(canonicalRotation, Quaternion.identity) < 0.01f,
-                "ModelCoordinateAlignment did not cancel the fixed FBX -90 degree axis conversion.");
-            Debug.Log("FBX_AXIS_CONVERSION_CANCELLED_OK");
+                    body.TransformDirection(calibrationUp),
+                    camera.transform.up) > 0.99f
+                && preAlignFrontAngle < 2f
+                && preAlignUpAngle < 2f,
+                "PreAlignmentFrontIsActualPrintedFront failed: "
+                + $"front={preAlignFrontAngle:F3}deg up={preAlignUpAngle:F3}deg.");
+            Debug.Log(
+                "PREALIGNMENT_FRONT_IS_ACTUAL_PRINTED_FRONT_OK "
+                + $"front={preAlignFrontAngle:F3}deg up={preAlignUpAngle:F3}deg");
             Matrix4x4 derivedMatrix =
                 GetPrivateField<Matrix4x4>(controller, "derivedOrbToRenderedBMatrix");
             float landmarkRms =
@@ -624,11 +626,12 @@ namespace Urp.ArDemo.Editor
                 + $"orbXInRoot={renderedX} orbYInRoot={renderedY} "
                 + $"orbZInRoot={renderedZ} bottleLongAxis={renderedY}");
             Require(
-                Vector3.Angle(renderedY, Vector3.up) < 0.1f
+                Vector3.Angle(
+                    renderedY,
+                    derivedMatrix.MultiplyVector(Vector3.up).normalized) < 0.1f
                 && landmarkRms < 0.002f
-                && derivedMatrix == Matrix4x4.identity
-                && Mathf.Abs(importedScale - 100f) < 0.1f,
-                "Unity hierarchy round-trip does not preserve the baked bottle long axis: "
+                && Mathf.Abs(importedScale - 99.3167f) < 0.1f,
+                "Unity hierarchy round-trip does not preserve the fixed v41-B-to-v40-ORB bridge: "
                 + $"angle={Vector3.Angle(renderedY, Vector3.up):F6}, "
                 + $"rms={landmarkRms:E6}, scale={importedScale:F6}.");
             Require(body.parent == pair && neck.IsChildOf(body) && cap.parent == pair,
@@ -823,11 +826,16 @@ namespace Urp.ArDemo.Editor
             Matrix4x4 capLocalAfter = pair.worldToLocalMatrix * cap.localToWorldMatrix;
             Require(MatrixApproximately(capLocalBefore, capLocalAfter),
                 "C local relationship changed while hiding B.");
+            Matrix4x4 bodyInPair =
+                pair.worldToLocalMatrix * body.localToWorldMatrix;
+            Matrix4x4 capInPair =
+                pair.worldToLocalMatrix * cap.localToWorldMatrix;
             Require(
-                MatrixApproximately(
-                    pair.worldToLocalMatrix * body.localToWorldMatrix,
-                    pair.worldToLocalMatrix * cap.localToWorldMatrix),
-                "B and C no longer share the same rigid authored frame after registration.");
+                MatrixApproximately(bodyInPair, derivedMatrix)
+                && MatrixApproximately(capInPair, Matrix4x4.identity)
+                && body.parent == pair
+                && cap.parent == pair,
+                "The fixed v41-B bridge or target-frame C relationship changed after registration.");
             if (SystemInfo.graphicsDeviceType != GraphicsDeviceType.Null)
             {
                 Renderer[] capRenderers =

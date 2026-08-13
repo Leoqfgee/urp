@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test the unchanged Android ORB binary and diagnostics ABI packaged by v41."""
+"""Test the unchanged thresholds and global/guided ABI packaged by v42."""
 
 from __future__ import annotations
 
@@ -52,7 +52,7 @@ def main() -> None:
     if not load_segments:
         raise ValueError("Native plugin has no LOAD segments")
 
-    expected_version = b"urp-orb-native-2026.08.06-r9-pose-frame-diagnostics"
+    expected_version = b"urp-orb-native-2026.08.13-r10-global-first-acquisition"
     if expected_version not in data:
         raise ValueError("Native plugin does not contain the required diagnostic ABI")
     source = SOURCE.read_text(encoding="utf-8")
@@ -61,6 +61,9 @@ def main() -> None:
         "solvePnPRansac",
         "SOLVEPNP_SQPNP",
         "guidedMatches",
+        "const PoseSolution strictSolution",
+        "if (hasUsablePrior",
+        "PoseSolution chosen = strictSolution",
         "SampleReferenceHsv",
         "urp_orb_get_last_inliers",
     )
@@ -71,6 +74,14 @@ def main() -> None:
     found = [token for token in prohibited if token in source]
     if found:
         raise ValueError(f"Native tracker contains prohibited C logic: {found}")
+    unchanged_thresholds = (
+        "chosen.reprojectionError > 3.0f",
+        "chosen.reprojectionMax > 8.0f",
+        "chosen.coverageX < (locallyGuided ? 0.035f : 0.05f)",
+        "chosen.coverageY < (locallyGuided ? 0.10f : 0.16f)",
+    )
+    if any(token not in source for token in unchanged_thresholds):
+        raise ValueError("v42 changed a native PnP/spatial-quality threshold")
 
     print(
         json.dumps(

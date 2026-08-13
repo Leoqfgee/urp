@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Replace B with the same-reconstruction surface while preserving rigid C.
+"""Historical v41 packager for the same-reconstruction surface.
 
 BottleCapC geometry and its local matrix are byte-for-byte/hash checked before
-and after the operation.  The new B is baked into the measured ORB canonical
-frame, while ReferenceNeckProxyB becomes an empty compatibility child because
-the same-reconstruction B already contains the real reconstructed neck.
+and after the operation.  That check proves only that C was not edited; it does
+not prove that C and a newly canonicalized B share a coordinate frame. v42 does
+not use this script to package its runtime asset: it retains C in the proven
+v40 ORB frame and applies the audited v41-B -> v40-ORB bridge to B and its
+ReferenceNeck child. The same-reconstruction B already contains the physical
+neck, so ReferenceNeckProxyB remains an empty compatibility child.
 """
 
 from __future__ import annotations

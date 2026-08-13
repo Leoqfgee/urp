@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Security.Cryptography;
 using Unity.Collections;
 using UnityEngine;
 using UnityEngine.Serialization;
@@ -87,6 +88,9 @@ namespace Urp.ArDemo
         [SerializeField] private float rotationSmoothing = 0.25f;
 
         private readonly List<NativeOrbTracker> trackers = new List<NativeOrbTracker>();
+        private const float V41BToV40OrbScale = 0.9931672691f;
+        private static readonly Quaternion V41BToV40OrbRotation =
+            new Quaternion(-0.01609622f, -0.02126613f, -0.00915286f, 0.99960237f);
         private Texture2D frameTexture;
         private Transform registeredBottlePairRoot;
         private Transform registeredReferenceModel;
@@ -138,6 +142,9 @@ namespace Urp.ArDemo
             new CameraFrameSample[16];
         private int cameraFrameSampleCount;
         private int cameraFrameSampleWriteIndex;
+        private int runtimeDatabaseRecords;
+        private string runtimeDatabaseShaPrefix = "UNKNOWN";
+        private bool lastPosePriorWasReliable;
 
         private struct CameraFrameSample
         {
@@ -246,6 +253,8 @@ namespace Urp.ArDemo
 
             activeProfile = profile;
             calibration = profile != null ? profile.calibration : null;
+            UpdateRuntimeDatabaseIdentity(
+                profile != null ? profile.trackingReferenceDatabase : null);
             modelRegistrationVerified = ModelRegistrationEvidence.TryParse(
                 calibration != null ? calibration.modelRegistrationArtifact : null,
                 out modelRegistrationEvidence,
@@ -301,6 +310,8 @@ namespace Urp.ArDemo
                 registeredBottlePairRoot = registeredReferenceModel.parent;
             }
 
+            ApplyV42ProvenOrbFrameBridge();
+
             if (!ValidateRigidHierarchy(out string hierarchyReason))
             {
                 DestroyRuntimeObject(instance);
@@ -310,20 +321,19 @@ namespace Urp.ArDemo
                 throw new MissingReferenceException(hierarchyReason);
             }
 
-            // v39 derived a parent correction from copied ORB/B landmarks and
-            // therefore proved only its own assumption. v40 uses a B asset
-            // baked offline into the ORB canonical frame. Runtime alignment
-            // contains only the measured inverse of Unity's fixed FBX root
-            // Rx(-90) import conversion; the independent JSON artifact is the
-            // only source allowed to assert real model registration.
+            // v42 keeps the v41 same-reconstruction B geometry, but bridges its
+            // measured right/up/front frame into the device-proven v40 ORB
+            // object frame. C was already authored in that v40 frame and is
+            // never moved independently. ModelCoordinateAlignment still only
+            // cancels Unity's fixed FBX import-axis conversion.
             derivedAlignmentPosition = calibration.orbToModelLocalPosition;
             derivedAlignmentRotation = Quaternion.Euler(
                 calibration.orbToModelLocalEulerAngles);
             derivedAlignmentScale = calibration.orbToModelLocalScale;
-            // T_ORB_FROM_B has already been baked into every B/C vertex.
-            // The runtime hierarchy must not apply the source Sim(3) a second
-            // time. The remaining parent rotation is only FBX axis conversion.
-            derivedOrbToRenderedBMatrix = Matrix4x4.identity;
+            derivedOrbToRenderedBMatrix = Matrix4x4.TRS(
+                Vector3.zero,
+                V41BToV40OrbRotation,
+                Vector3.one * V41BToV40OrbScale);
             derivedAlignmentLandmarkRms = modelRegistrationEvidence != null
                 ? modelRegistrationEvidence.landmark_rms_mm
                     / Mathf.Max(0.000001f, calibration.metersPerModelUnit * 1000f)
@@ -532,24 +542,93 @@ namespace Urp.ArDemo
             smoothedRootRotation = trackedObjectPoseRoot.rotation;
             hasSmoothedPose = true;
             ShowPreAlignmentPair();
+            UpdateStatus(BuildPreAlignmentFrontStatus(cameraTransform));
+        }
+
+        private string BuildPreAlignmentFrontStatus(Transform cameraTransform)
+        {
+            Vector3 printedFront = registeredReferenceModel.TransformDirection(
+                (calibration.mouthFrontInModel - calibration.mouthCenterInModel).normalized);
+            Vector3 bottleUp = registeredReferenceModel.TransformDirection(
+                (calibration.mouthCenterInModel - calibration.neckAxisPointInModel).normalized);
+            float frontAngle = Vector3.Angle(printedFront, -cameraTransform.forward);
+            float upAngle = Vector3.Angle(bottleUp, cameraTransform.up);
+            string status = $"PreAlignFront: +Z calibration angleToCamera={frontAngle:F2} deg\n"
+                + $"PreAlignUp: calibration angleToCameraUp={upAngle:F2} deg";
+            if (frontAngle > 2f || upAngle > 2f)
+            {
+                Debug.LogError("PREALIGNMENT_FRONT_VALIDATION_FAIL " + status);
+            }
+            else
+            {
+                Debug.Log("PREALIGNMENT_FRONT_IS_ACTUAL_PRINTED_FRONT_OK " + status);
+            }
+            return status;
+        }
+
+        private void ApplyV42ProvenOrbFrameBridge()
+        {
+            if (registeredReferenceModel == null)
+            {
+                return;
+            }
+
+            // 9e17bcb replaced B with v41 canonical geometry but deliberately
+            // left the inherited v40 C vertices unchanged. The two frames are
+            // not identical. This fixed Sim(3) maps the newly-authored B into
+            // the already-proven v40 ORB/C object frame. v41 right/up/front is
+            // mapped to v40-B -Z/+Y/+X and then through aeb5a36's measured
+            // T_ORB_FROM_B. The common mouth origin remains exactly zero.
+            registeredReferenceModel.localPosition = Vector3.zero;
+            registeredReferenceModel.localRotation = V41BToV40OrbRotation;
+            registeredReferenceModel.localScale = Vector3.one * V41BToV40OrbScale;
+        }
+
+        private void UpdateRuntimeDatabaseIdentity(TextAsset database)
+        {
+            runtimeDatabaseRecords = 0;
+            runtimeDatabaseShaPrefix = "NONE";
+            if (database == null || database.bytes == null || database.bytes.Length < 12)
+            {
+                return;
+            }
+
+            byte[] bytes = database.bytes;
+            runtimeDatabaseRecords = BitConverter.ToInt32(bytes, 8);
+            using (SHA256 sha = SHA256.Create())
+            {
+                byte[] digest = sha.ComputeHash(bytes);
+                runtimeDatabaseShaPrefix = BitConverter.ToString(digest)
+                    .Replace("-", string.Empty)
+                    .Substring(0, 8);
+            }
         }
 
         private Quaternion CalculatePreAlignmentRotation(Transform cameraTransform)
         {
-            // The authored mesh uses +X as the printed front and +Y from the
-            // body towards the mouth. Unity's FBX importer keeps an extra
-            // axis-conversion transform (currently -90 degrees around X) on
-            // BottleRepairRoot, so those are not the outer root's +X/+Y axes.
-            // Read the rendered B axes through the complete imported hierarchy
-            // and map them to a front-facing, upright camera-space frame.
-            Quaternion canonicalModelInRoot =
-                GetCanonicalModelRotationInTrackedRoot();
-            Vector3 modelFrontInRoot =
-                canonicalModelInRoot * Vector3.right;
-            Vector3 modelUpInRoot =
-                canonicalModelInRoot * Vector3.up;
+            // Calibration landmarks are the only semantic-axis truth. In the
+            // measured contract printed front is mouthCenter -> mouthFront
+            // (+Z), while up is neckAxis -> mouthCenter (+Y). Transform both
+            // through the complete imported hierarchy, including the fixed
+            // v41-B-to-v40-ORB bridge, before orienting the outer tracked root.
+            Vector3 modelFront =
+                calibration.mouthFrontInModel - calibration.mouthCenterInModel;
+            Vector3 modelUp =
+                calibration.mouthCenterInModel - calibration.neckAxisPointInModel;
+            if (modelFront.sqrMagnitude < 0.000001f
+                || modelUp.sqrMagnitude < 0.000001f)
+            {
+                throw new InvalidOperationException(
+                    "Calibration mouthFront/mouthCenter/neckAxis landmarks are degenerate.");
+            }
+            Vector3 modelFrontInRoot = trackedObjectPoseRoot.InverseTransformDirection(
+                registeredReferenceModel.TransformDirection(modelFront.normalized));
+            Vector3 modelUpInRoot = trackedObjectPoseRoot.InverseTransformDirection(
+                registeredReferenceModel.TransformDirection(modelUp.normalized));
             modelFrontInRoot.Normalize();
-            modelUpInRoot.Normalize();
+            modelUpInRoot = Vector3.ProjectOnPlane(
+                modelUpInRoot,
+                modelFrontInRoot).normalized;
 
             Quaternion importedModelFrame = Quaternion.LookRotation(
                 modelFrontInRoot,
@@ -582,12 +661,17 @@ namespace Urp.ArDemo
                 canonicalUpInRoot);
         }
 
-        private bool SetCurrentPosePrior(
+        private bool SetReliableTrackedPosePrior(
             NativeOrbTracker tracker,
             int frameRotationClockwise)
         {
             if (tracker == null)
             {
+                return false;
+            }
+            if (!registrationEstablished || !stablePnpPoseAvailable)
+            {
+                tracker.ClearPosePrior();
                 return false;
             }
             if (!TryBuildCurrentPosePrior(
@@ -599,9 +683,7 @@ namespace Urp.ArDemo
             }
             return tracker.SetPosePrior(
                 rotationTranslation,
-                registrationEstablished
-                    ? Mathf.Min(0.09f, guidedMatchRadiusFraction)
-                    : guidedMatchRadiusFraction);
+                Mathf.Min(0.09f, guidedMatchRadiusFraction));
         }
 
         private bool TryBuildCurrentPosePrior(
@@ -609,7 +691,9 @@ namespace Urp.ArDemo
             out float[] rotationTranslation)
         {
             rotationTranslation = null;
-            if (arCamera == null
+            if (!registrationEstablished
+                || !stablePnpPoseAvailable
+                || arCamera == null
                 || modelCoordinateAlignment == null
                 || calibration == null
                 || calibration.metersPerModelUnit <= 0f)
@@ -773,9 +857,14 @@ namespace Urp.ArDemo
                 NativeOrbResult best = default;
                 bool hasResult = false;
                 NativeOrbTracker bestTracker = null;
+                lastPosePriorWasReliable = registrationEstablished
+                    && stablePnpPoseAvailable;
                 foreach (NativeOrbTracker tracker in trackers)
                 {
-                    SetCurrentPosePrior(tracker, rotationClockwise);
+                    bool priorSet = SetReliableTrackedPosePrior(
+                        tracker,
+                        rotationClockwise);
+                    lastPosePriorWasReliable &= priorSet;
                     tracker.Track(
                         rgba,
                         texture.width,
@@ -799,7 +888,7 @@ namespace Urp.ArDemo
                         : TrackingState.Searching;
                     HandleTrackingLoss();
                     UpdateStatus(hasResult
-                        ? qualityReason
+                        ? BuildAcquisitionDiagnostics(best) + qualityReason
                         : "尚未在真实瓶身 A 中找到足够稳定的 B 自然特征。");
                     return;
                 }
@@ -1361,6 +1450,7 @@ namespace Urp.ArDemo
             }
 
             registrationEstablished = false;
+            stablePnpPoseAvailable = false;
             registrationStableFrames = 0;
             poseChainVerified = false;
             hierarchyTransformRoundTripVerified = false;
@@ -1879,6 +1969,37 @@ namespace Urp.ArDemo
                 && float.IsFinite(value.z);
         }
 
+        private string BuildAcquisitionDiagnostics(NativeOrbResult pose)
+        {
+            return $"DB: records={runtimeDatabaseRecords} sha={runtimeDatabaseShaPrefix}\n"
+                + $"AcquireMode: {(lastPosePriorWasReliable ? "GUIDED" : "GLOBAL")}\n"
+                + $"ORB: detected={pose.detectedKeypoints} "
+                + $"ratioMatches={pose.ratioMatches} guidedMatches={pose.guidedMatches} "
+                + $"uniqueMatches={pose.uniqueMatches} poseInliers={pose.poseInliers}\n"
+                + $"PnP: RMS={pose.reprojectionError:F2}px "
+                + $"rejectionCode={RejectionCodeName(pose.rejectionCode)}\n"
+                + $"Prior: {(lastPosePriorWasReliable ? "RELIABLE_LAST_POSE" : "NONE")}\n";
+        }
+
+        private static string RejectionCodeName(int code)
+        {
+            switch (code)
+            {
+                case 0: return "ACCEPTED";
+                case 1: return "INVALID_INPUT";
+                case 2: return "NO_DESCRIPTORS";
+                case 3: return "INSUFFICIENT_UNIQUE_MATCHES";
+                case 4: return "INSUFFICIENT_SPATIAL_DISTRIBUTION";
+                case 5: return "PNP_FAILED";
+                case 6: return "INSUFFICIENT_POSE_INLIERS";
+                case 7: return "LOW_INLIER_RATIO";
+                case 8: return "HIGH_REPROJECTION_ERROR";
+                case 9: return "NEGATIVE_DEPTH";
+                case 10: return "LOW_COUNT_POSE_UNSTABLE";
+                default: return $"UNKNOWN_{code}";
+            }
+        }
+
         private static void DestroyRuntimeObject(UnityEngine.Object value)
         {
             if (value == null)
@@ -1940,8 +2061,8 @@ namespace Urp.ArDemo
             string hardNote = hardConsistencyPassed
                 ? string.Empty
                 : " " + consistencyReason;
-            return
-                $"PnP: {pose.poseInliers}/{pose.uniqueMatches}, "
+            return BuildAcquisitionDiagnostics(pose)
+                + $"PnP: {pose.poseInliers}/{pose.uniqueMatches}, "
                 + $"native {pose.reprojectionError:F2}px/"
                 + $"observed {consistency.nativePnpRmsPixels:F2}px\n"
                 + $"PoseRT: {consistency.poseChainRoundTripRmsPixels:F3}px "

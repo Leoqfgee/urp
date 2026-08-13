@@ -61,6 +61,56 @@ namespace Urp.ArDemo.Tests
         }
 
         [Test]
+        public void PreAlignmentFrontIsActualPrintedFront()
+        {
+            RepairCalibrationProfile calibration =
+                GetPrivateField<RepairCalibrationProfile>("calibration");
+            Vector3 printedFront = body.TransformDirection(
+                (calibration.mouthFrontInModel - calibration.mouthCenterInModel).normalized);
+            Vector3 bottleUp = body.TransformDirection(
+                (calibration.mouthCenterInModel - calibration.neckAxisPointInModel).normalized);
+
+            Assert.That(
+                Vector3.Dot(printedFront, -cameraObject.transform.forward),
+                Is.GreaterThan(0.99f));
+            Assert.That(
+                Vector3.Dot(bottleUp, cameraObject.transform.up),
+                Is.GreaterThan(0.99f));
+            Assert.That(
+                Vector3.Angle(printedFront, -cameraObject.transform.forward),
+                Is.LessThan(2f));
+            Assert.That(
+                Vector3.Angle(bottleUp, cameraObject.transform.up),
+                Is.LessThan(2f));
+        }
+
+        [Test]
+        public void FirstGlobalAcquisitionHasNoPosePrior()
+        {
+            MethodInfo buildPrior = typeof(OrbImageTrackingController).GetMethod(
+                "TryBuildCurrentPosePrior",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(buildPrior, Is.Not.Null);
+            object[] searchingArguments = { 0, null };
+            Assert.That(
+                (bool)buildPrior.Invoke(controller, searchingArguments),
+                Is.False,
+                "Visual PreAlignment must never become the first-acquisition pose prior.");
+
+            Vector3 stablePosition = new Vector3(0.08f, -0.03f, 0.62f);
+            Quaternion stableRotation = Quaternion.Euler(24f, 37f, -12f);
+            ApplyReliablePose(stablePosition, stableRotation);
+            ApplyReliablePose(stablePosition, stableRotation);
+            Assert.That(ApplyReliablePose(stablePosition, stableRotation), Is.True);
+
+            object[] registeredArguments = { 0, null };
+            Assert.That(
+                (bool)buildPrior.Invoke(controller, registeredArguments),
+                Is.True,
+                "Only a quality/stability-approved PnP pose may guide the next frame.");
+        }
+
+        [Test]
         public void PreStartStablePoseIsActuallyApplied()
         {
             Vector3 stablePosition = new Vector3(0.08f, -0.03f, 0.62f);

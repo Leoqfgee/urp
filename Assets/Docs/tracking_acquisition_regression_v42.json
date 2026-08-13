@@ -1,0 +1,40 @@
+{
+  "version": "tracking-acquisition-regression-v42",
+  "generated_utc": "2026-08-13",
+  "baseline_commit": "aeb5a36",
+  "baseline_database_sha256": "A046CD3386245B4A255A45088ECD9087366FF32A1352B2E20C3AC713253AC1EF",
+  "candidate_database_sha256": "A046CD3386245B4A255A45088ECD9087366FF32A1352B2E20C3AC713253AC1EF",
+  "records": 4100,
+  "descriptor_sha256_stream_v40": "3F61CE522BFFDA0FF6182908B76F3925B5C6662DDA52D69E6B5D9A9195E58147",
+  "descriptor_sha256_stream_v42": "3F61CE522BFFDA0FF6182908B76F3925B5C6662DDA52D69E6B5D9A9195E58147",
+  "descriptor_bytes_identical": true,
+  "database_bytes_identical": true,
+  "thresholds_modified": false,
+  "replay_tool": "Tools/TrackingReplay/replay_orb.py",
+  "replay_threshold_note": "The existing replay tool uses its unchanged strict 0.45 inlier-ratio contract; all selected real views pass it. Native global acquisition remains unchanged at its existing 0.40 contract.",
+  "views": {
+    "front": {
+      "source": "F:\\Meshroom_work\\bottle_damaged\\0056.jpg",
+      "v40_baseline": {"detected": 2600, "ratioMatches": 170, "guidedMatches": 0, "uniqueMatches": 68, "poseInliers": 37, "inlierRatio": 0.5441176471, "rms": 1.7348752374, "reprojectionMax": 3.2901120186, "poseValid": true},
+      "v42_result": {"detected": 2600, "ratioMatches": 170, "guidedMatches": 0, "uniqueMatches": 68, "poseInliers": 37, "inlierRatio": 0.5441176471, "rms": 1.7348752374, "reprojectionMax": 3.2901120186, "poseValid": true}
+    },
+    "left_oblique": {
+      "source": "F:\\Meshroom_work\\bottle_damaged\\0011.jpg",
+      "v40_baseline": {"detected": 2600, "ratioMatches": 119, "guidedMatches": 0, "uniqueMatches": 45, "poseInliers": 21, "inlierRatio": 0.4666666667, "rms": 2.1513631979, "reprojectionMax": 3.4563412666, "poseValid": true},
+      "v42_result": {"detected": 2600, "ratioMatches": 119, "guidedMatches": 0, "uniqueMatches": 45, "poseInliers": 21, "inlierRatio": 0.4666666667, "rms": 2.1513631979, "reprojectionMax": 3.4563412666, "poseValid": true}
+    },
+    "right_oblique": {
+      "source": "F:\\Meshroom_work\\bottle_damaged\\0421.jpg",
+      "v40_baseline": {"detected": 2600, "ratioMatches": 82, "guidedMatches": 0, "uniqueMatches": 59, "poseInliers": 28, "inlierRatio": 0.4745762712, "rms": 1.7657264073, "reprojectionMax": 2.5523149967, "poseValid": true},
+      "v42_result": {"detected": 2600, "ratioMatches": 82, "guidedMatches": 0, "uniqueMatches": 59, "poseInliers": 28, "inlierRatio": 0.4745762712, "rms": 1.7657264073, "reprojectionMax": 2.5523149967, "poseValid": true}
+    },
+    "side": {
+      "source": "F:\\Meshroom_work\\bottle_damaged\\0331.jpg",
+      "observability": "lower descriptor count than front/oblique, but this selected near-side real frame still produces a valid strict global PnP pose",
+      "v40_baseline": {"detected": 2600, "ratioMatches": 16, "guidedMatches": 0, "uniqueMatches": 16, "poseInliers": 8, "inlierRatio": 0.5, "rms": 0.8371098578, "reprojectionMax": 1.4404578209, "poseValid": true},
+      "v42_result": {"detected": 2600, "ratioMatches": 16, "guidedMatches": 0, "uniqueMatches": 16, "poseInliers": 8, "inlierRatio": 0.5, "rms": 0.8371098578, "reprojectionMax": 1.4404578209, "poseValid": true}
+    }
+  },
+  "systematic_regression": false,
+  "device_verified": false
+}

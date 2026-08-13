@@ -1,5 +1,5 @@
 {
-  "version": "bottle-orb-same-reconstruction-rigid-pair-v41",
+  "version": "bottle-v42-v41-geometry-in-proven-v40-orb-frame",
   "runtimeHierarchy": {
     "root": "BottleRepairRoot",
     "referenceB": "DamagedBottleB",
@@ -7,7 +7,7 @@
     "repairC": "BottleCapC"
   },
   "coordinateFrame": {
-    "origin": "independently measured physical bottle mouth-ring centroid",
+    "origin": "v40 device-proven ORB mouth origin; v41 measured B mouth maps exactly to zero through the fixed frame bridge",
     "upAxis": "+Y measured base-to-mouth center-line",
     "printedFrontAxis": "+Z red-logo semantic direction",
     "metersPerModelUnit": 0.17
@@ -80,7 +80,7 @@
       0.0,
       1.0
     ],
-    "geometryPolicy": "C geometry/local transform unchanged; shared canonical mouth frame only"
+    "geometryPolicy": "C geometry/local transform remains unchanged because it was inherited from v40 and already occupies the target proven ORB frame; no independent C visual offset is applied"
   },
   "registration": {
     "method": "same Meshroom reconstruction; raw surface and filtered production B measured independently; robust mouth/base rings plus center-line axis; red-logo front and barcode side use real source frames; 34 mm measured neck diameter establishes physical scale",
@@ -101,6 +101,12 @@
       0.0,
       0.0,
       1.0
+    ],
+    "T_V40_ORB_FROM_V41_B": [
+      0.992102548022601, 0.018853338881554, -0.041932210463208, 0.0,
+      -0.017493476907616, 0.992486228081339, 0.032346403027380, 0.0,
+      0.042517489660092, -0.031573139472411, 0.991754316547757, 0.0,
+      0.0, 0.0, 0.0, 1.0
     ],
     "runtimeModelCoordinateAlignment": [
       1.0,
@@ -194,7 +200,10 @@
       0.0,
       1.0
     ],
-    "cIsNeverPositionedIndependentlyAtRuntime": true
+    "cIsNeverPositionedIndependentlyAtRuntime": true,
+    "bUsesFixedMeasuredFrameBridge": true,
+    "referenceNeckInheritsBFrameBridge": true,
+    "commonRuntimeObjectFrame": "aeb5a36/v40 proven ORB frame"
   },
   "runtimeFbxSha256": "AAA471C5BFBBCEA20F7F3C636BC5080FAA00A62FB8652732642BCA01D7B17F62",
   "rigidRelationshipPreserved": true,

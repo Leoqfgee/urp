@@ -1,56 +1,54 @@
-# Bottle v41 A-to-B-to-C coordinate contract
+# Bottle v42 A-to-B-to-C coordinate contract
 
-## Provenance and measured model frame
+## Geometry and acquisition are independent
 
 A is the real open bottle, B is `DamagedBottleB`, and C is `BottleCapC`.
-v40 used an independent `bottle_full_clean_v2` reconstruction and forced a
-hard-coded B mouth point onto an older provisional ORB origin. That could make
-an internal landmark error equal zero while the visible bottle remained high.
+v41 contributed the same-reconstruction B geometry and measured mouth, base,
+surface, up, and printed-front evidence. Those measurements remain authoritative.
 
-v41 reconstructs B from the same `F:\Meshroom_work\bottle_damaged` Meshroom
-project used to generate the real-photo ORB features. The raw AliceVision mesh
-and the filtered production surface are measured in separate passes. Robust
-mouth and base rings define the bottle endpoints; their line defines +Y. Red
-logo detections in source photographs define printed-front +Z, while separately
-recorded barcode-side views reject the cylindrical yaw ambiguity. The supplied
-34 mm neck diameter establishes scale. The historical
-`[0.419225,-4.514827,0.314265]` mouth origin is explicitly rejected because its
-source correspondence file is marked provisional and physically unverified.
+v41 also regenerated and surface-filtered the runtime observation database,
+reducing 4100 records to 3240. Device testing showed that acquisition regressed.
+v42 therefore restores the complete v40 database byte for byte. Descriptor
+bytes, record ordering, and 3D points are unchanged; the 5 mm surface filter is
+offline diagnostic evidence only.
 
-`Assets/Calibration/bottle_orb_to_b_registration.json` records the actual
-raw-B-to-canonical matrix, both endpoint measurements, directional residuals,
-file hashes, and ORB-point-to-production-B triangle distances. ModelReg uses
-the strict 1/2/3/2.5/5 mm and 1.5 degree gates; no copied landmark pair can
-create a PASS.
+`Assets/Calibration/bottle_v42_v41b_to_v40orb_frame_bridge.json` records the
+audited v41-B-to-v40-ORB Sim(3). It is applied to B and inherited by its
+ReferenceNeck child. C already occupies the target v40 ORB frame, so applying
+the bridge to C again would be a double transform. The rigid physical B/C
+relationship is validated in the common target frame.
 
 The runtime hierarchy is:
 
 ```text
 TrackedBottleRoot                 accepted six-DoF PnP world pose
-└── ModelCoordinateAlignment      exact inverse of Unity FBX import axes
+└── ModelCoordinateAlignment      inverse of Unity FBX import axes
     └── BottleRepairRoot          identity
-        ├── DamagedBottleB        same-reconstruction mesh, identity local
-        │   └── ReferenceNeckProxyB (empty compatibility node; neck is in B)
-        └── BottleCapC            unchanged geometry and identity local
+        ├── DamagedBottleB        v41 geometry + audited bridge to v40 ORB
+        │   └── ReferenceNeckProxyB (empty child; inherits the same bridge)
+        └── BottleCapC            already in v40 ORB; identity local
 ```
 
-## Pose, timing, and Start contract
+## PreAlignment and pose-prior contract
 
-The v38 portrait-oriented PnP chain remains unchanged. Stable PnP is applied
-to visible B+C before Start. v40 confidence-weighted SE(3) fusion remains the
-only temporal filter; position/rotation smoothing are active and no fixed
-0.018 m/s or 6 degree/s correction cap exists.
+The calibration landmarks define model front as
+`normalize(mouthFrontInModel - mouthCenterInModel)` and model up as
+`normalize(mouthCenterInModel - neckAxisPointInModel)`. The complete imported
+hierarchy transforms those directions into `TrackedBottleRoot`. PreAlignment
+then faces the printed +Z direction toward the camera and aligns bottle up with
+camera up. It is never a measurement.
 
-Start is a presentation-only gate: B renderers are hidden and C is retained.
-Root, pair, B, and C matrices are asserted unchanged. Development builds draw
-separate ORB/B mouth, base, and front landmarks and emit
-`[URP_CAMERA_SYNC_DIAG]` with CPU-image timestamp, closest AR frame timestamp,
-time delta, and camera-pose delta. This separates static registration bias from
-motion-dependent capture latency.
+During SEARCHING, every tracker clears its pose prior and only strict/global
+PnP may establish the first registration. After a full reliable pose passes the
+existing quality and stability gates, the last reliable PnP pose may seed
+guided/local matching. Strict/global remains active while registered and is the
+relocalization path after loss. No PnP or spatial-coverage threshold is lowered.
 
 ## Evidence boundary
 
-Offline geometry, EditMode, PlayMode, native tests, and synthetic rendering do
-not prove physical-phone overlay. `device_verified` remains false until a real
-Android run confirms B covers A in front, oblique, and top views and C remains
-at the mouth after Start.
+`tracking_acquisition_regression_v42.json` compares the same front, left,
+right, and side frames against the v40 database and v42 candidate. Because the
+runtime database is byte-identical, the strict/global results are identical.
+Offline geometry, EditMode, PlayMode, native tests, and an Android build do not
+prove physical-phone overlay; device verification requires collected Android
+diagnostics from a real run.

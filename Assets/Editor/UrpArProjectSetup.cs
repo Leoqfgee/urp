@@ -36,7 +36,7 @@ namespace Urp.ArDemo.Editor
             "Assets/Materials/BottlePhotogrammetryLit.mat";
         private const string BottleCapMaterialPath =
             "Assets/Materials/CleanBottleCapLit.mat";
-        private const string AndroidApkPath = "Builds/BottleRepairAR_v41.apk";
+        private const string AndroidApkPath = "Builds/BottleRepairAR_v42.apk";
         private const string BottleReferenceOrbPath =
             "Assets/OrbModels/bottle_reference_b.bytes";
         private const string BottleCalibrationPath =
@@ -192,14 +192,14 @@ namespace Urp.ArDemo.Editor
 
         private static void ConfigureAndroidProject()
         {
-            PlayerSettings.productName = "瓶盖AR修复 v41";
+            PlayerSettings.productName = "瓶盖AR修复 v42";
             PlayerSettings.companyName = "qfgeeee";
-            PlayerSettings.bundleVersion = "4.5.0";
+            PlayerSettings.bundleVersion = "4.5.2";
             PlayerSettings.SetApplicationIdentifier(
                 BuildTargetGroup.Android, "com.qfgeeee.paper52objecttrackingar");
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
-            PlayerSettings.Android.bundleVersionCode = 450;
+            PlayerSettings.Android.bundleVersionCode = 452;
             PlayerSettings.SetScriptingBackend(
                 BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
@@ -370,7 +370,7 @@ namespace Urp.ArDemo.Editor
 
             RestorationObjectProfile bottle = LoadOrCreate<RestorationObjectProfile>(
                 BottleProfilePath);
-            bottle.objectId = "bottle_orb_same_reconstruction_v41";
+            bottle.objectId = "bottle_orb_v42_proven_observations";
             bottle.displayName = "新重建无盖饮料瓶与瓶盖";
             bottle.shortDescription =
                 "Blender 中刚性对齐的无盖瓶身 B 与干净白色瓶盖 C。";
@@ -399,9 +399,11 @@ namespace Urp.ArDemo.Editor
             RepairCalibrationProfile bottleCalibration =
                 LoadOrCreate<RepairCalibrationProfile>(BottleCalibrationPath);
             bottleCalibration.objectOriginInModel = Vector3.zero;
-            // The real ORB canonicalizer defines origin at physical mouth
-            // centre. The measured cross-reconstruction Sim(3) is baked into
-            // B, neck and C together offline.
+            // These semantic landmarks are expressed in the measured v41 B
+            // frame. Runtime applies the audited v41-B -> proven-v40-ORB
+            // bridge to B (and its ReferenceNeck child). BottleCapC already
+            // resides in the target v40 ORB frame, so it is not transformed a
+            // second time.
             bottleCalibration.mouthCenterInModel = Vector3.zero;
             bottleCalibration.mouthRightInModel = new Vector3(0.1f, 0f, 0f);
             bottleCalibration.mouthFrontInModel = new Vector3(0f, 0f, 0.1f);
@@ -421,7 +423,9 @@ namespace Urp.ArDemo.Editor
             bottleCalibration.expectedPhysicalCapDiameter = 0.039f;
             bottleCalibration.expectedPhysicalCapHeight = 0.010f;
             bottleCalibration.orbToModelLocalPosition = Vector3.zero;
-            // The cross-registered B+C asset is baked into ORB canonical space.
+            // Unity's FBX root conversion remains the only calibration TRS.
+            // The v42 v41-B -> v40-ORB bridge is applied explicitly by the
+            // tracking controller, not hidden in this calibration profile.
             bottleCalibration.orbToModelLocalEulerAngles = new Vector3(90f, 0f, 0f);
             bottleCalibration.orbToModelLocalScale = Vector3.one;
             EditorUtility.SetDirty(bottleCalibration);

@@ -17,7 +17,7 @@
 namespace
 {
 constexpr char kModelMagic[8] = {'U', 'R', 'P', '3', 'D', 'M', '1', '\0'};
-constexpr char kBuildVersion[] = "urp-orb-native-2026.08.06-r9-pose-frame-diagnostics";
+constexpr char kBuildVersion[] = "urp-orb-native-2026.08.13-r10-global-first-acquisition";
 constexpr int kDescriptorBytes = 32;
 constexpr int kModelRecordBytes = 3 * static_cast<int>(sizeof(float)) + kDescriptorBytes;
 
