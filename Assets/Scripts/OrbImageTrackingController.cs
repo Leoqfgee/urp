@@ -82,19 +82,18 @@ namespace Urp.ArDemo
         [SerializeField] private float registrationPositionToleranceMeters = 0.025f;
         [SerializeField] private float registrationRotationToleranceDegrees = 8f;
         [SerializeField] private float temporaryLossHoldSeconds = 0.35f;
+        [SerializeField] private float startReliablePoseGraceSeconds = 0.75f;
         [Range(0.01f, 1f)]
         [SerializeField] private float positionSmoothing = 0.30f;
         [Range(0.01f, 1f)]
         [SerializeField] private float rotationSmoothing = 0.25f;
 
         private readonly List<NativeOrbTracker> trackers = new List<NativeOrbTracker>();
-        private const float V41BToV40OrbScale = 0.9931672691f;
-        private static readonly Quaternion V41BToV40OrbRotation =
-            new Quaternion(-0.01609622f, -0.02126613f, -0.00915286f, 0.99960237f);
         private Texture2D frameTexture;
         private Transform registeredBottlePairRoot;
         private Transform registeredReferenceModel;
         private Transform registeredReferenceNeck;
+        private Transform registeredTrackingRegistrationProxy;
         private Transform registeredRepairPart;
         private Renderer[] referenceBodyRenderers = Array.Empty<Renderer>();
         private Renderer[] referenceNeckRenderers = Array.Empty<Renderer>();
@@ -114,6 +113,9 @@ namespace Urp.ArDemo
         private ModelRegistrationEvidence modelRegistrationEvidence;
         private string modelRegistrationReason = string.Empty;
         private bool readyForRepair;
+        private bool hasVerifiedReadyPoseSinceReset;
+        private float lastVerifiedReadyPoseTime = float.NegativeInfinity;
+        private float lastReliablePnpTime = float.NegativeInfinity;
         private int consistencyVerifiedFrames;
         private int consistencyFailureFrames;
         private bool hasSmoothedPose;
@@ -143,6 +145,7 @@ namespace Urp.ArDemo
         private int cameraFrameSampleCount;
         private int cameraFrameSampleWriteIndex;
         private int runtimeDatabaseRecords;
+        private string runtimeDatabaseSha256 = "NONE";
         private string runtimeDatabaseShaPrefix = "UNKNOWN";
         private bool lastPosePriorWasReliable;
 
@@ -161,14 +164,21 @@ namespace Urp.ArDemo
         public bool IsHierarchyTransformRoundTripVerified =>
             hierarchyTransformRoundTripVerified;
         public bool IsModelRegistrationVerified => modelRegistrationVerified;
+        public bool HasVerifiedReadyPoseSinceReset =>
+            hasVerifiedReadyPoseSinceReset;
+        public float LastReliablePnpAgeSeconds => float.IsFinite(lastReliablePnpTime)
+            ? Mathf.Max(0f, Time.unscaledTime - lastReliablePnpTime)
+            : float.PositiveInfinity;
         public bool CanStartRepair =>
-            registrationEstablished
+            hasVerifiedReadyPoseSinceReset
+            && registrationEstablished
             && stablePnpPoseAvailable
             && poseAppliedToRigidRoot
-            && poseChainVerified
-            && hierarchyTransformRoundTripVerified
             && modelRegistrationVerified
-            && readyForRepair;
+            && LastReliablePnpAgeSeconds < Mathf.Clamp(
+                startReliablePoseGraceSeconds,
+                0.5f,
+                1.0f);
         public bool IsRepairMode =>
             repairRequested
             && registrationEstablished
@@ -257,6 +267,7 @@ namespace Urp.ArDemo
                 profile != null ? profile.trackingReferenceDatabase : null);
             modelRegistrationVerified = ModelRegistrationEvidence.TryParse(
                 calibration != null ? calibration.modelRegistrationArtifact : null,
+                runtimeDatabaseSha256,
                 out modelRegistrationEvidence,
                 out modelRegistrationReason);
             ApplyTrackingSettings(profile != null ? profile.trackingSettings : null);
@@ -301,6 +312,9 @@ namespace Urp.ArDemo
             registeredReferenceNeck = FindDescendant(
                 instance.transform,
                 "ReferenceNeckProxyB");
+            registeredTrackingRegistrationProxy = FindDescendant(
+                instance.transform,
+                "BottleTrackingRegistrationProxy");
             registeredRepairPart = FindDescendant(instance.transform, "BottleCapC");
             registeredBottlePairRoot = FindDescendant(instance.transform, "BottleRepairRoot");
             if (registeredBottlePairRoot == null
@@ -309,8 +323,6 @@ namespace Urp.ArDemo
             {
                 registeredBottlePairRoot = registeredReferenceModel.parent;
             }
-
-            ApplyV42ProvenOrbFrameBridge();
 
             if (!ValidateRigidHierarchy(out string hierarchyReason))
             {
@@ -321,19 +333,14 @@ namespace Urp.ArDemo
                 throw new MissingReferenceException(hierarchyReason);
             }
 
-            // v42 keeps the v41 same-reconstruction B geometry, but bridges its
-            // measured right/up/front frame into the device-proven v40 ORB
-            // object frame. C was already authored in that v40 frame and is
-            // never moved independently. ModelCoordinateAlignment still only
-            // cancels Unity's fixed FBX import-axis conversion.
+            // v43 bakes clean production B, its neck, and C together into the
+            // proven A046 ORB frame. Runtime alignment only cancels Unity's
+            // fixed FBX import-axis conversion; there is no empirical offset.
             derivedAlignmentPosition = calibration.orbToModelLocalPosition;
             derivedAlignmentRotation = Quaternion.Euler(
                 calibration.orbToModelLocalEulerAngles);
             derivedAlignmentScale = calibration.orbToModelLocalScale;
-            derivedOrbToRenderedBMatrix = Matrix4x4.TRS(
-                Vector3.zero,
-                V41BToV40OrbRotation,
-                Vector3.one * V41BToV40OrbScale);
+            derivedOrbToRenderedBMatrix = Matrix4x4.identity;
             derivedAlignmentLandmarkRms = modelRegistrationEvidence != null
                 ? modelRegistrationEvidence.landmark_rms_mm
                     / Mathf.Max(0.000001f, calibration.metersPerModelUnit * 1000f)
@@ -353,6 +360,15 @@ namespace Urp.ArDemo
                 referenceNeckRenderers);
             repairRenderers =
                 registeredRepairPart.GetComponentsInChildren<Renderer>(true);
+            if (registeredTrackingRegistrationProxy != null)
+            {
+                foreach (Renderer renderer in registeredTrackingRegistrationProxy
+                    .GetComponentsInChildren<Renderer>(true))
+                {
+                    renderer.enabled = false;
+                    renderer.forceRenderingOff = true;
+                }
+            }
             if (referenceRenderers.Length == 0 || repairRenderers.Length == 0)
             {
                 throw new MissingReferenceException(
@@ -400,7 +416,8 @@ namespace Urp.ArDemo
                     modelCoordinateAlignment,
                     registeredBottlePairRoot,
                     registeredReferenceModel,
-                    calibration);
+                    calibration,
+                    runtimeDatabaseSha256);
             }
             if (occlusionRoot != null)
             {
@@ -465,13 +482,15 @@ namespace Urp.ArDemo
                 return;
             }
 
-            if (!CanStartRepair
-                || trackingState != TrackingState.ReadyForRepair)
+            if (!CanStartRepair)
             {
                 ShowPreAlignmentPair();
                 UpdateStatus(
                     "A 与 B 尚未完成稳定对齐，请保持瓶子在画面中。"
                     + "只有 B+C 已应用可靠 PnP 位姿并正在跟踪时才可开始。");
+                string diagnostic = BuildStartGateDiagnostic();
+                Debug.LogWarning($"[URP_START_GATE_DIAG] {diagnostic}");
+                UpdateStatus("START BLOCKED:\n" + diagnostic);
                 return;
             }
 
@@ -566,27 +585,10 @@ namespace Urp.ArDemo
             return status;
         }
 
-        private void ApplyV42ProvenOrbFrameBridge()
-        {
-            if (registeredReferenceModel == null)
-            {
-                return;
-            }
-
-            // 9e17bcb replaced B with v41 canonical geometry but deliberately
-            // left the inherited v40 C vertices unchanged. The two frames are
-            // not identical. This fixed Sim(3) maps the newly-authored B into
-            // the already-proven v40 ORB/C object frame. v41 right/up/front is
-            // mapped to v40-B -Z/+Y/+X and then through aeb5a36's measured
-            // T_ORB_FROM_B. The common mouth origin remains exactly zero.
-            registeredReferenceModel.localPosition = Vector3.zero;
-            registeredReferenceModel.localRotation = V41BToV40OrbRotation;
-            registeredReferenceModel.localScale = Vector3.one * V41BToV40OrbScale;
-        }
-
         private void UpdateRuntimeDatabaseIdentity(TextAsset database)
         {
             runtimeDatabaseRecords = 0;
+            runtimeDatabaseSha256 = "NONE";
             runtimeDatabaseShaPrefix = "NONE";
             if (database == null || database.bytes == null || database.bytes.Length < 12)
             {
@@ -598,9 +600,9 @@ namespace Urp.ArDemo
             using (SHA256 sha = SHA256.Create())
             {
                 byte[] digest = sha.ComputeHash(bytes);
-                runtimeDatabaseShaPrefix = BitConverter.ToString(digest)
-                    .Replace("-", string.Empty)
-                    .Substring(0, 8);
+                runtimeDatabaseSha256 = BitConverter.ToString(digest)
+                    .Replace("-", string.Empty);
+                runtimeDatabaseShaPrefix = runtimeDatabaseSha256.Substring(0, 8);
             }
         }
 
@@ -1204,9 +1206,11 @@ namespace Urp.ArDemo
             lastAcceptedPosition = targetPosition;
             lastAcceptedRotation = targetRotation;
             lastValidPoseTime = Time.unscaledTime;
+            lastReliablePnpTime = Time.unscaledTime;
+            TryEstablishVerifiedReadyLatch();
             trackingState = repairRequested
                 ? TrackingState.Repair
-                : readyForRepair
+                : hasVerifiedReadyPoseSinceReset
                     ? TrackingState.ReadyForRepair
                     : TrackingState.PoseValidating;
             ShowPresentationForCurrentState();
@@ -1231,8 +1235,7 @@ namespace Urp.ArDemo
                 {
                     poseChainVerified = true;
                     hierarchyTransformRoundTripVerified = true;
-                    readyForRepair = registrationEstablished
-                        && modelRegistrationVerified;
+                    TryEstablishVerifiedReadyLatch();
                 }
                 return;
             }
@@ -1248,7 +1251,11 @@ namespace Urp.ArDemo
 
             poseChainVerified = false;
             hierarchyTransformRoundTripVerified = false;
-            readyForRepair = false;
+            // Current-frame mathematical diagnostics are intentionally not a
+            // control latch. A single transient failure may turn these flags
+            // red, but it cannot revoke a pose that previously completed the
+            // full stable-PnP/PoseRT/HierarchyRT/ModelReg contract.
+            readyForRepair = hasVerifiedReadyPoseSinceReset;
         }
 
         private bool TryAccumulateStableRegistration(
@@ -1406,19 +1413,18 @@ namespace Urp.ArDemo
             registrationEstablished = true;
             stablePnpPoseAvailable = true;
             poseAppliedToRigidRoot = true;
-            readyForRepair = poseChainVerified
-                && hierarchyTransformRoundTripVerified
-                && modelRegistrationVerified;
             hasEverRegisteredSinceReset = true;
             lastAcceptedPosition = orbRootPosition;
             lastAcceptedRotation = orbRootRotation;
             lastValidPoseTime = Time.unscaledTime;
+            lastReliablePnpTime = Time.unscaledTime;
+            TryEstablishVerifiedReadyLatch();
             trackingState = TrackingState.StablePoseApplied;
             ShowPresentationForCurrentState();
             capVisibilityDiagnostic?.LogSnapshot("registration-established");
             trackingState = repairRequested
                 ? TrackingState.Repair
-                : readyForRepair
+                : hasVerifiedReadyPoseSinceReset
                     ? TrackingState.ReadyForRepair
                     : TrackingState.PoseValidating;
         }
@@ -1455,6 +1461,8 @@ namespace Urp.ArDemo
             poseChainVerified = false;
             hierarchyTransformRoundTripVerified = false;
             readyForRepair = false;
+            hasVerifiedReadyPoseSinceReset = false;
+            lastVerifiedReadyPoseTime = float.NegativeInfinity;
             consistencyVerifiedFrames = 0;
             consistencyFailureFrames = 0;
             // Retain the last accepted world pose while ORB relocalizes. AR
@@ -1471,11 +1479,14 @@ namespace Urp.ArDemo
             poseChainVerified = false;
             hierarchyTransformRoundTripVerified = false;
             readyForRepair = false;
+            hasVerifiedReadyPoseSinceReset = false;
+            lastVerifiedReadyPoseTime = float.NegativeInfinity;
             registrationStableFrames = 0;
             consistencyVerifiedFrames = 0;
             consistencyFailureFrames = 0;
             hasSmoothedPose = false;
             lastValidPoseTime = float.NegativeInfinity;
+            lastReliablePnpTime = float.NegativeInfinity;
             registrationAveragePosition = Vector3.zero;
             registrationAverageRotation = Quaternion.identity;
             lastCandidatePosition = Vector3.zero;
@@ -1484,6 +1495,55 @@ namespace Urp.ArDemo
             lastAcceptedRotation = Quaternion.identity;
             lastRootPoseApplicationTime = float.NegativeInfinity;
             RestoreProfileCoordinateAlignment();
+        }
+
+        private void TryEstablishVerifiedReadyLatch()
+        {
+            if (!registrationEstablished
+                || !stablePnpPoseAvailable
+                || !poseAppliedToRigidRoot
+                || !poseChainVerified
+                || !hierarchyTransformRoundTripVerified
+                || !modelRegistrationVerified)
+            {
+                readyForRepair = hasVerifiedReadyPoseSinceReset;
+                return;
+            }
+
+            hasVerifiedReadyPoseSinceReset = true;
+            lastVerifiedReadyPoseTime = Time.unscaledTime;
+            readyForRepair = true;
+        }
+
+        private string BuildStartGateDiagnostic()
+        {
+            string blocker = !registrationEstablished ? "registered"
+                : !stablePnpPoseAvailable ? "stablePnp"
+                : !poseAppliedToRigidRoot ? "poseApplied"
+                : !modelRegistrationVerified ? "modelReg"
+                : !hasVerifiedReadyPoseSinceReset ? "readyLatch"
+                : LastReliablePnpAgeSeconds >= Mathf.Clamp(
+                    startReliablePoseGraceSeconds,
+                    0.5f,
+                    1.0f) ? "lastReliablePoseAge"
+                : "NONE";
+            float ageMs = float.IsFinite(LastReliablePnpAgeSeconds)
+                ? LastReliablePnpAgeSeconds * 1000f
+                : float.PositiveInfinity;
+            return $"blockedBy={blocker}\n"
+                + $"registered={registrationEstablished} "
+                + $"stablePnp={stablePnpPoseAvailable} "
+                + $"poseApplied={poseAppliedToRigidRoot}\n"
+                + $"poseRT={poseChainVerified} "
+                + $"hierarchyRT={hierarchyTransformRoundTripVerified} "
+                + $"modelReg={modelRegistrationVerified}\n"
+                + $"readyLatch={hasVerifiedReadyPoseSinceReset} "
+                + $"lastReliablePoseAge={ageMs:F0}ms\n"
+                + $"stableFrames={registrationStableFrames}/"
+                + $"{Mathf.Max(2, registrationConfirmationFrames)} "
+                + $"consistencyFrames={consistencyVerifiedFrames}/"
+                + $"{Mathf.Max(3, consistencyConfirmationFrames)} "
+                + $"state={trackingState}";
         }
 
         private void RestoreProfileCoordinateAlignment()
@@ -1971,13 +2031,23 @@ namespace Urp.ArDemo
 
         private string BuildAcquisitionDiagnostics(NativeOrbResult pose)
         {
+            float lastGoodMs = float.IsFinite(LastReliablePnpAgeSeconds)
+                ? LastReliablePnpAgeSeconds * 1000f
+                : float.PositiveInfinity;
             return $"DB: records={runtimeDatabaseRecords} sha={runtimeDatabaseShaPrefix}\n"
-                + $"AcquireMode: {(lastPosePriorWasReliable ? "GUIDED" : "GLOBAL")}\n"
+                + $"Mode: {(lastPosePriorWasReliable ? "GUIDED" : "GLOBAL")}\n"
                 + $"ORB: detected={pose.detectedKeypoints} "
                 + $"ratioMatches={pose.ratioMatches} guidedMatches={pose.guidedMatches} "
                 + $"uniqueMatches={pose.uniqueMatches} poseInliers={pose.poseInliers}\n"
                 + $"PnP: RMS={pose.reprojectionError:F2}px "
                 + $"rejectionCode={RejectionCodeName(pose.rejectionCode)}\n"
+                + $"Stable: {registrationStableFrames}/"
+                + $"{Mathf.Max(2, registrationConfirmationFrames)} "
+                + $"Consistency: {consistencyVerifiedFrames}/"
+                + $"{Mathf.Max(3, consistencyConfirmationFrames)}\n"
+                + $"ReadyLatch: {(hasVerifiedReadyPoseSinceReset ? "YES" : "NO")} "
+                + $"LastGood: {lastGoodMs:F0}ms "
+                + $"Start: {(CanStartRepair ? "READY" : "BLOCKED")}\n"
                 + $"Prior: {(lastPosePriorWasReliable ? "RELIABLE_LAST_POSE" : "NONE")}\n";
         }
 
@@ -2081,6 +2151,7 @@ namespace Urp.ArDemo
                 return "ModelReg: FAIL " + modelRegistrationReason;
             }
             return $"Mouth {modelRegistrationEvidence.mouth_center_error_mm:F2}mm "
+                + "DBSHA PASS | "
                 + $"Base {modelRegistrationEvidence.base_center_error_mm:F2}mm | "
                 + $"SurfaceP95 {modelRegistrationEvidence.orb_point_to_b_surface_mm.p95_mm:F2}mm "
                 + $"Front {modelRegistrationEvidence.front_axis_error_deg:F2}deg "

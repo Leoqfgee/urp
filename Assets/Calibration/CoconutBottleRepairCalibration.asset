@@ -13,17 +13,17 @@ MonoBehaviour:
   m_Name: CoconutBottleRepairCalibration
   m_EditorClassIdentifier: 
   objectOriginInModel: {x: 0, y: 0, z: 0}
-  mouthCenterInModel: {x: 0, y: 0, z: 0}
-  mouthRightInModel: {x: 0.1, y: 0, z: 0}
-  mouthFrontInModel: {x: 0, y: 0, z: 0.1}
-  neckAxisPointInModel: {x: 0, y: -0.2, z: 0}
+  mouthCenterInModel: {x: 0.045759562, y: 0.03868117, z: 0.089144155}
+  mouthRightInModel: {x: 0.14575957, y: 0.03868117, z: 0.089144155}
+  mouthFrontInModel: {x: 0.045759562, y: 0.03868117, z: 0.18914416}
+  neckAxisPointInModel: {x: 0.045759562, y: -0.16131884, z: 0.089144155}
   hasAuthoredBLandmarks: 0
   authoredBOrigin: {x: 0, y: 0, z: 0}
   authoredBMouthCenter: {x: 0, y: 0, z: 0}
   authoredBMouthRight: {x: 0, y: 0, z: 0}
   authoredBMouthFront: {x: 0, y: 0, z: 0}
   authoredBNeckAxisPoint: {x: 0, y: 0, z: 0}
-  modelRegistrationArtifact: {fileID: 4900000, guid: 4fdfcae691e71cc4da19b4e9d812057a, type: 3}
+  modelRegistrationArtifact: {fileID: 4900000, guid: c3a2e6a83dd54bd6a7d4171b79611743, type: 3}
   metersPerModelUnit: 0.17
   physicalScaleVerified: 1
   expectedPhysicalNeckDiameter: 0.034

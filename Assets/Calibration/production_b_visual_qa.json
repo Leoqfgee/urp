@@ -1,0 +1,53 @@
+{
+  "version": "production-b-visual-qa-v43",
+  "mesh": {
+    "vertex_count": 49067,
+    "triangle_count": 97462,
+    "connected_components_scan": 2,
+    "largest_component_ratio": 0.9739121360742983,
+    "floating_component_count": 1,
+    "bounds_min": [
+      -0.24784959852695465,
+      -1.2452011108398438,
+      -0.24484294652938843
+    ],
+    "bounds_max": [
+      0.2504173219203949,
+      0.0036759525537490845,
+      0.2544397711753845
+    ],
+    "closed_backing_shell": {
+      "vertex_count": 1152,
+      "component_count": 1,
+      "emission": false,
+      "purpose": "fills scan holes behind preserved textured surface"
+    }
+  },
+  "texture_used_uv": {
+    "texture_size": [
+      4096,
+      4096
+    ],
+    "used_texel_count": 428729,
+    "used_texel_ratio": 0.025554239749908447,
+    "luminance_median": 0.5137254901960784,
+    "luminance_p10": 0.2784313725490196,
+    "luminance_p90": 0.6627450980392157,
+    "saturation_median": 0.1411764705882353,
+    "black_pixel_ratio": 0.0007463922431186134,
+    "white_pixel_ratio": 0.0001562758759029597
+  },
+  "qa_renders": [
+    "front.png",
+    "left.png",
+    "right.png"
+  ],
+  "visual_contract": {
+    "red_logo_and_front_text_visible": true,
+    "green_base_visible": true,
+    "black_atlas_regression": false,
+    "large_holes_backed": true,
+    "device_verified": false
+  },
+  "passes": true
+}

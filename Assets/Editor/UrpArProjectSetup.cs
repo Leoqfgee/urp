@@ -36,13 +36,13 @@ namespace Urp.ArDemo.Editor
             "Assets/Materials/BottlePhotogrammetryLit.mat";
         private const string BottleCapMaterialPath =
             "Assets/Materials/CleanBottleCapLit.mat";
-        private const string AndroidApkPath = "Builds/BottleRepairAR_v42.apk";
+        private const string AndroidApkPath = "Builds/BottleRepairAR_v43.apk";
         private const string BottleReferenceOrbPath =
             "Assets/OrbModels/bottle_reference_b.bytes";
         private const string BottleCalibrationPath =
             "Assets/Calibration/CoconutBottleRepairCalibration.asset";
         private const string BottleRegistrationArtifactPath =
-            "Assets/Calibration/bottle_orb_to_b_registration.json";
+            "Assets/Calibration/bottle_orb_to_b_registration_v43.json";
         private const string TissueModelPath =
             "Assets/Objects/Tissue/Viewer/Processed/tissue_processed.obj";
         private const string TissueTexturePath =
@@ -192,14 +192,14 @@ namespace Urp.ArDemo.Editor
 
         private static void ConfigureAndroidProject()
         {
-            PlayerSettings.productName = "瓶盖AR修复 v42";
+            PlayerSettings.productName = "瓶盖AR修复 v43";
             PlayerSettings.companyName = "qfgeeee";
-            PlayerSettings.bundleVersion = "4.5.2";
+            PlayerSettings.bundleVersion = "4.5.3";
             PlayerSettings.SetApplicationIdentifier(
                 BuildTargetGroup.Android, "com.qfgeeee.paper52objecttrackingar");
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
-            PlayerSettings.Android.bundleVersionCode = 452;
+            PlayerSettings.Android.bundleVersionCode = 453;
             PlayerSettings.SetScriptingBackend(
                 BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
@@ -399,15 +399,14 @@ namespace Urp.ArDemo.Editor
             RepairCalibrationProfile bottleCalibration =
                 LoadOrCreate<RepairCalibrationProfile>(BottleCalibrationPath);
             bottleCalibration.objectOriginInModel = Vector3.zero;
-            // These semantic landmarks are expressed in the measured v41 B
-            // frame. Runtime applies the audited v41-B -> proven-v40-ORB
-            // bridge to B (and its ReferenceNeck child). BottleCapC already
-            // resides in the target v40 ORB frame, so it is not transformed a
-            // second time.
-            bottleCalibration.mouthCenterInModel = Vector3.zero;
-            bottleCalibration.mouthRightInModel = new Vector3(0.1f, 0f, 0f);
-            bottleCalibration.mouthFrontInModel = new Vector3(0f, 0f, 0.1f);
-            bottleCalibration.neckAxisPointInModel = new Vector3(0f, -0.2f, 0f);
+            // v43 bakes the complete semantic Sim(3) into production B+neck+C.
+            // The A046 object origin is intentionally not forced to the mouth.
+            Vector3 mouth = new Vector3(
+                0.045759562f, 0.03868117f, 0.089144155f);
+            bottleCalibration.mouthCenterInModel = mouth;
+            bottleCalibration.mouthRightInModel = mouth + Vector3.right * 0.1f;
+            bottleCalibration.mouthFrontInModel = mouth + Vector3.forward * 0.1f;
+            bottleCalibration.neckAxisPointInModel = mouth - Vector3.up * 0.2f;
             bottleCalibration.hasAuthoredBLandmarks = false;
             bottleCalibration.authoredBOrigin = Vector3.zero;
             bottleCalibration.authoredBMouthCenter = Vector3.zero;

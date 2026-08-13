@@ -1,112 +1,126 @@
 {
-  "version": "bottle-v42-v41-geometry-in-proven-v40-orb-frame",
+  "version": "bottle-v43-clean-production-b-in-a046-orb-frame",
   "runtimeHierarchy": {
     "root": "BottleRepairRoot",
     "referenceB": "DamagedBottleB",
-    "referenceNeckCompatibilityNode": "ReferenceNeckProxyB",
+    "referenceNeckB": "ReferenceNeckProxyB",
     "repairC": "BottleCapC"
   },
   "coordinateFrame": {
-    "origin": "v40 device-proven ORB mouth origin; v41 measured B mouth maps exactly to zero through the fixed frame bridge",
-    "upAxis": "+Y measured base-to-mouth center-line",
-    "printedFrontAxis": "+Z red-logo semantic direction",
+    "origin": "legacy A046 SfM object origin; not assumed to be the physical mouth",
+    "physicalMouthCentreModel": [
+      0.04575956192300071,
+      0.038681170310832784,
+      0.08914415427776441
+    ],
+    "upAxis": "+Y base to mouth",
+    "printedFrontAxis": "+Z red-logo/front side",
     "metersPerModelUnit": 0.17
   },
   "referenceB": {
-    "source": "F:\\Meshroom_work\\bottle_damaged\\v41_same_reconstruction_textured\\texturedMesh.obj",
-    "sourceReconstruction": "F:\\Meshroom_work\\bottle_damaged",
+    "source": "Logs\\v43_clean_source_pair.fbx",
+    "sourceReconstruction": "F:\\Meshroom_work\\bottle_full_clean_v2",
     "boundsMin": [
-      -0.29551637172698975,
-      -1.4966118335723877,
-      -0.2766771912574768
+      -0.23788940906524658,
+      -1.3863767385482788,
+      -0.19106389582157135
     ],
     "boundsMax": [
-      0.2531318664550781,
-      0.035488009452819824,
-      0.24008381366729736
+      0.33234715461730957,
+      -0.02663164585828781,
+      0.3803352117538452
     ],
-    "containsReconstructedPhysicalNeck": true
+    "localPosition": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "localRotationRadians": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "localScale": [
+      1.0,
+      1.0,
+      1.0
+    ]
   },
   "referenceNeckB": {
-    "emptyCompatibilityNode": true,
-    "reason": "physical neck is part of the same-reconstruction DamagedBottleB mesh"
-  },
-  "repairC": {
-    "geometrySha256Before": "17BAF9AC079CA2502C92783EAFF2572E23569557B6F90EC3CA761FA31626A945",
-    "geometrySha256After": "17BAF9AC079CA2502C92783EAFF2572E23569557B6F90EC3CA761FA31626A945",
     "boundsMin": [
-      -0.11542869359254837,
-      -0.055418629199266434,
-      -0.1132439598441124
+      -0.0825127512216568,
+      -0.031750939786434174,
+      -0.036678895354270935
     ],
     "boundsMax": [
-      0.1135018840432167,
-      0.011889807879924774,
-      0.1160384938120842
+      0.17217883467674255,
+      0.04288807883858681,
+      0.21807043254375458
     ],
-    "localMatrixBefore": [
+    "localPosition": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "localRotationRadians": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "localScale": [
       1.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
       1.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      1.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
       1.0
+    ]
+  },
+  "repairC": {
+    "source": "Logs\\v43_clean_source_pair.fbx",
+    "geometryPolicy": "same T_ORB_FROM_B baked into B, neck and C vertices; no independent C offset/rotation/scale",
+    "boundsMin": [
+      -0.08634164929389954,
+      -0.024742119014263153,
+      -0.040456756949424744
     ],
-    "localMatrixAfter": [
+    "boundsMax": [
+      0.17565564811229706,
+      0.05228834226727486,
+      0.22194324433803558
+    ],
+    "localPosition": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "localRotationRadians": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "localScale": [
       1.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
       1.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      1.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
       1.0
-    ],
-    "geometryPolicy": "C geometry/local transform remains unchanged because it was inherited from v40 and already occupies the target proven ORB frame; no independent C visual offset is applied"
+    ]
   },
   "registration": {
-    "method": "same Meshroom reconstruction; raw surface and filtered production B measured independently; robust mouth/base rings plus center-line axis; red-logo front and barcode side use real source frames; 34 mm measured neck diameter establishes physical scale",
+    "method": "full semantic Sim(3): nonzero A046 mouth coordinate is the inverse of the historical 2889-correspondence robust ORB-to-legacy-B fit; scale is the independent v41 physical mouth-to-base measurement; +Y up and +Z printed-front lock rotation; all 4100 ORB records remain unchanged",
     "sourceT_ORB_FROM_B": [
-      0.4111296212994733,
-      0.03137443509998305,
-      -1.3221410313209494,
-      -0.843349955297806,
-      -0.05368715024064648,
-      1.3838084796721069,
-      0.016143384921553507,
-      -1.6123229182896726,
-      1.3214230782680108,
-      0.04646034653168376,
-      0.4120088734614414,
-      0.5140945173747211,
+      1.1444399028427157,
+      0.0,
+      0.0,
+      0.04575956192300071,
+      0.0,
+      1.1444399028427157,
+      0.0,
+      0.038681170310832784,
+      0.0,
+      0.0,
+      1.1444399028427157,
+      0.08914415427776441,
       0.0,
       0.0,
       0.0,
       1.0
-    ],
-    "T_V40_ORB_FROM_V41_B": [
-      0.992102548022601, 0.018853338881554, -0.041932210463208, 0.0,
-      -0.017493476907616, 0.992486228081339, 0.032346403027380, 0.0,
-      0.042517489660092, -0.031573139472411, 0.991754316547757, 0.0,
-      0.0, 0.0, 0.0, 1.0
     ],
     "runtimeModelCoordinateAlignment": [
       1.0,
@@ -125,7 +139,8 @@
       0.0,
       0.0,
       1.0
-    ]
+    ],
+    "registrationArtifact": "Assets\\Calibration\\bottle_orb_to_b_registration_v43.json"
   },
   "rigidContract": {
     "rootLocalMatrix": [
@@ -200,12 +215,10 @@
       0.0,
       1.0
     ],
-    "cIsNeverPositionedIndependentlyAtRuntime": true,
-    "bUsesFixedMeasuredFrameBridge": true,
-    "referenceNeckInheritsBFrameBridge": true,
-    "commonRuntimeObjectFrame": "aeb5a36/v40 proven ORB frame"
+    "cIsNeverPositionedIndependentlyAtRuntime": true
   },
-  "runtimeFbxSha256": "AAA471C5BFBBCEA20F7F3C636BC5080FAA00A62FB8652732642BCA01D7B17F62",
+  "sourceFbxSha256": "54DB65AF31DB2286BB619B8982C8AB83F1EBE7B0A4B22F910EA7D210012F7180",
+  "runtimeFbxSha256": "820897FB687128369D0DD4576A433A3C638D0049DEC95E3708A0D22849BB724B",
   "rigidRelationshipPreserved": true,
   "deviceOverlayVerified": false
 }

@@ -46,7 +46,8 @@ namespace Urp.ArDemo
             Transform modelAlignment,
             Transform bottlePair,
             Transform referenceB,
-            RepairCalibrationProfile profile)
+            RepairCalibrationProfile profile,
+            string activeRuntimeOrbSha256 = null)
         {
             arCamera = camera;
             cameraManager = manager;
@@ -59,6 +60,7 @@ namespace Urp.ArDemo
             {
                 ModelRegistrationEvidence.TryParse(
                     profile.modelRegistrationArtifact,
+                    activeRuntimeOrbSha256,
                     out modelRegistration,
                     out _);
             }
@@ -232,6 +234,49 @@ namespace Urp.ArDemo
                 Color.magenta,
                 new Color(1f, 0.35f, 0.75f),
                 candidateRoot);
+            LogLandmarkDeltas(candidateRoot);
+        }
+
+        private void LogLandmarkDeltas(Matrix4x4 candidateRoot)
+        {
+            LogLandmarkDelta(
+                "Mouth",
+                modelRegistration.mouth_center_orb,
+                modelRegistration.registered_mouth_center_b_orb,
+                candidateRoot);
+            LogLandmarkDelta(
+                "Base",
+                modelRegistration.base_center_orb,
+                modelRegistration.registered_base_center_b_orb,
+                candidateRoot);
+            LogLandmarkDelta(
+                "Logo",
+                modelRegistration.front_point_orb,
+                modelRegistration.registered_front_point_b_orb,
+                candidateRoot);
+        }
+
+        private void LogLandmarkDelta(
+            string label,
+            float[] orbValues,
+            float[] bValues,
+            Matrix4x4 candidateRoot)
+        {
+            if (!TryVector(orbValues, out Vector3 orb)
+                || !TryVector(bValues, out Vector3 registeredB))
+            {
+                return;
+            }
+            Vector3 orbWorld = candidateRoot.MultiplyPoint3x4(orb);
+            Vector3 bWorld = candidateRoot.MultiplyPoint3x4(registeredB);
+            Vector3 orbScreen = arCamera.WorldToScreenPoint(orbWorld);
+            Vector3 bScreen = arCamera.WorldToScreenPoint(bWorld);
+            float screenDelta = Vector2.Distance(orbScreen, bScreen);
+            Vector3 cameraDelta = arCamera.transform.InverseTransformVector(
+                bWorld - orbWorld) * 1000f;
+            Debug.Log(
+                $"[URP_MODEL_REG_DIAG] {label} screenDeltaPx={screenDelta:F2} "
+                + $"cameraDeltaMm={Format(cameraDelta)}");
         }
 
         private void DrawLandmarkPair(

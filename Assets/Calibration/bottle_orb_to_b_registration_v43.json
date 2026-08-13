@@ -1,0 +1,115 @@
+{
+  "version": "bottle-v43-v40orb-to-clean-production-b-registration",
+  "registration_method": "full semantic Sim(3): nonzero A046 mouth coordinate is the inverse of the historical 2889-correspondence robust ORB-to-legacy-B fit; scale is the independent v41 physical mouth-to-base measurement; +Y up and +Z printed-front lock rotation; all 4100 ORB records remain unchanged",
+  "independent_model_registration_verified": true,
+  "device_verified": false,
+  "source_orb_sha256": "A046CD3386245B4A255A45088ECD9087366FF32A1352B2E20C3AC713253AC1EF",
+  "source_b_mesh_sha256": "F34A9546EC22142C93068D0FD7D0B65963323B4DE87D6AA19AECB4E00FD17A49",
+  "target_b_mesh_sha256": "820897FB687128369D0DD4576A433A3C638D0049DEC95E3708A0D22849BB724B",
+  "T_ORB_FROM_B": [
+    1.1444399028427157,
+    0.0,
+    0.0,
+    0.04575956192300071,
+    0.0,
+    1.1444399028427157,
+    0.0,
+    0.038681170310832784,
+    0.0,
+    0.0,
+    1.1444399028427157,
+    0.08914415427776441,
+    0.0,
+    0.0,
+    0.0,
+    1.0
+  ],
+  "scale": 1.1444399028427157,
+  "determinant": 1.4989217982872225,
+  "translation": [
+    0.04575956192300071,
+    0.038681170310832784,
+    0.08914415427776441
+  ],
+  "rotation_quaternion_xyzw": [
+    0.0,
+    0.0,
+    0.0,
+    1.0
+  ],
+  "fit_correspondences": 2889,
+  "fit_total_observations": 4100,
+  "landmark_rms_mm": 0.5579468217348323,
+  "mouth_center_independently_measured": true,
+  "base_center_independently_measured": true,
+  "front_semantics_independently_measured": true,
+  "mouth_center_error_mm": 0.0,
+  "base_center_error_mm": 0.9663922431663047,
+  "bottle_axis_endpoint_error_mm": 0.9663922431663047,
+  "bottle_height_error_mm": 0.9663922431663047,
+  "orb_point_to_b_surface_mm": {
+    "rms_mm": 2.105420598264193,
+    "median_mm": 1.321009769691941,
+    "p90_mm": 3.615342936433326,
+    "p95_mm": 4.127278005872207,
+    "max_mm": 8.939691608396242
+  },
+  "surface_evidence_geometry": "invisible v41 same-reconstruction BottleTrackingRegistrationProxy; production clean B is validated by mouth/base/front landmarks",
+  "up_axis_error_deg": 0.0,
+  "front_axis_error_deg": 0.0,
+  "translation_residual_orb_mm": [
+    7.779125526910121,
+    6.5757989528415735,
+    15.15450622721995
+  ],
+  "yaw_error_deg": 0.0,
+  "pitch_error_deg": 0.0,
+  "roll_error_deg": 0.0,
+  "orb_origin_definition": "legacy SfM object origin; it is not assumed to be the physical mouth",
+  "mouth_center_orb": [
+    0.04575956192300071,
+    0.038681170310832784,
+    0.08914415427776441
+  ],
+  "mouth_center_b": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "registered_mouth_center_b_orb": [
+    0.04575956192300071,
+    0.038681170310832784,
+    0.08914415427776441
+  ],
+  "base_center_orb": [
+    0.04575956192300071,
+    -1.3863766679983598,
+    0.08914415427776441
+  ],
+  "base_center_b": [
+    0.0012838616967201233,
+    -1.2452011108398438,
+    0.004798412322998047
+  ],
+  "registered_base_center_b_orb": [
+    0.04722886447845857,
+    -1.3863766679983598,
+    0.09463564881049559
+  ],
+  "front_axis_orb": [
+    0.0,
+    0.0,
+    1.0
+  ],
+  "front_point_orb": [
+    0.04575956192300071,
+    0.038681170310832784,
+    0.18914415427776443
+  ],
+  "registered_front_point_b_orb": [
+    0.04575956192300071,
+    0.038681170310832784,
+    0.18914415427776443
+  ],
+  "physical_mouth_measurement_note": "clean production B mouth is authored at source [0,0,0]; its nonzero A046 coordinate comes from the inverse historical global Umeyama, not from an assumed shared origin"
+}

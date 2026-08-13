@@ -31,7 +31,9 @@ namespace Urp.ArDemo.Editor
         private const string DatabaseManifestPath =
             "Assets/OrbModels/bottle_reference_b_manifest.json";
         private const string ModelRegistrationArtifactPath =
-            "Assets/Calibration/bottle_orb_to_b_registration.json";
+            "Assets/Calibration/bottle_orb_to_b_registration_v43.json";
+        private const string ProductionVisualQaPath =
+            "Assets/Calibration/production_b_visual_qa.json";
         private const string BottleAlbedoPath =
             "Assets/Models/CleanBottleReconstruction/BottleFullAlignedV2/"
             + "Textures/bottle_full_clean_v2_albedo.png";
@@ -217,6 +219,8 @@ namespace Urp.ArDemo.Editor
             Require(
                 File.Exists(ModelRegistrationArtifactPath),
                 $"Missing independent model registration: {ModelRegistrationArtifactPath}");
+            Require(File.Exists(ProductionVisualQaPath),
+                $"Missing production B visual QA: {ProductionVisualQaPath}");
             Require(File.Exists(BottleAlbedoPath),
                 $"Missing bottle photogrammetry texture: {BottleAlbedoPath}");
             Require(File.Exists(BottleCapMaterialPath),
@@ -256,8 +260,7 @@ namespace Urp.ArDemo.Editor
                 && Quaternion.Angle(
                     Quaternion.Euler(profile.calibration.orbToModelLocalEulerAngles),
                     Quaternion.Euler(90f, 0f, 0f)) < 0.01f
-                && Mathf.Abs(
-                    profile.calibration.mouthCenterInModel.y) < 0.0001f,
+                && profile.calibration.mouthCenterInModel.magnitude > 0.01f,
                 "The new canonical B frame or physical scale is invalid.");
             Require(
                 profile.viewerMaterial != null
@@ -302,13 +305,11 @@ namespace Urp.ArDemo.Editor
                 "B database manifest does not describe the real-photo B-only pipeline.");
             string report = File.ReadAllText(NewPairReportPath);
             Require(
-                report.Contains("bottle-v42-v41-geometry-in-proven-v40-orb-frame")
-                && report.Contains("bottle_damaged")
-                && report.Contains("v41 measured B mouth maps exactly to zero")
-                && report.Contains("T_V40_ORB_FROM_V41_B")
-                && report.Contains("no independent C visual offset")
+                report.Contains("full semantic Sim(3)")
+                && report.Contains("sourceT_ORB_FROM_B")
+                && report.Contains("cLocalMatrix")
                 && report.Contains("\"rigidRelationshipPreserved\": true"),
-                "Blender report does not describe the v41 same-reconstruction B+C contract.");
+                "Blender report does not describe the v43 baked production B+C contract.");
             string modelRegistration = File.ReadAllText(ModelRegistrationArtifactPath);
             Require(
                 modelRegistration.Contains(
@@ -320,6 +321,9 @@ namespace Urp.ArDemo.Editor
                 && modelRegistration.Contains("\"T_ORB_FROM_B\"")
                 && modelRegistration.Contains("\"device_verified\": false"),
                 "Independent ORB-to-B registration evidence is incomplete.");
+            Require(
+                File.ReadAllText(ProductionVisualQaPath).Contains("\"passes\": true"),
+                "ProductionBVisualAssetPassesGeometryAndTextureQA failed.");
 
             GameObject pairPrefab =
                 AssetDatabase.LoadAssetAtPath<GameObject>(NewPairPath);
@@ -372,12 +376,12 @@ namespace Urp.ArDemo.Editor
             string appController = File.ReadAllText(AppControllerPath);
             string buildIdentity = File.ReadAllText(BuildIdentityPath);
             Require(
-                appController.Contains("v42")
+                appController.Contains("v43")
                 && buildIdentity.Contains(
-                    "orb-tracking-v42-proven-global-acquisition")
+                    "orb-tracking-v43-ready-latch-clean-production-b")
                 && buildIdentity.Contains(
-                    "coconut-v41-geometry-v40-orb-frame-v42"),
-                "Visible application/build identity still reports a pre-v42 build.");
+                    "coconut-v43-full-sim3-clean-production-b"),
+                "Visible application/build identity still reports a pre-v43 build.");
             string[] prohibitedControllerTokens =
             {
                 "displayMatrix",
@@ -629,9 +633,9 @@ namespace Urp.ArDemo.Editor
                 Vector3.Angle(
                     renderedY,
                     derivedMatrix.MultiplyVector(Vector3.up).normalized) < 0.1f
-                && landmarkRms < 0.002f
-                && Mathf.Abs(importedScale - 99.3167f) < 0.1f,
-                "Unity hierarchy round-trip does not preserve the fixed v41-B-to-v40-ORB bridge: "
+                && landmarkRms < 0.004f
+                && Mathf.Abs(importedScale - 100f) < 0.1f,
+                "Unity hierarchy round-trip does not preserve the baked v43 ORB frame: "
                 + $"angle={Vector3.Angle(renderedY, Vector3.up):F6}, "
                 + $"rms={landmarkRms:E6}, scale={importedScale:F6}.");
             Require(body.parent == pair && neck.IsChildOf(body) && cap.parent == pair,

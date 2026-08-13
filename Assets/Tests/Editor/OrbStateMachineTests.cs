@@ -199,6 +199,19 @@ namespace Urp.ArDemo.Tests
         }
 
         [Test]
+        public void StartDoesNotChangeCMatrix()
+        {
+            Vector3 position = new Vector3(0.08f, -0.03f, 0.62f);
+            Quaternion rotation = Quaternion.Euler(24f, 37f, -12f);
+            ApplyReliablePose(position, rotation);
+            ApplyReliablePose(position, rotation);
+            ApplyReliablePose(position, rotation);
+            Matrix4x4 before = cap.localToWorldMatrix;
+            controller.StartRecognition();
+            AssertMatrixUnchanged(before, cap.localToWorldMatrix, "C Start matrix");
+        }
+
+        [Test]
         public void DisplayDiagnosticFailureDoesNotBlockPoseApplication()
         {
             Vector3 stablePosition = new Vector3(0.04f, -0.01f, 0.58f);
@@ -219,6 +232,57 @@ namespace Urp.ArDemo.Tests
             Assert.That(
                 Vector3.Distance(rootObject.transform.position, stablePosition),
                 Is.LessThan(0.00001f));
+        }
+
+        [Test]
+        public void GuidedAcceptedPoseCanBecomeReadyLatch()
+        {
+            Vector3 position = new Vector3(0.03f, -0.01f, 0.57f);
+            Quaternion rotation = Quaternion.Euler(6f, 14f, -3f);
+            ApplyReliablePose(position, rotation);
+            ApplyReliablePose(position, rotation);
+            Assert.That(ApplyReliablePose(position, rotation), Is.True);
+            Assert.That(controller.HasVerifiedReadyPoseSinceReset, Is.True);
+            Assert.That(controller.CanStartRepair, Is.True);
+        }
+
+        [Test]
+        public void SingleTransientConsistencyFailureDoesNotClearReadyLatch()
+        {
+            Vector3 position = new Vector3(0.03f, -0.01f, 0.57f);
+            Quaternion rotation = Quaternion.Euler(6f, 14f, -3f);
+            ApplyReliablePose(position, rotation);
+            ApplyReliablePose(position, rotation);
+            Assert.That(ApplyReliablePose(position, rotation), Is.True);
+
+            PoseConsistencyResult transient = new PoseConsistencyResult(
+                1.4f, 1.0f, 1.0f, 1.0f, 30, false, false);
+            Assert.That(ApplyReliablePose(position, rotation, transient), Is.True);
+            Assert.That(controller.HasVerifiedReadyPoseSinceReset, Is.True);
+            Assert.That(controller.CanStartRepair, Is.True);
+        }
+
+        [Test]
+        public void SustainedLossClearsReadyLatch()
+        {
+            Vector3 position = new Vector3(0.03f, -0.01f, 0.57f);
+            Quaternion rotation = Quaternion.Euler(6f, 14f, -3f);
+            ApplyReliablePose(position, rotation);
+            ApplyReliablePose(position, rotation);
+            Assert.That(ApplyReliablePose(position, rotation), Is.True);
+            SetPrivateField("lastValidPoseTime", float.NegativeInfinity);
+            InvokePrivate("HandleTrackingLoss");
+            Assert.That(controller.HasVerifiedReadyPoseSinceReset, Is.False);
+            Assert.That(controller.CanStartRepair, Is.False);
+        }
+
+        [Test]
+        public void StartGateReportsExactBlockingFlag()
+        {
+            string diagnostic = (string)InvokePrivate("BuildStartGateDiagnostic");
+            StringAssert.Contains("blockedBy=registered", diagnostic);
+            StringAssert.Contains("readyLatch=False", diagnostic);
+            StringAssert.Contains("lastReliablePoseAge=", diagnostic);
         }
 
         [Test]
@@ -325,6 +389,15 @@ namespace Urp.ArDemo.Tests
                 BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.That(field, Is.Not.Null, name);
             return (T)field.GetValue(controller);
+        }
+
+        private object InvokePrivate(string name)
+        {
+            MethodInfo method = typeof(OrbImageTrackingController).GetMethod(
+                name,
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(method, Is.Not.Null, name);
+            return method.Invoke(controller, null);
         }
 
         private static bool AllVisible(Transform root)

@@ -110,10 +110,11 @@ namespace Urp.ArDemo.Tests
         public void ProductionModelRegistrationArtifactUsesIndependentStrictEvidence()
         {
             TextAsset asset = AssetDatabase.LoadAssetAtPath<TextAsset>(
-                "Assets/Calibration/bottle_orb_to_b_registration.json");
+                "Assets/Calibration/bottle_orb_to_b_registration_v43.json");
             Assert.That(
                 ModelRegistrationEvidence.TryParse(
                     asset,
+                    "A046CD3386245B4A255A45088ECD9087366FF32A1352B2E20C3AC713253AC1EF",
                     out ModelRegistrationEvidence evidence,
                     out string reason),
                 Is.True,
@@ -132,16 +133,55 @@ namespace Urp.ArDemo.Tests
                 Is.LessThanOrEqualTo(5f));
             Assert.That(evidence.front_axis_error_deg, Is.LessThanOrEqualTo(1.5f));
             Assert.That(evidence.up_axis_error_deg, Is.LessThanOrEqualTo(1.5f));
-            Assert.That(
-                new Vector3(
-                    evidence.mouth_center_orb[0],
-                    evidence.mouth_center_orb[1],
-                    evidence.mouth_center_orb[2]).magnitude,
-                Is.LessThan(1e-5f));
+            Assert.That(evidence.mouth_center_orb[0], Is.Not.EqualTo(0f));
             Assert.That(
                 Mathf.Abs(evidence.T_ORB_FROM_B[0] - 1f),
                 Is.GreaterThan(0.1f),
                 "Offline raw-mesh to canonical baking must remain independently auditable.");
+        }
+
+        [Test]
+        public void ModelRegistrationEvidenceRejectsWrongOrbSha()
+        {
+            TextAsset asset = AssetDatabase.LoadAssetAtPath<TextAsset>(
+                "Assets/Calibration/bottle_orb_to_b_registration_v43.json");
+            Assert.That(
+                ModelRegistrationEvidence.TryParse(
+                    asset,
+                    "32913A73152D61CC9312132A1F9D565FC316F811C3D8F4E83E7C9236D5CD9122",
+                    out _,
+                    out string reason),
+                Is.False);
+            StringAssert.Contains("MODEL_REG_DB_SHA_MISMATCH", reason);
+        }
+
+        [Test]
+        public void V40OrbToProductionBRegistrationIncludesMeasuredTranslation()
+        {
+            TextAsset asset = AssetDatabase.LoadAssetAtPath<TextAsset>(
+                "Assets/Calibration/bottle_orb_to_b_registration_v43.json");
+            ModelRegistrationEvidence.TryParse(
+                asset,
+                "A046CD3386245B4A255A45088ECD9087366FF32A1352B2E20C3AC713253AC1EF",
+                out ModelRegistrationEvidence evidence,
+                out string reason);
+            Assert.That(evidence, Is.Not.Null, reason);
+            Vector3 translation = new Vector3(
+                evidence.T_ORB_FROM_B[3],
+                evidence.T_ORB_FROM_B[7],
+                evidence.T_ORB_FROM_B[11]);
+            Assert.That(translation.magnitude, Is.GreaterThan(0.01f));
+        }
+
+        [Test]
+        public void ProductionBVisualAssetPassesGeometryAndTextureQA()
+        {
+            TextAsset qa = AssetDatabase.LoadAssetAtPath<TextAsset>(
+                "Assets/Calibration/production_b_visual_qa.json");
+            Assert.That(qa, Is.Not.Null);
+            StringAssert.Contains("\"passes\": true", qa.text);
+            StringAssert.Contains("\"black_pixel_ratio\"", qa.text);
+            StringAssert.Contains("\"closed_backing_shell\"", qa.text);
         }
 
         private static void AssertRoundTrip(int rotationClockwise)

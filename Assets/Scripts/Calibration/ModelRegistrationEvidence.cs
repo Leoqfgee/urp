@@ -53,6 +53,7 @@ namespace Urp.ArDemo.Calibration
 
         public static bool TryParse(
             TextAsset asset,
+            string activeRuntimeOrbSha256,
             out ModelRegistrationEvidence evidence,
             out string reason)
         {
@@ -85,6 +86,17 @@ namespace Urp.ArDemo.Calibration
                 || evidence.T_ORB_FROM_B.Length != 16)
             {
                 reason = "Registration artifact is missing hashes or its 4x4 matrix.";
+                return false;
+            }
+            if (string.IsNullOrWhiteSpace(activeRuntimeOrbSha256)
+                || !string.Equals(
+                    evidence.source_orb_sha256.Trim(),
+                    activeRuntimeOrbSha256.Trim(),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                reason = "MODEL_REG_DB_SHA_MISMATCH: evidence source ORB SHA256 "
+                    + $"{evidence.source_orb_sha256} does not match active runtime "
+                    + $"database {activeRuntimeOrbSha256}.";
                 return false;
             }
             if (evidence.orb_point_to_b_surface_mm == null
@@ -121,5 +133,6 @@ namespace Urp.ArDemo.Calibration
             }
             return true;
         }
+
     }
 }
