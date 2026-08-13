@@ -845,7 +845,17 @@ namespace Urp.ArDemo
 
             try
             {
-                LogCameraSynchronization(image);
+                if (!TryGetClosestCameraPose(
+                        image.timestamp,
+                        out Vector3 captureCameraPosition,
+                        out Quaternion captureCameraRotation,
+                        out float capturePoseDeltaMs,
+                        out string captureMotionClass))
+                {
+                    HandleTrackingLoss();
+                    UpdateStatus("CAMERA_SYNC_UNAVAILABLE: CPU image has no timestamp-matched AR camera pose.");
+                    return;
+                }
                 Texture2D texture = ConvertCpuImage(image);
                 CameraIntrinsics intrinsics = GetCameraIntrinsics(
                     image.width,
@@ -898,7 +908,8 @@ namespace Urp.ArDemo
                 if (!OpenCvUnityPoseConverter.TryGetObjectPose(
                         best,
                         rotationClockwise,
-                        arCamera,
+                        captureCameraPosition,
+                        captureCameraRotation,
                         calibration,
                         out Vector3 targetPosition,
                         out Quaternion targetRotation))
@@ -938,6 +949,11 @@ namespace Urp.ArDemo
                     targetRotation,
                     derivedOrbToRenderedBMatrix,
                     consistency);
+                poseCoordinateDiagnostic?.UpdateCameraSynchronization(
+                    capturePoseDeltaMs,
+                    captureMotionClass,
+                    captureCameraPosition,
+                    captureCameraRotation);
                 if (appearanceConsistency != null
                     && best.sampledConfidence > 0f)
                 {
@@ -1077,18 +1093,28 @@ namespace Urp.ArDemo
                 cameraFrameSamples.Length);
         }
 
-        private void LogCameraSynchronization(XRCpuImage image)
+        private bool TryGetClosestCameraPose(
+            double cpuTimestampSeconds,
+            out Vector3 capturePosition,
+            out Quaternion captureRotation,
+            out float deltaMs,
+            out string motionClass)
         {
-#if DEVELOPMENT_BUILD || UNITY_EDITOR
+            capturePosition = Vector3.zero;
+            captureRotation = Quaternion.identity;
+            deltaMs = float.PositiveInfinity;
+            motionClass = "UNAVAILABLE";
             if (cameraFrameSampleCount == 0)
             {
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
                 Debug.Log(
-                    $"[URP_CAMERA_SYNC_DIAG] cpuTimestampSeconds={image.timestamp:F9} "
+                    $"[URP_CAMERA_SYNC_DIAG] cpuTimestampSeconds={cpuTimestampSeconds:F9} "
                     + "closestArTimestampNs=unavailable deltaMs=unavailable");
-                return;
+#endif
+                return false;
             }
 
-            long cpuTimestampNs = (long)Math.Round(image.timestamp * 1e9);
+            long cpuTimestampNs = (long)Math.Round(cpuTimestampSeconds * 1e9);
             CameraFrameSample closest = cameraFrameSamples[0];
             long closestDelta = long.MaxValue;
             for (int i = 0; i < cameraFrameSampleCount; i++)
@@ -1108,17 +1134,22 @@ namespace Urp.ArDemo
             float poseDeltaDegrees = arCamera != null
                 ? Quaternion.Angle(arCamera.transform.rotation, closest.rotation)
                 : 0f;
-            string motionClass = poseDeltaCentimetres < 0.2f
+            motionClass = poseDeltaCentimetres < 0.2f
                 && poseDeltaDegrees < 0.2f
                     ? "STATIC"
                     : "MOVING";
+            capturePosition = closest.position;
+            captureRotation = closest.rotation;
+            deltaMs = (float)(closestDelta / 1e6);
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
             Debug.Log(
                 $"[URP_CAMERA_SYNC_DIAG] cpuTimestampNs={cpuTimestampNs} "
                 + $"closestArTimestampNs={closest.timestampNs} "
-                + $"deltaMs={closestDelta / 1e6:F3} "
+                + $"deltaMs={deltaMs:F3} sync={(deltaMs <= 40f ? "PASS" : "CAMERA_SYNC_WARN")} "
                 + $"cameraPoseDeltaCm={poseDeltaCentimetres:F3} "
                 + $"cameraPoseDeltaDeg={poseDeltaDegrees:F3} motion={motionClass}");
 #endif
+            return true;
         }
 
         private bool TryApplyReliablePose(

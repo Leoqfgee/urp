@@ -1,5 +1,5 @@
 {
-  "version": "bottle-v43-clean-production-b-in-a046-orb-frame",
+  "version": "bottle-v44-real-sim3-rigid-pair",
   "runtimeHierarchy": {
     "root": "BottleRepairRoot",
     "referenceB": "DamagedBottleB",
@@ -7,28 +7,28 @@
     "repairC": "BottleCapC"
   },
   "coordinateFrame": {
-    "origin": "legacy A046 SfM object origin; not assumed to be the physical mouth",
+    "origin": "physical bottle mouth centre",
     "physicalMouthCentreModel": [
-      0.04575956192300071,
-      0.038681170310832784,
-      0.08914415427776441
+      0.0,
+      0.0,
+      0.0
     ],
     "upAxis": "+Y base to mouth",
     "printedFrontAxis": "+Z red-logo/front side",
     "metersPerModelUnit": 0.17
   },
   "referenceB": {
-    "source": "Logs\\v43_clean_source_pair.fbx",
+    "source": "F:\\Au\\urp-unity-ar\\Logs\\v43_clean_source_pair.fbx",
     "sourceReconstruction": "F:\\Meshroom_work\\bottle_full_clean_v2",
     "boundsMin": [
-      -0.23788940906524658,
-      -1.3863767385482788,
-      -0.19106389582157135
+      -0.27572739124298096,
+      -1.447351098060608,
+      -0.3104002773761749
     ],
     "boundsMax": [
-      0.33234715461730957,
-      -0.02663164585828781,
-      0.3803352117538452
+      0.29165327548980713,
+      -0.07018062472343445,
+      0.2674029767513275
     ],
     "localPosition": [
       0.0,
@@ -48,14 +48,14 @@
   },
   "referenceNeckB": {
     "boundsMin": [
-      -0.0825127512216568,
-      -0.031750939786434174,
-      -0.036678895354270935
+      -0.12940014898777008,
+      -0.07315421849489212,
+      -0.1358053982257843
     ],
     "boundsMax": [
-      0.17217883467674255,
-      0.04288807883858681,
-      0.21807043254375458
+      0.12822973728179932,
+      -0.0009764323476701975,
+      0.12187646329402924
     ],
     "localPosition": [
       0.0,
@@ -74,17 +74,17 @@
     ]
   },
   "repairC": {
-    "source": "Logs\\v43_clean_source_pair.fbx",
+    "source": "F:\\Au\\urp-unity-ar\\Logs\\v43_clean_source_pair.fbx",
     "geometryPolicy": "same T_ORB_FROM_B baked into B, neck and C vertices; no independent C offset/rotation/scale",
     "boundsMin": [
-      -0.08634164929389954,
-      -0.024742119014263153,
-      -0.040456756949424744
+      -0.13324084877967834,
+      -0.06553799659013748,
+      -0.13933105766773224
     ],
     "boundsMax": [
-      0.17565564811229706,
-      0.05228834226727486,
-      0.22194324433803558
+      0.13186392188072205,
+      0.008374214172363281,
+      0.1257435828447342
     ],
     "localPosition": [
       0.0,
@@ -103,20 +103,20 @@
     ]
   },
   "registration": {
-    "method": "full semantic Sim(3): nonzero A046 mouth coordinate is the inverse of the historical 2889-correspondence robust ORB-to-legacy-B fit; scale is the independent v41 physical mouth-to-base measurement; +Y up and +Z printed-front lock rotation; all 4100 ORB records remain unchanged",
+    "method": "actual iterative closest-point-on-triangle; 75% trimmed; Huber robust constrained Sim(3); high independent mouth/base/front weights; rotation bounded to +/-5deg",
     "sourceT_ORB_FROM_B": [
-      1.1444399028427157,
-      0.0,
-      0.0,
-      0.04575956192300071,
-      0.0,
-      1.1444399028427157,
-      0.0,
-      0.038681170310832784,
-      0.0,
-      0.0,
-      1.1444399028427157,
-      0.08914415427776441,
+      1.157849521825846,
+      -0.009241975030546069,
+      2.8776770386912155e-05,
+      -4.174663314248158e-05,
+      0.009241511747506993,
+      1.1577424524113165,
+      -0.015746061988944588,
+      -0.0034213223075726944,
+      9.690814434900419e-05,
+      0.015745790074612274,
+      1.1577793359818813,
+      -0.007863030396962453,
       0.0,
       0.0,
       0.0,
@@ -140,7 +140,7 @@
       0.0,
       1.0
     ],
-    "registrationArtifact": "Assets\\Calibration\\bottle_orb_to_b_registration_v43.json"
+    "registrationArtifact": "F:\\Au\\urp-unity-ar\\Assets\\Calibration\\bottle_orb_to_b_registration_v44.json"
   },
   "rigidContract": {
     "rootLocalMatrix": [
@@ -218,7 +218,7 @@
     "cIsNeverPositionedIndependentlyAtRuntime": true
   },
   "sourceFbxSha256": "54DB65AF31DB2286BB619B8982C8AB83F1EBE7B0A4B22F910EA7D210012F7180",
-  "runtimeFbxSha256": "820897FB687128369D0DD4576A433A3C638D0049DEC95E3708A0D22849BB724B",
+  "runtimeFbxSha256": "E7451B9528E906D285F2D72C46B48E160F9B936F8FA1DAF779DAB69AC1D98E2D",
   "rigidRelationshipPreserved": true,
   "deviceOverlayVerified": false
 }

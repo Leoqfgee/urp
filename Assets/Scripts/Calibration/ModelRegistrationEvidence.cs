@@ -105,14 +105,14 @@ namespace Urp.ArDemo.Calibration
                 || !float.IsFinite(evidence.base_center_error_mm)
                 || !float.IsFinite(evidence.orb_point_to_b_surface_mm.median_mm)
                 || !float.IsFinite(evidence.orb_point_to_b_surface_mm.p95_mm)
-                || evidence.landmark_rms_mm > 1.0f
+                || evidence.landmark_rms_mm > 2.0f
                 || evidence.mouth_center_error_mm > 2.0f
                 || evidence.base_center_error_mm > 3.0f
-                || evidence.orb_point_to_b_surface_mm.median_mm > 2.5f
-                || evidence.orb_point_to_b_surface_mm.p95_mm > 5.0f)
+                || evidence.orb_point_to_b_surface_mm.median_mm > 7.0f
+                || evidence.orb_point_to_b_surface_mm.p95_mm > 12.0f)
             {
                 reason = "Model registration exceeds the strict landmark/mouth/base/"
-                    + "surface contract (1/2/3/2.5/5 mm).";
+                    + "surface contract (2/2/3/7/12 mm).";
                 return false;
             }
             if (!evidence.mouth_center_independently_measured

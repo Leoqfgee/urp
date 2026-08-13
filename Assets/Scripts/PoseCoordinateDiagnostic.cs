@@ -38,6 +38,22 @@ namespace Urp.ArDemo
         private float poseLagCentimetres;
         private float poseLagDegrees;
         private ModelRegistrationEvidence modelRegistration;
+        private float capturePoseDeltaMs;
+        private string captureMotionClass = "UNAVAILABLE";
+        private Vector3 captureCameraPosition;
+        private Quaternion captureCameraRotation = Quaternion.identity;
+
+        public void UpdateCameraSynchronization(
+            float deltaMs,
+            string motionClass,
+            Vector3 position,
+            Quaternion rotation)
+        {
+            capturePoseDeltaMs = deltaMs;
+            captureMotionClass = motionClass;
+            captureCameraPosition = position;
+            captureCameraRotation = rotation;
+        }
 
         public void Bind(
             Camera camera,
@@ -244,6 +260,13 @@ namespace Urp.ArDemo
                 modelRegistration.mouth_center_orb,
                 modelRegistration.registered_mouth_center_b_orb,
                 candidateRoot);
+            Debug.Log(
+                $"[URP_OVERLAY_BIAS_DIAG] motion={captureMotionClass} "
+                + $"capturePoseDeltaMs={capturePoseDeltaMs:F3} "
+                + $"candidateVsAppliedCm={poseLagCentimetres:F3} "
+                + $"candidateVsAppliedDeg={poseLagDegrees:F3} "
+                + $"captureCameraPosition={Format(captureCameraPosition)} "
+                + $"captureCameraRotation={captureCameraRotation.eulerAngles}");
             LogLandmarkDelta(
                 "Base",
                 modelRegistration.base_center_orb,

@@ -36,13 +36,13 @@ namespace Urp.ArDemo.Editor
             "Assets/Materials/BottlePhotogrammetryLit.mat";
         private const string BottleCapMaterialPath =
             "Assets/Materials/CleanBottleCapLit.mat";
-        private const string AndroidApkPath = "Builds/BottleRepairAR_v43.apk";
+        private const string AndroidApkPath = "Builds/BottleRepairAR_v44.apk";
         private const string BottleReferenceOrbPath =
             "Assets/OrbModels/bottle_reference_b.bytes";
         private const string BottleCalibrationPath =
             "Assets/Calibration/CoconutBottleRepairCalibration.asset";
         private const string BottleRegistrationArtifactPath =
-            "Assets/Calibration/bottle_orb_to_b_registration_v43.json";
+            "Assets/Calibration/bottle_orb_to_b_registration_v44.json";
         private const string TissueModelPath =
             "Assets/Objects/Tissue/Viewer/Processed/tissue_processed.obj";
         private const string TissueTexturePath =
@@ -192,14 +192,14 @@ namespace Urp.ArDemo.Editor
 
         private static void ConfigureAndroidProject()
         {
-            PlayerSettings.productName = "瓶盖AR修复 v43";
+            PlayerSettings.productName = "瓶盖AR修复 v44";
             PlayerSettings.companyName = "qfgeeee";
-            PlayerSettings.bundleVersion = "4.5.3";
+            PlayerSettings.bundleVersion = "4.5.4";
             PlayerSettings.SetApplicationIdentifier(
                 BuildTargetGroup.Android, "com.qfgeeee.paper52objecttrackingar");
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
-            PlayerSettings.Android.bundleVersionCode = 453;
+            PlayerSettings.Android.bundleVersionCode = 454;
             PlayerSettings.SetScriptingBackend(
                 BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;

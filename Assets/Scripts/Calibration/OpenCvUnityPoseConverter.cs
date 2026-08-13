@@ -17,9 +17,36 @@ namespace Urp.ArDemo.Calibration
             out Vector3 worldPosition,
             out Quaternion worldRotation)
         {
+            if (arCamera == null)
+            {
+                worldPosition = Vector3.zero;
+                worldRotation = Quaternion.identity;
+                return false;
+            }
+            return TryGetObjectPose(
+                result,
+                frameRotationClockwise,
+                arCamera.transform.position,
+                arCamera.transform.rotation,
+                calibration,
+                out worldPosition,
+                out worldRotation);
+        }
+
+        public static bool TryGetObjectPose(
+            NativeOrbResult result,
+            int frameRotationClockwise,
+            Vector3 captureCameraPosition,
+            Quaternion captureCameraRotation,
+            RepairCalibrationProfile calibration,
+            out Vector3 worldPosition,
+            out Quaternion worldRotation)
+        {
             worldPosition = Vector3.zero;
             worldRotation = Quaternion.identity;
-            if (arCamera == null || calibration == null || !calibration.HasValidFrame)
+            if (calibration == null || !calibration.HasValidFrame
+                || !IsFinite(captureCameraPosition)
+                || !IsFinite(captureCameraRotation))
                 return false;
 
             // Native rotates both the CPU image and its intrinsics into the
@@ -49,10 +76,12 @@ namespace Urp.ArDemo.Calibration
             Vector3 rightCamera = Vector3.Cross(upCamera, forwardCamera).normalized;
             forwardCamera = Vector3.Cross(rightCamera, upCamera).normalized;
             Quaternion cameraRotation = Quaternion.LookRotation(forwardCamera, upCamera);
-            worldPosition = arCamera.transform.TransformPoint(originCameraUnity);
-            worldRotation = arCamera.transform.rotation * cameraRotation;
+            worldPosition = captureCameraPosition
+                + captureCameraRotation * originCameraUnity;
+            worldRotation = captureCameraRotation * cameraRotation;
             return IsFinite(worldPosition) && IsFinite(worldRotation)
-                && arCamera.transform.InverseTransformPoint(worldPosition).z > 0f;
+                && (Quaternion.Inverse(captureCameraRotation)
+                    * (worldPosition - captureCameraPosition)).z > 0f;
         }
 
         public static Vector3 TransformModelPoint(NativeOrbResult result, Vector3 point)

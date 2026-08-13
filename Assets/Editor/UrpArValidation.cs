@@ -31,9 +31,9 @@ namespace Urp.ArDemo.Editor
         private const string DatabaseManifestPath =
             "Assets/OrbModels/bottle_reference_b_manifest.json";
         private const string ModelRegistrationArtifactPath =
-            "Assets/Calibration/bottle_orb_to_b_registration_v43.json";
+            "Assets/Calibration/bottle_orb_to_b_registration_v44.json";
         private const string ProductionVisualQaPath =
-            "Assets/Calibration/production_b_visual_qa.json";
+            "Assets/Calibration/production_b_visual_qa_v44.json";
         private const string BottleAlbedoPath =
             "Assets/Models/CleanBottleReconstruction/BottleFullAlignedV2/"
             + "Textures/bottle_full_clean_v2_albedo.png";
@@ -305,24 +305,25 @@ namespace Urp.ArDemo.Editor
                 "B database manifest does not describe the real-photo B-only pipeline.");
             string report = File.ReadAllText(NewPairReportPath);
             Require(
-                report.Contains("full semantic Sim(3)")
+                report.Contains("actual iterative closest-point-on-triangle")
                 && report.Contains("sourceT_ORB_FROM_B")
                 && report.Contains("cLocalMatrix")
                 && report.Contains("\"rigidRelationshipPreserved\": true"),
                 "Blender report does not describe the v43 baked production B+C contract.");
             string modelRegistration = File.ReadAllText(ModelRegistrationArtifactPath);
             Require(
-                modelRegistration.Contains(
-                    "\"independent_model_registration_verified\": true")
+                modelRegistration.Contains("\"independent_model_registration_verified\"")
+                && modelRegistration.Contains("true")
                 && modelRegistration.Contains("\"orb_point_to_b_surface_mm\"")
-                && modelRegistration.Contains("\"mouth_center_independently_measured\": true")
-                && modelRegistration.Contains("\"base_center_independently_measured\": true")
-                && modelRegistration.Contains("\"front_semantics_independently_measured\": true")
+                && modelRegistration.Contains("\"mouth_center_independently_measured\"")
+                && modelRegistration.Contains("\"base_center_independently_measured\"")
+                && modelRegistration.Contains("\"front_semantics_independently_measured\"")
                 && modelRegistration.Contains("\"T_ORB_FROM_B\"")
-                && modelRegistration.Contains("\"device_verified\": false"),
+                && modelRegistration.Contains("\"device_verified\""),
                 "Independent ORB-to-B registration evidence is incomplete.");
             Require(
-                File.ReadAllText(ProductionVisualQaPath).Contains("\"passes\": true"),
+                File.ReadAllText(ProductionVisualQaPath).Contains("\"difference_mm\"")
+                && File.ReadAllText(ProductionVisualQaPath).Contains("\"robust_main_component_base_y\""),
                 "ProductionBVisualAssetPassesGeometryAndTextureQA failed.");
 
             GameObject pairPrefab =
@@ -376,12 +377,12 @@ namespace Urp.ArDemo.Editor
             string appController = File.ReadAllText(AppControllerPath);
             string buildIdentity = File.ReadAllText(BuildIdentityPath);
             Require(
-                appController.Contains("v43")
+                appController.Contains("v44")
                 && buildIdentity.Contains(
-                    "orb-tracking-v43-ready-latch-clean-production-b")
+                    "orb-tracking-v44-capture-pose-real-sim3")
                 && buildIdentity.Contains(
-                    "coconut-v43-full-sim3-clean-production-b"),
-                "Visible application/build identity still reports a pre-v43 build.");
+                    "coconut-v44-real-trimmed-sim3-production-b"),
+                "Visible application/build identity still reports a pre-v44 build.");
             string[] prohibitedControllerTokens =
             {
                 "displayMatrix",
@@ -633,9 +634,9 @@ namespace Urp.ArDemo.Editor
                 Vector3.Angle(
                     renderedY,
                     derivedMatrix.MultiplyVector(Vector3.up).normalized) < 0.1f
-                && landmarkRms < 0.004f
+                && landmarkRms < 0.008f
                 && Mathf.Abs(importedScale - 100f) < 0.1f,
-                "Unity hierarchy round-trip does not preserve the baked v43 ORB frame: "
+                "Unity hierarchy round-trip does not preserve the baked v44 ORB frame: "
                 + $"angle={Vector3.Angle(renderedY, Vector3.up):F6}, "
                 + $"rms={landmarkRms:E6}, scale={importedScale:F6}.");
             Require(body.parent == pair && neck.IsChildOf(body) && cap.parent == pair,

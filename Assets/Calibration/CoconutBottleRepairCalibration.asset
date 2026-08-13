@@ -23,7 +23,7 @@ MonoBehaviour:
   authoredBMouthRight: {x: 0, y: 0, z: 0}
   authoredBMouthFront: {x: 0, y: 0, z: 0}
   authoredBNeckAxisPoint: {x: 0, y: 0, z: 0}
-  modelRegistrationArtifact: {fileID: 4900000, guid: c3a2e6a83dd54bd6a7d4171b79611743, type: 3}
+  modelRegistrationArtifact: {fileID: 4900000, guid: 19d1caf69430b6740874658c9c5e4d03, type: 3}
   metersPerModelUnit: 0.17
   physicalScaleVerified: 1
   expectedPhysicalNeckDiameter: 0.034
