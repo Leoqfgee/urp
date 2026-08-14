@@ -11,7 +11,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 7155bfc119d520b4f8912cd4f4e7b4eb, type: 3}
   m_Name: CoconutBottleRepairProfile
-  m_EditorClassIdentifier: 
+  m_EditorClassIdentifier:
   objectId: bottle_orb_v42_proven_observations
   displayName: "\u65B0\u91CD\u5EFA\u65E0\u76D6\u996E\u6599\u74F6\u4E0E\u74F6\u76D6"
   shortDescription: "Blender \u4E2D\u521A\u6027\u5BF9\u9F50\u7684\u65E0\u76D6\u74F6\u8EAB
@@ -53,26 +53,9 @@ MonoBehaviour:
     temporaryLossHoldSeconds: 2.5
     positionSmoothing: 0.2
     rotationSmoothing: 0.18
-    verifiedPoseLock:
-      enabled: 1
-      confirmationFrames: 10
-      minimumLockInliers: 20
-      maximumLockRmsPixels: 2
-      maximumPositionSpreadMeters: 0.003
-      maximumRotationSpreadDegrees: 0.5
-      positionDeadbandMeters: 0.003
-      rotationDeadbandDegrees: 0.5
-      persistentDriftConfirmationFrames: 8
-      persistentDriftPositionMeters: 0.004
-      persistentDriftRotationDegrees: 0.7
-      slowDriftCorrectionAlpha: 0.05
-      relocationPositionThresholdMeters: 0.018
-      relocationRotationThresholdDegrees: 3
-      relocationConfirmationFrames: 4
-      relocalizationStableFrames: 6
-  preAlignmentMaterial: {fileID: 2100000, guid: e45c874d8af74881b164a5e9757e7c45, type: 2}
+  preAlignmentMaterial: {fileID: 2100000, guid: e497a3cc2235ddb4a969ad53bb1da4df, type: 2}
   repairMaterial: {fileID: 2100000, guid: 4e2ac76533fd4bba8da1cdb51f07b8d1, type: 2}
-  referenceDepthOcclusionMaterial: {fileID: 0}
+  referenceDepthOcclusionMaterial: {fileID: 2100000, guid: b22c7f6348764d799acd42771fbd49f1, type: 2}
   physicalScaleVerified: 1
   physicalMeasurements:
   - label: "\u74F6\u53E3\u87BA\u7EB9\u6700\u5916\u4FA7\u76F4\u5F84"

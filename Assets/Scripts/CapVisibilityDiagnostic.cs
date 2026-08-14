@@ -22,6 +22,8 @@ namespace Urp.ArDemo
         private Transform referenceB;
         private Transform capC;
         private Renderer[] capRenderers = System.Array.Empty<Renderer>();
+        private Transform repairOccluder;
+        private Renderer[] repairOccluderRenderers = System.Array.Empty<Renderer>();
         private readonly Dictionary<Renderer, Material[]> originalMaterials =
             new Dictionary<Renderer, Material[]>();
         private GameObject markerRoot;
@@ -54,6 +56,44 @@ namespace Urp.ArDemo
         {
             showCapAxesAndMarker = showMarker;
             forceCapDiagnosticMaterial = forceMagenta;
+        }
+
+        public void BindRepairOccluder(
+            Transform occluder,
+            Renderer[] renderers)
+        {
+            repairOccluder = occluder;
+            repairOccluderRenderers = renderers ?? System.Array.Empty<Renderer>();
+        }
+
+        public void LogOcclusionSnapshot(string stage)
+        {
+            if (!DiagnosticsEnabled)
+            {
+                return;
+            }
+            bool capFound = TryCombinedBounds(capRenderers, out Bounds capBounds);
+            bool occluderFound = TryCombinedBounds(
+                repairOccluderRenderers,
+                out Bounds occluderBounds);
+            float cameraAngle = float.NaN;
+            float projectedOverlap = 0f;
+            if (arCamera != null && capFound && occluderFound)
+            {
+                Vector3 capDirection = (capBounds.center - arCamera.transform.position).normalized;
+                Vector3 neckDirection = (occluderBounds.center - arCamera.transform.position).normalized;
+                cameraAngle = Vector3.Angle(capDirection, neckDirection);
+                projectedOverlap = ProjectedBoundsOverlap(capBounds, occluderBounds);
+            }
+            Debug.Log(
+                $"[URP_CAP_OCCLUSION_DIAG] stage={stage} "
+                + $"occluderEnabled={AnyEnabled(repairOccluderRenderers)} "
+                + $"occluderRendererCount={repairOccluderRenderers.Length} "
+                + $"capRendererCount={capRenderers.Length} "
+                + $"capBounds={(capFound ? FormatBounds(capBounds) : "unavailable")} "
+                + $"occluderBounds={(occluderFound ? FormatBounds(occluderBounds) : "unavailable")} "
+                + $"cameraAngleDeg={cameraAngle:F3} "
+                + $"projectedOverlap={projectedOverlap:F4}");
         }
 
         private void Update()
@@ -379,6 +419,62 @@ namespace Urp.ArDemo
             }
             return found;
         }
+
+        private float ProjectedBoundsOverlap(Bounds first, Bounds second)
+        {
+            Rect a = ProjectBounds(first);
+            Rect b = ProjectBounds(second);
+            Rect intersection = Rect.MinMaxRect(
+                Mathf.Max(a.xMin, b.xMin),
+                Mathf.Max(a.yMin, b.yMin),
+                Mathf.Min(a.xMax, b.xMax),
+                Mathf.Min(a.yMax, b.yMax));
+            if (intersection.width <= 0f || intersection.height <= 0f)
+            {
+                return 0f;
+            }
+            float denominator = Mathf.Max(1f, a.width * a.height);
+            return Mathf.Clamp01(intersection.width * intersection.height / denominator);
+        }
+
+        private Rect ProjectBounds(Bounds bounds)
+        {
+            Vector3 min = bounds.min;
+            Vector3 max = bounds.max;
+            float xMin = float.PositiveInfinity;
+            float yMin = float.PositiveInfinity;
+            float xMax = float.NegativeInfinity;
+            float yMax = float.NegativeInfinity;
+            for (int x = 0; x <= 1; x++)
+            for (int y = 0; y <= 1; y++)
+            for (int z = 0; z <= 1; z++)
+            {
+                Vector3 screen = arCamera.WorldToScreenPoint(new Vector3(
+                    x == 0 ? min.x : max.x,
+                    y == 0 ? min.y : max.y,
+                    z == 0 ? min.z : max.z));
+                xMin = Mathf.Min(xMin, screen.x);
+                yMin = Mathf.Min(yMin, screen.y);
+                xMax = Mathf.Max(xMax, screen.x);
+                yMax = Mathf.Max(yMax, screen.y);
+            }
+            return Rect.MinMaxRect(xMin, yMin, xMax, yMax);
+        }
+
+        private static bool AnyEnabled(Renderer[] renderers)
+        {
+            foreach (Renderer renderer in renderers ?? System.Array.Empty<Renderer>())
+            {
+                if (renderer != null && renderer.enabled && !renderer.forceRenderingOff)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static string FormatBounds(Bounds value) =>
+            $"center={Format(value.center)},extents={Format(value.extents)}";
 
         private static void AppendTransform(StringBuilder log, string label, Transform value)
         {

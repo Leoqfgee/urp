@@ -19,7 +19,6 @@ namespace Urp.ArDemo.Tests
         private GameObject controllerObject;
         private OrbImageTrackingController controller;
         private Transform body;
-        private Transform preview;
         private Transform cap;
         private Transform pair;
 
@@ -46,11 +45,9 @@ namespace Urp.ArDemo.Tests
             SetPrivateField("maximumInitialCorrectionMeters", 10f);
 
             body = GetPrivateField<Transform>("registeredReferenceModel");
-            preview = GetPrivateField<Transform>("registeredPreviewModel");
             cap = GetPrivateField<Transform>("registeredRepairPart");
             pair = GetPrivateField<Transform>("registeredBottlePairRoot");
             Assert.That(body, Is.Not.Null);
-            Assert.That(preview, Is.Not.Null);
             Assert.That(cap, Is.Not.Null);
             Assert.That(pair, Is.Not.Null);
         }
@@ -135,8 +132,7 @@ namespace Urp.ArDemo.Tests
             Assert.That(
                 Quaternion.Angle(rootObject.transform.rotation, stableRotation),
                 Is.LessThan(0.01f));
-            Assert.That(AllHidden(body), Is.True);
-            Assert.That(AllVisible(preview), Is.True);
+            Assert.That(AllVisible(body), Is.True);
             Assert.That(AllVisible(cap), Is.True);
             AssertMatrixUnchanged(
                 capRelativeBefore,
@@ -188,7 +184,6 @@ namespace Urp.ArDemo.Tests
             AssertMatrixUnchanged(bodyBefore, body.localToWorldMatrix, "B");
             AssertMatrixUnchanged(capBefore, cap.localToWorldMatrix, "C");
             Assert.That(AllHidden(body), Is.True);
-            Assert.That(AllHidden(preview), Is.True);
             Assert.That(AllVisible(cap), Is.True);
 
             Renderer[] capRenderers = cap.GetComponentsInChildren<Renderer>(true);
@@ -214,28 +209,6 @@ namespace Urp.ArDemo.Tests
             Matrix4x4 before = cap.localToWorldMatrix;
             controller.StartRecognition();
             AssertMatrixUnchanged(before, cap.localToWorldMatrix, "C Start matrix");
-        }
-
-        [Test]
-        public void StartDoesNotBreakPoseLock()
-        {
-            Vector3 position = new Vector3(0.08f, -0.03f, 0.62f);
-            Quaternion rotation = Quaternion.Euler(24f, 37f, -12f);
-            for (int i = 0; i < 13; i++)
-            {
-                ApplyReliablePose(position, rotation);
-            }
-            Assert.That(controller.PoseLockState,
-                Is.EqualTo(VerifiedPoseLock.LockState.Locked));
-            Matrix4x4 rootBefore = rootObject.transform.localToWorldMatrix;
-            Matrix4x4 capBefore = cap.localToWorldMatrix;
-            controller.StartRecognition();
-            Assert.That(controller.PoseLockState,
-                Is.EqualTo(VerifiedPoseLock.LockState.Locked));
-            AssertMatrixUnchanged(rootBefore, rootObject.transform.localToWorldMatrix,
-                "locked root across Start");
-            AssertMatrixUnchanged(capBefore, cap.localToWorldMatrix,
-                "locked C across Start");
         }
 
         [Test]
@@ -341,8 +314,7 @@ namespace Urp.ArDemo.Tests
             Assert.That(controller.CanStartRepair, Is.False);
             Assert.That(controller.State,
                 Is.EqualTo(OrbImageTrackingController.TrackingState.PoseValidating));
-            Assert.That(AllHidden(body), Is.True);
-            Assert.That(AllVisible(preview), Is.True);
+            Assert.That(AllVisible(body), Is.True);
             Assert.That(AllVisible(cap), Is.True);
             Assert.That(
                 Vector3.Distance(rootObject.transform.position, stablePosition),
@@ -352,8 +324,7 @@ namespace Urp.ArDemo.Tests
             Matrix4x4 capBefore = cap.localToWorldMatrix;
             controller.StartRecognition();
             Assert.That(controller.IsRepairMode, Is.False);
-            Assert.That(AllHidden(body), Is.True);
-            Assert.That(AllVisible(preview), Is.True);
+            Assert.That(AllVisible(body), Is.True);
             Assert.That(AllVisible(cap), Is.True);
             AssertMatrixUnchanged(rootBefore, rootObject.transform.localToWorldMatrix, "root");
             AssertMatrixUnchanged(capBefore, cap.localToWorldMatrix, "C");

@@ -1,0 +1,45 @@
+{
+    "source_geometry": "ReferenceNeckProxyB only",
+    "neck_radial_dilation": 1.0199999809265137,
+    "shader_contract": "ColorMask 0; ZWrite On; ZTest LEqual; Queue Geometry-10; Cull Off",
+    "views": [
+        {
+            "view": "front",
+            "visible_cap_pixels_without_occlusion": 20245,
+            "visible_cap_pixels_with_occlusion": 17632,
+            "occluded_pixel_ratio": 0.12906891107559205,
+            "retained_pixel_ratio": 0.870931088924408,
+            "without_png": "Assets/Calibration/V46CapOcclusionQA/front_without.png",
+            "with_png": "Assets/Calibration/V46CapOcclusionQA/front_with.png"
+        },
+        {
+            "view": "left",
+            "visible_cap_pixels_without_occlusion": 20271,
+            "visible_cap_pixels_with_occlusion": 17630,
+            "occluded_pixel_ratio": 0.13028466701507569,
+            "retained_pixel_ratio": 0.8697153329849243,
+            "without_png": "Assets/Calibration/V46CapOcclusionQA/left_without.png",
+            "with_png": "Assets/Calibration/V46CapOcclusionQA/left_with.png"
+        },
+        {
+            "view": "right",
+            "visible_cap_pixels_without_occlusion": 20154,
+            "visible_cap_pixels_with_occlusion": 17523,
+            "occluded_pixel_ratio": 0.1305447816848755,
+            "retained_pixel_ratio": 0.8694552183151245,
+            "without_png": "Assets/Calibration/V46CapOcclusionQA/right_without.png",
+            "with_png": "Assets/Calibration/V46CapOcclusionQA/right_with.png"
+        },
+        {
+            "view": "top_oblique",
+            "visible_cap_pixels_without_occlusion": 44981,
+            "visible_cap_pixels_with_occlusion": 42795,
+            "occluded_pixel_ratio": 0.048598289489746097,
+            "retained_pixel_ratio": 0.9514017105102539,
+            "without_png": "Assets/Calibration/V46CapOcclusionQA/top_oblique_without.png",
+            "with_png": "Assets/Calibration/V46CapOcclusionQA/top_oblique_with.png"
+        }
+    ],
+    "cap_remains_visible_all_views": true,
+    "oblique_views_have_partial_occlusion": true
+}

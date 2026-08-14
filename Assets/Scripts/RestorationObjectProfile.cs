@@ -30,8 +30,6 @@ namespace Urp.ArDemo
         public float temporaryLossHoldSeconds = 0.8f;
         [Range(0.01f, 1f)] public float positionSmoothing = 0.30f;
         [Range(0.01f, 1f)] public float rotationSmoothing = 0.25f;
-        public VerifiedPoseLockSettings verifiedPoseLock =
-            new VerifiedPoseLockSettings();
     }
 
     [CreateAssetMenu(menuName = "URP AR/Restoration Object Profile")]
@@ -62,11 +60,11 @@ namespace Urp.ArDemo
         public TextAsset trackingReferenceDatabase;
         public RepairCalibrationProfile calibration;
         public TrackingSettings trackingSettings = new TrackingSettings();
-        [Tooltip("Untextured translucent ghost used by BottlePreviewB while searching and verifying alignment.")]
+        [Tooltip("Semi-transparent textured B used only before registration so A remains visible.")]
         public Material preAlignmentMaterial;
         public Material repairMaterial;
         [FormerlySerializedAs("referenceValidationMaterial")]
-        [Tooltip("Depth-only material for B after Start; B remains in the rigid hierarchy and occludes C without drawing color.")]
+        [Tooltip("Depth-only material used only by the neck-region BottleRepairOccluder after Start. Never assign this to the full bottle B.")]
         public Material referenceDepthOcclusionMaterial;
 
         [Header("Physical scale")]
