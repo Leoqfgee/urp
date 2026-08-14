@@ -55,7 +55,7 @@ MonoBehaviour:
     rotationSmoothing: 0.18
   preAlignmentMaterial: {fileID: 2100000, guid: e497a3cc2235ddb4a969ad53bb1da4df, type: 2}
   repairMaterial: {fileID: 2100000, guid: 4e2ac76533fd4bba8da1cdb51f07b8d1, type: 2}
-  referenceDepthOcclusionMaterial: {fileID: 2100000, guid: b22c7f6348764d799acd42771fbd49f1, type: 2}
+  occlusionDepthEpsilonMeters: 0.0005
   physicalScaleVerified: 1
   physicalMeasurements:
   - label: "\u74F6\u53E3\u87BA\u7EB9\u6700\u5916\u4FA7\u76F4\u5F84"

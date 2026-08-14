@@ -183,8 +183,11 @@ namespace Urp.ArDemo.Tests
             AssertMatrixUnchanged(pairBefore, pair.localToWorldMatrix, "pair");
             AssertMatrixUnchanged(bodyBefore, body.localToWorldMatrix, "B");
             AssertMatrixUnchanged(capBefore, cap.localToWorldMatrix, "C");
-            Assert.That(AllHidden(body), Is.True);
-            Assert.That(AllVisible(cap), Is.True);
+            Assert.That(AllDirectColourHidden(body), Is.True);
+            Assert.That(AllDirectColourHidden(cap), Is.True,
+                "C must leave the direct Main Camera colour pass in Repair.");
+            Assert.That(PaperOcclusionRegistry.IsEnabled, Is.True,
+                "The original C must remain available to the paper off-screen pass.");
 
             Renderer[] capRenderers = cap.GetComponentsInChildren<Renderer>(true);
             for (int rendererIndex = 0;
@@ -414,6 +417,13 @@ namespace Urp.ArDemo.Tests
             Renderer[] renderers = root.GetComponentsInChildren<Renderer>(true);
             return renderers.Length > 0 && renderers.All(renderer =>
                 !renderer.enabled && renderer.forceRenderingOff);
+        }
+
+        private static bool AllDirectColourHidden(Transform root)
+        {
+            Renderer[] renderers = root.GetComponentsInChildren<Renderer>(true);
+            return renderers.Length > 0 && renderers.All(renderer =>
+                !renderer.enabled && !renderer.forceRenderingOff);
         }
 
         private static void AssertMatrixUnchanged(

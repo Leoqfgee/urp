@@ -279,12 +279,12 @@ namespace Urp.ArDemo.Editor
                 && profile.preAlignmentMaterial.GetColor("_BaseColor").a > 0.95f,
                 "Pre-alignment B+C must use the requested opaque textured material.");
             Require(
-                profile.referenceDepthOcclusionMaterial != null
-                && profile.referenceDepthOcclusionMaterial.shader != null
-                && profile.referenceDepthOcclusionMaterial.shader.name
-                    == "URP/Bottle Repair Neck Occluder"
-                && profile.referenceDepthOcclusionMaterial.renderQueue == 1990,
-                "The dedicated neck-only depth material is missing or has the wrong queue.");
+                Mathf.Abs(profile.occlusionDepthEpsilonMeters - 0.0005f) < 0.000001f
+                && AssetDatabase.LoadAssetAtPath<Material>(
+                    "Assets/Materials/PaperLinearEyeDepth.mat") != null
+                && AssetDatabase.LoadAssetAtPath<Material>(
+                    "Assets/Materials/PaperDepthComposite.mat") != null,
+                "Paper 3.4.1 depth-composite materials or metric epsilon are missing.");
 
             byte[] database = File.ReadAllBytes(DatabasePath);
             Require(
@@ -381,12 +381,12 @@ namespace Urp.ArDemo.Editor
             string appController = File.ReadAllText(AppControllerPath);
             string buildIdentity = File.ReadAllText(BuildIdentityPath);
             Require(
-                appController.Contains("v46")
+                appController.Contains("v47")
                 && buildIdentity.Contains(
-                    "orb-tracking-v46-v44-baseline-neck-occluder")
+                    "orb-tracking-v47-paper-depth-composite")
                 && buildIdentity.Contains(
                     "coconut-v44-real-trimmed-sim3-production-b"),
-                "Visible application/build identity does not report v46 with the unchanged v44 calibration.");
+                "Visible application/build identity does not report v47 with the unchanged v44 calibration.");
             string[] prohibitedControllerTokens =
             {
                 "displayMatrix",
@@ -454,16 +454,15 @@ namespace Urp.ArDemo.Editor
                 preAlignmentStart - repairPresentationStart);
             Require(
                 repairPresentation.Contains("SetReferenceHierarchyVisible(false)")
-                && repairPresentation.Contains("SetRepairOccluderVisible(true)")
-                && repairPresentation.Contains("SetRepairHierarchyVisible(true)")
+                && repairPresentation.Contains("SetRepairHierarchyVisible(false)")
+                && repairPresentation.Contains("PaperOcclusionRegistry.Enable(this)")
                 && !repairPresentation.Contains("ApplyMaterial")
                 && !repairPresentation.Contains("ApplyTrackedRootPose")
                 && !repairPresentation.Contains("RestoreProfileCoordinateAlignment"),
-                "Start presentation must only hide B and retain C.");
+                "Start presentation must hide direct B/C colour and enable paper depth composition.");
             string capDiagnostic = File.ReadAllText(CapDiagnosticPath);
             Require(
                 capDiagnostic.Contains("[URP_CAP_DIAG]")
-                && capDiagnostic.Contains("[URP_CAP_OCCLUSION_DIAG]")
                 && capDiagnostic.Contains("CalculateFrustumPlanes")
                 && capDiagnostic.Contains("currentEnvironmentDepthMode")
                 && capDiagnostic.Contains("forceCapDiagnosticMaterial")
@@ -824,12 +823,12 @@ namespace Urp.ArDemo.Editor
                 bodyRenderers.All(renderer =>
                     renderer != null
                     && !renderer.enabled
-                    && renderer.forceRenderingOff)
+                    && !renderer.forceRenderingOff)
                 && capRenderersAfterStart.All(renderer =>
                     renderer != null
-                    && renderer.enabled
+                    && !renderer.enabled
                     && !renderer.forceRenderingOff),
-                "Repair stage must disable every B renderer while keeping C visible.");
+                "Repair stage must remove direct B/C colour while retaining both for off-screen DrawRenderer.");
             Require(
                 AllUseMaterial(
                     cap.GetComponentsInChildren<Renderer>(true),

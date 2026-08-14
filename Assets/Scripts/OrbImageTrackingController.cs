@@ -95,13 +95,11 @@ namespace Urp.ArDemo
         private Transform registeredReferenceModel;
         private Transform registeredReferenceNeck;
         private Transform registeredTrackingRegistrationProxy;
-        private Transform registeredRepairOccluder;
         private Transform registeredRepairPart;
         private Renderer[] referenceBodyRenderers = Array.Empty<Renderer>();
         private Renderer[] referenceNeckRenderers = Array.Empty<Renderer>();
         private Renderer[] referenceRenderers = Array.Empty<Renderer>();
         private Renderer[] repairRenderers = Array.Empty<Renderer>();
-        private Renderer[] repairOccluderRenderers = Array.Empty<Renderer>();
         private RepairCalibrationProfile calibration;
         private bool modeEnabled;
         private bool recognitionRunning;
@@ -195,7 +193,7 @@ namespace Urp.ArDemo
             poseCoordinateDiagnostic?.HideAllDebugLines();
             SetReferenceHierarchyVisible(false);
             SetRepairHierarchyVisible(false);
-            SetRepairOccluderVisible(false);
+            PaperOcclusionRegistry.Disable(this);
             if (activeProfile != null)
             {
                 SetProfile(activeProfile);
@@ -204,6 +202,7 @@ namespace Urp.ArDemo
 
         private void OnDestroy()
         {
+            PaperOcclusionRegistry.Unbind(this);
             DisposeTrackers();
             if (frameTexture != null)
             {
@@ -230,6 +229,7 @@ namespace Urp.ArDemo
 
         private void OnDisable()
         {
+            PaperOcclusionRegistry.Disable(this);
             poseCoordinateDiagnostic?.HideAllDebugLines();
             if (cameraManager != null)
             {
@@ -367,7 +367,12 @@ namespace Urp.ArDemo
             CorrectProductionVisualWinding(referenceBodyRenderers);
             repairRenderers =
                 registeredRepairPart.GetComponentsInChildren<Renderer>(true);
-            CreateRepairOccluder(profile.referenceDepthOcclusionMaterial);
+            PaperOcclusionRegistry.Bind(
+                this,
+                arCamera,
+                referenceRenderers,
+                repairRenderers,
+                profile.occlusionDepthEpsilonMeters);
             if (registeredTrackingRegistrationProxy != null)
             {
                 foreach (Renderer renderer in registeredTrackingRegistrationProxy
@@ -414,9 +419,6 @@ namespace Urp.ArDemo
                     registeredReferenceModel,
                     registeredRepairPart,
                     repairRenderers);
-                capVisibilityDiagnostic.BindRepairOccluder(
-                    registeredRepairOccluder,
-                    repairOccluderRenderers);
             }
             if (poseCoordinateDiagnostic != null)
             {
@@ -791,28 +793,24 @@ namespace Urp.ArDemo
             SetRenderersEnabled(referenceRenderers, visible);
         }
 
-        public void SetRepairOccluderVisible(bool visible)
-        {
-            SetRenderersEnabled(repairOccluderRenderers, visible);
-        }
-
         public void ShowRepairPresentation()
         {
             if (activeProfile == null)
             {
                 SetReferenceHierarchyVisible(false);
                 SetRepairHierarchyVisible(false);
-                SetRepairOccluderVisible(false);
+                PaperOcclusionRegistry.Disable(this);
                 return;
             }
-            // Start changes presentation only: full B/neck colour is removed,
-            // the small neck-region proxy writes depth, and C remains colour-on.
-            // The occluder is a rigid child of BottleRepairRoot and never has
-            // its own PnP, anchor, or runtime correction.
+            // Paper 3.4.1 presentation: B and C leave the main colour pass.
+            // The renderer feature draws the complete B into BDepthRT and the
+            // byte-for-byte original C into independent CDepthRT/CColorRT,
+            // then composites only C pixels that are in front of B.
             SetReferenceHierarchyVisible(false);
-            SetRepairOccluderVisible(true);
-            SetRepairHierarchyVisible(true);
-            capVisibilityDiagnostic?.LogOcclusionSnapshot("repair");
+            SetRepairHierarchyVisible(false);
+            PreparePaperOcclusionRenderers(referenceRenderers);
+            PreparePaperOcclusionRenderers(repairRenderers);
+            PaperOcclusionRegistry.Enable(this);
         }
 
         private void ShowPreAlignmentPair()
@@ -831,9 +829,22 @@ namespace Urp.ArDemo
                 activeProfile.repairMaterial != null
                     ? activeProfile.repairMaterial
                     : activeProfile.viewerMaterial);
-            SetRepairOccluderVisible(false);
+            PaperOcclusionRegistry.Disable(this);
             SetReferenceHierarchyVisible(true);
             SetRepairHierarchyVisible(true);
+        }
+
+        private static void PreparePaperOcclusionRenderers(Renderer[] renderers)
+        {
+            foreach (Renderer renderer in renderers ?? Array.Empty<Renderer>())
+            {
+                if (renderer == null) continue;
+                // Disabled removes the renderer from the Main Camera cull.
+                // forceRenderingOff must remain false so DrawRenderer can use
+                // the same immutable renderer in the independent B/C buffers.
+                renderer.enabled = false;
+                renderer.forceRenderingOff = false;
+            }
         }
 
         private void ShowPresentationForCurrentState()
@@ -1654,6 +1665,7 @@ namespace Urp.ArDemo
 
         private void DestroyRegisteredPair()
         {
+            PaperOcclusionRegistry.Unbind(this);
             if (registeredBottlePairRoot != null)
             {
                 Transform outer = registeredBottlePairRoot;
@@ -1666,13 +1678,11 @@ namespace Urp.ArDemo
             registeredBottlePairRoot = null;
             registeredReferenceModel = null;
             registeredReferenceNeck = null;
-            registeredRepairOccluder = null;
             registeredRepairPart = null;
             referenceBodyRenderers = Array.Empty<Renderer>();
             referenceNeckRenderers = Array.Empty<Renderer>();
             referenceRenderers = Array.Empty<Renderer>();
             repairRenderers = Array.Empty<Renderer>();
-            repairOccluderRenderers = Array.Empty<Renderer>();
             foreach (Mesh mesh in correctedVisualMeshes)
             {
                 DestroyRuntimeObject(mesh);
@@ -1746,51 +1756,6 @@ namespace Urp.ArDemo
                 else agreeing++;
             }
             return opposing > agreeing * 3;
-        }
-
-        private void CreateRepairOccluder(Material depthOnlyMaterial)
-        {
-            registeredRepairOccluder = null;
-            repairOccluderRenderers = Array.Empty<Renderer>();
-            if (registeredReferenceNeck == null
-                || registeredBottlePairRoot == null
-                || depthOnlyMaterial == null)
-            {
-                return;
-            }
-
-            GameObject clone = Instantiate(registeredReferenceNeck.gameObject);
-            clone.name = "BottleRepairOccluder";
-            Transform cloneTransform = clone.transform;
-            cloneTransform.SetParent(registeredBottlePairRoot, false);
-            Matrix4x4 local = registeredBottlePairRoot.worldToLocalMatrix
-                * registeredReferenceNeck.localToWorldMatrix;
-            cloneTransform.localPosition = local.GetColumn(3);
-            cloneTransform.localRotation = local.rotation;
-            cloneTransform.localScale = local.lossyScale;
-            // Occluder-only 2% radial seam margin. The source proxy is just
-            // inside the cap shell; without this conservative X/Z dilation it
-            // writes no cap pixels at any tested angle. Pose and height stay
-            // identical and BottleCapC is never modified.
-            cloneTransform.localScale = Vector3.Scale(
-                cloneTransform.localScale,
-                new Vector3(1.02f, 1f, 1.02f));
-            registeredRepairOccluder = cloneTransform;
-
-            foreach (Collider collider in clone.GetComponentsInChildren<Collider>(true))
-            {
-                collider.enabled = false;
-            }
-            repairOccluderRenderers = clone.GetComponentsInChildren<Renderer>(true);
-            CorrectProductionVisualWinding(repairOccluderRenderers);
-            ApplyMaterial(repairOccluderRenderers, depthOnlyMaterial);
-            foreach (Renderer renderer in repairOccluderRenderers)
-            {
-                renderer.shadowCastingMode =
-                    UnityEngine.Rendering.ShadowCastingMode.Off;
-                renderer.receiveShadows = false;
-            }
-            SetRepairOccluderVisible(false);
         }
 
         private bool ValidateRigidHierarchy(out string reason)
@@ -2143,7 +2108,7 @@ namespace Urp.ArDemo
                     + $"rootRotationDeg={Quaternion.Angle(before.root.rotation, after.root.rotation):F6} "
                     + $"capPositionMm={MatrixPositionDeltaMeters(before.cap, after.cap) * 1000f:F6} "
                     + $"capRotationDeg={Quaternion.Angle(before.cap.rotation, after.cap.rotation):F6} "
-                    + $"capScaleDelta={Vector3.Distance(MatrixScale(before.cap), MatrixScale(after.cap)):E6}");
+                    + $"capBasisLengthDelta={Vector3.Distance(MatrixScale(before.cap), MatrixScale(after.cap)):E6}");
             }
         }
 

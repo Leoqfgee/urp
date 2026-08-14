@@ -17,7 +17,8 @@ MonoBehaviour:
     hdrDebugViewPS: {fileID: 4800000, guid: 573620ae32aec764abd4d728906d2587, type: 3}
   m_RendererFeatures:
   - {fileID: 5348762365857661857}
-  m_RendererFeatureMap: a183ec64089f3a4a
+  - {fileID: 3209457855913661365}
+  m_RendererFeatureMap: a183ec64089f3a4ab513525fea488a2c
   m_UseNativeRenderPass: 0
   postProcessData: {fileID: 0}
   xrSystemData: {fileID: 11400000, guid: 60e1133243b97e347b653163a8c01b64, type: 2}
@@ -59,6 +60,23 @@ MonoBehaviour:
   m_CopyDepthMode: 1
   m_AccurateGbufferNormals: 0
   m_IntermediateTextureMode: 1
+--- !u!114 &3209457855913661365
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4520e450880643458f02a5c3c3cab677, type: 3}
+  m_Name: Paper 3.4.1 Repair Occlusion
+  m_EditorClassIdentifier:
+  m_Active: 1
+  settings:
+    linearEyeDepthMaterial: {fileID: 2100000, guid: ec252ed7d9cb4ae98c4fc63c099ae980, type: 2}
+    depthCompositeMaterial: {fileID: 2100000, guid: db6b2b39b1bb4f54b9c98bda1645a1e1, type: 2}
+    passEvent: 500
 --- !u!114 &5348762365857661857
 MonoBehaviour:
   m_ObjectHideFlags: 0

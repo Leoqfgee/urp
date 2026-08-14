@@ -36,9 +36,11 @@ namespace Urp.ArDemo.Editor
             "Assets/Materials/BottlePhotogrammetryLit.mat";
         private const string BottleCapMaterialPath =
             "Assets/Materials/CleanBottleCapLit.mat";
-        private const string BottleRepairOccluderMaterialPath =
-            "Assets/Materials/BottleRepairOccluder.mat";
-        private const string AndroidApkPath = "Builds/BottleRepairAR_v46.apk";
+        private const string PaperDepthMaterialPath =
+            "Assets/Materials/PaperLinearEyeDepth.mat";
+        private const string PaperCompositeMaterialPath =
+            "Assets/Materials/PaperDepthComposite.mat";
+        private const string AndroidApkPath = "Builds/BottleRepairAR_v47.apk";
         private const string BottleReferenceOrbPath =
             "Assets/OrbModels/bottle_reference_b.bytes";
         private const string BottleCalibrationPath =
@@ -194,14 +196,14 @@ namespace Urp.ArDemo.Editor
 
         private static void ConfigureAndroidProject()
         {
-            PlayerSettings.productName = "瓶盖AR修复 v46";
+            PlayerSettings.productName = "瓶盖AR修复 v47";
             PlayerSettings.companyName = "qfgeeee";
-            PlayerSettings.bundleVersion = "4.5.6";
+            PlayerSettings.bundleVersion = "4.5.7";
             PlayerSettings.SetApplicationIdentifier(
                 BuildTargetGroup.Android, "com.qfgeeee.paper52objecttrackingar");
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
-            PlayerSettings.Android.bundleVersionCode = 456;
+            PlayerSettings.Android.bundleVersionCode = 457;
             PlayerSettings.SetScriptingBackend(
                 BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
@@ -243,6 +245,7 @@ namespace Urp.ArDemo.Editor
                 AssetDatabase.CreateAsset(renderer, rendererPath);
             }
             EnsureArBackgroundRendererFeature(renderer);
+            EnsurePaperOcclusionRendererFeature(renderer);
             UniversalRenderPipelineAsset pipeline =
                 AssetDatabase.LoadAssetAtPath<UniversalRenderPipelineAsset>(pipelinePath);
             if (pipeline == null)
@@ -289,6 +292,40 @@ namespace Urp.ArDemo.Editor
                 featureMap.GetArrayElementAtIndex(index).longValue = localId;
                 serializedRenderer.ApplyModifiedPropertiesWithoutUndo();
             }
+            EditorUtility.SetDirty(feature);
+            EditorUtility.SetDirty(renderer);
+        }
+
+        private static void EnsurePaperOcclusionRendererFeature(
+            UniversalRendererData renderer)
+        {
+            RepairOcclusionRendererFeature feature = renderer.rendererFeatures
+                .OfType<RepairOcclusionRendererFeature>()
+                .FirstOrDefault();
+            if (feature == null)
+            {
+                feature = ScriptableObject.CreateInstance<RepairOcclusionRendererFeature>();
+                feature.name = "Paper 3.4.1 Repair Occlusion";
+                AssetDatabase.AddObjectToAsset(feature, renderer);
+                renderer.rendererFeatures.Add(feature);
+                AssetDatabase.TryGetGUIDAndLocalFileIdentifier(
+                    feature,
+                    out _,
+                    out long localId);
+                SerializedObject serializedRenderer = new SerializedObject(renderer);
+                SerializedProperty featureMap =
+                    serializedRenderer.FindProperty("m_RendererFeatureMap");
+                int index = featureMap.arraySize;
+                featureMap.InsertArrayElementAtIndex(index);
+                featureMap.GetArrayElementAtIndex(index).longValue = localId;
+                serializedRenderer.ApplyModifiedPropertiesWithoutUndo();
+            }
+            feature.Settings.linearEyeDepthMaterial =
+                AssetDatabase.LoadAssetAtPath<Material>(PaperDepthMaterialPath);
+            feature.Settings.depthCompositeMaterial =
+                AssetDatabase.LoadAssetAtPath<Material>(PaperCompositeMaterialPath);
+            feature.Settings.passEvent = RenderPassEvent.AfterRenderingTransparents;
+            feature.Create();
             EditorUtility.SetDirty(feature);
             EditorUtility.SetDirty(renderer);
         }
@@ -437,9 +474,7 @@ namespace Urp.ArDemo.Editor
             // production profile.
             bottle.preAlignmentMaterial = bottleSurfaceMaterial;
             bottle.repairMaterial = bottleCapMaterial;
-            bottle.referenceDepthOcclusionMaterial =
-                AssetDatabase.LoadAssetAtPath<Material>(
-                    BottleRepairOccluderMaterialPath);
+            bottle.occlusionDepthEpsilonMeters = 0.0005f;
             bottle.defaultViewerEuler = Vector3.zero;
             bottle.viewerMargin = 0.18f;
             bottle.trackingSettings.minimumGoodMatches = 8;

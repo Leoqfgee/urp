@@ -63,9 +63,8 @@ namespace Urp.ArDemo
         [Tooltip("Semi-transparent textured B used only before registration so A remains visible.")]
         public Material preAlignmentMaterial;
         public Material repairMaterial;
-        [FormerlySerializedAs("referenceValidationMaterial")]
-        [Tooltip("Depth-only material used only by the neck-region BottleRepairOccluder after Start. Never assign this to the full bottle B.")]
-        public Material referenceDepthOcclusionMaterial;
+        [Tooltip("Paper 3.4.1 depth comparison epsilon in metres. This affects only the BDepth/CDepth comparison and never changes B or C geometry.")]
+        [Min(0f)] public float occlusionDepthEpsilonMeters = 0.0005f;
 
         [Header("Physical scale")]
         public bool physicalScaleVerified;

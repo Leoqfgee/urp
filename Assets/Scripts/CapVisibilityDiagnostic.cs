@@ -22,8 +22,6 @@ namespace Urp.ArDemo
         private Transform referenceB;
         private Transform capC;
         private Renderer[] capRenderers = System.Array.Empty<Renderer>();
-        private Transform repairOccluder;
-        private Renderer[] repairOccluderRenderers = System.Array.Empty<Renderer>();
         private readonly Dictionary<Renderer, Material[]> originalMaterials =
             new Dictionary<Renderer, Material[]>();
         private GameObject markerRoot;
@@ -56,44 +54,6 @@ namespace Urp.ArDemo
         {
             showCapAxesAndMarker = showMarker;
             forceCapDiagnosticMaterial = forceMagenta;
-        }
-
-        public void BindRepairOccluder(
-            Transform occluder,
-            Renderer[] renderers)
-        {
-            repairOccluder = occluder;
-            repairOccluderRenderers = renderers ?? System.Array.Empty<Renderer>();
-        }
-
-        public void LogOcclusionSnapshot(string stage)
-        {
-            if (!DiagnosticsEnabled)
-            {
-                return;
-            }
-            bool capFound = TryCombinedBounds(capRenderers, out Bounds capBounds);
-            bool occluderFound = TryCombinedBounds(
-                repairOccluderRenderers,
-                out Bounds occluderBounds);
-            float cameraAngle = float.NaN;
-            float projectedOverlap = 0f;
-            if (arCamera != null && capFound && occluderFound)
-            {
-                Vector3 capDirection = (capBounds.center - arCamera.transform.position).normalized;
-                Vector3 neckDirection = (occluderBounds.center - arCamera.transform.position).normalized;
-                cameraAngle = Vector3.Angle(capDirection, neckDirection);
-                projectedOverlap = ProjectedBoundsOverlap(capBounds, occluderBounds);
-            }
-            Debug.Log(
-                $"[URP_CAP_OCCLUSION_DIAG] stage={stage} "
-                + $"occluderEnabled={AnyEnabled(repairOccluderRenderers)} "
-                + $"occluderRendererCount={repairOccluderRenderers.Length} "
-                + $"capRendererCount={capRenderers.Length} "
-                + $"capBounds={(capFound ? FormatBounds(capBounds) : "unavailable")} "
-                + $"occluderBounds={(occluderFound ? FormatBounds(occluderBounds) : "unavailable")} "
-                + $"cameraAngleDeg={cameraAngle:F3} "
-                + $"projectedOverlap={projectedOverlap:F4}");
         }
 
         private void Update()
