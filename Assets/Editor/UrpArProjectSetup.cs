@@ -34,9 +34,11 @@ namespace Urp.ArDemo.Editor
             + "Textures/bottle_full_clean_v2_albedo.png";
         private const string BottleSurfaceMaterialPath =
             "Assets/Materials/BottlePhotogrammetryLit.mat";
+        private const string BottleGhostMaterialPath =
+            "Assets/Materials/BottlePreAlignmentGhost.mat";
         private const string BottleCapMaterialPath =
             "Assets/Materials/CleanBottleCapLit.mat";
-        private const string AndroidApkPath = "Builds/BottleRepairAR_v44.apk";
+        private const string AndroidApkPath = "Builds/BottleRepairAR_v45.apk";
         private const string BottleReferenceOrbPath =
             "Assets/OrbModels/bottle_reference_b.bytes";
         private const string BottleCalibrationPath =
@@ -192,14 +194,14 @@ namespace Urp.ArDemo.Editor
 
         private static void ConfigureAndroidProject()
         {
-            PlayerSettings.productName = "瓶盖AR修复 v44";
+            PlayerSettings.productName = "瓶盖AR修复 v45";
             PlayerSettings.companyName = "qfgeeee";
-            PlayerSettings.bundleVersion = "4.5.4";
+            PlayerSettings.bundleVersion = "4.5.5";
             PlayerSettings.SetApplicationIdentifier(
                 BuildTargetGroup.Android, "com.qfgeeee.paper52objecttrackingar");
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
-            PlayerSettings.Android.bundleVersionCode = 454;
+            PlayerSettings.Android.bundleVersionCode = 455;
             PlayerSettings.SetScriptingBackend(
                 BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
@@ -360,6 +362,14 @@ namespace Urp.ArDemo.Editor
                 BottleSurfaceMaterialPath, BottleAlbedoPath, 0.12f, true);
             Material bottleCapMaterial = CreateLitMaterial(
                 BottleCapMaterialPath, null, 0.28f, true);
+            Material bottleGhostMaterial =
+                AssetDatabase.LoadAssetAtPath<Material>(BottleGhostMaterialPath);
+            if (bottleGhostMaterial == null)
+            {
+                throw new FileNotFoundException(
+                    "Bottle pre-alignment ghost material is missing.",
+                    BottleGhostMaterialPath);
+            }
             bottleCapMaterial.SetColor(
                 "_BaseColor",
                 new Color(0.96f, 0.96f, 0.94f, 1f));
@@ -430,10 +440,7 @@ namespace Urp.ArDemo.Editor
             EditorUtility.SetDirty(bottleCalibration);
             bottle.calibration = bottleCalibration;
             bottle.viewerMaterial = bottleSurfaceMaterial;
-            // The user aligns the full-colour B+C mesh, not a translucent
-            // silhouette. Keep the legacy alignment material out of the
-            // production profile.
-            bottle.preAlignmentMaterial = bottleSurfaceMaterial;
+            bottle.preAlignmentMaterial = bottleGhostMaterial;
             bottle.repairMaterial = bottleCapMaterial;
             bottle.referenceDepthOcclusionMaterial = null;
             bottle.defaultViewerEuler = Vector3.zero;
@@ -451,6 +458,26 @@ namespace Urp.ArDemo.Editor
             bottle.trackingSettings.temporaryLossHoldSeconds = 2.5f;
             bottle.trackingSettings.positionSmoothing = 0.20f;
             bottle.trackingSettings.rotationSmoothing = 0.18f;
+            bottle.trackingSettings.verifiedPoseLock =
+                new VerifiedPoseLockSettings
+                {
+                    enabled = true,
+                    confirmationFrames = 10,
+                    minimumLockInliers = 20,
+                    maximumLockRmsPixels = 2.0f,
+                    maximumPositionSpreadMeters = 0.003f,
+                    maximumRotationSpreadDegrees = 0.5f,
+                    positionDeadbandMeters = 0.003f,
+                    rotationDeadbandDegrees = 0.5f,
+                    persistentDriftConfirmationFrames = 8,
+                    persistentDriftPositionMeters = 0.004f,
+                    persistentDriftRotationDegrees = 0.7f,
+                    slowDriftCorrectionAlpha = 0.05f,
+                    relocationPositionThresholdMeters = 0.018f,
+                    relocationRotationThresholdDegrees = 3.0f,
+                    relocationConfirmationFrames = 4,
+                    relocalizationStableFrames = 6
+                };
             bottle.physicalScaleVerified =
                 bottle.calibration != null && bottle.calibration.physicalScaleVerified;
             bottle.physicalMeasurements = new[]

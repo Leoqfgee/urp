@@ -88,16 +88,22 @@ namespace Urp.ArDemo
         [Range(0.01f, 1f)]
         [SerializeField] private float rotationSmoothing = 0.25f;
 
+        [Header("Verified pose lock")]
+        [SerializeField] private VerifiedPoseLockSettings verifiedPoseLockSettings =
+            new VerifiedPoseLockSettings();
+
         private readonly List<NativeOrbTracker> trackers = new List<NativeOrbTracker>();
         private Texture2D frameTexture;
         private Transform registeredBottlePairRoot;
         private Transform registeredReferenceModel;
+        private Transform registeredPreviewModel;
         private Transform registeredReferenceNeck;
         private Transform registeredTrackingRegistrationProxy;
         private Transform registeredRepairPart;
         private Renderer[] referenceBodyRenderers = Array.Empty<Renderer>();
         private Renderer[] referenceNeckRenderers = Array.Empty<Renderer>();
         private Renderer[] referenceRenderers = Array.Empty<Renderer>();
+        private Renderer[] previewRenderers = Array.Empty<Renderer>();
         private Renderer[] repairRenderers = Array.Empty<Renderer>();
         private RepairCalibrationProfile calibration;
         private bool modeEnabled;
@@ -148,6 +154,7 @@ namespace Urp.ArDemo
         private string runtimeDatabaseSha256 = "NONE";
         private string runtimeDatabaseShaPrefix = "UNKNOWN";
         private bool lastPosePriorWasReliable;
+        private VerifiedPoseLock verifiedPoseLock;
 
         private struct CameraFrameSample
         {
@@ -184,12 +191,16 @@ namespace Urp.ArDemo
             && registrationEstablished
             && trackingState == TrackingState.Repair;
         public TrackingState State => trackingState;
+        public VerifiedPoseLock.LockState PoseLockState => verifiedPoseLock != null
+            ? verifiedPoseLock.State
+            : VerifiedPoseLock.LockState.Searching;
         public bool IsRepairActuallyRenderable =>
             ValidateRigidHierarchy(out _) && AnyEnabled(repairRenderers);
 
         private void Awake()
         {
             SetReferenceHierarchyVisible(false);
+            SetPreviewHierarchyVisible(false);
             SetRepairHierarchyVisible(false);
             if (activeProfile != null)
             {
@@ -199,6 +210,7 @@ namespace Urp.ArDemo
 
         private void OnDestroy()
         {
+            poseCoordinateDiagnostic?.HideAllDebugLines();
             DisposeTrackers();
             if (frameTexture != null)
             {
@@ -225,6 +237,7 @@ namespace Urp.ArDemo
 
         private void OnDisable()
         {
+            poseCoordinateDiagnostic?.HideAllDebugLines();
             if (cameraManager != null)
             {
                 cameraManager.frameReceived -= OnCameraFrameReceived;
@@ -254,6 +267,7 @@ namespace Urp.ArDemo
 
         public void SetProfile(RestorationObjectProfile profile)
         {
+            poseCoordinateDiagnostic?.HideAllDebugLines();
             if (ReferenceEquals(activeProfile, profile)
                 && registeredBottlePairRoot != null
                 && trackers.Count > 0)
@@ -347,6 +361,10 @@ namespace Urp.ArDemo
                 : float.PositiveInfinity;
             RestoreProfileCoordinateAlignment();
 
+            registeredPreviewModel = CreateBottlePreview(
+                registeredReferenceModel,
+                registeredBottlePairRoot);
+
             Renderer[] allReferenceRenderers =
                 registeredReferenceModel.GetComponentsInChildren<Renderer>(true);
             referenceNeckRenderers = registeredReferenceNeck != null
@@ -358,6 +376,9 @@ namespace Urp.ArDemo
             referenceRenderers = MergeRenderers(
                 referenceBodyRenderers,
                 referenceNeckRenderers);
+            previewRenderers = registeredPreviewModel != null
+                ? registeredPreviewModel.GetComponentsInChildren<Renderer>(true)
+                : Array.Empty<Renderer>();
             repairRenderers =
                 registeredRepairPart.GetComponentsInChildren<Renderer>(true);
             if (registeredTrackingRegistrationProxy != null)
@@ -382,11 +403,20 @@ namespace Urp.ArDemo
             }
             ApplyMaterial(referenceRenderers, profile.viewerMaterial);
             ApplyMaterial(
+                previewRenderers,
+                profile.preAlignmentMaterial != null
+                    ? profile.preAlignmentMaterial
+                    : profile.viewerMaterial);
+            ApplyMaterial(
                 repairRenderers,
                 profile.repairMaterial != null
                     ? profile.repairMaterial
                     : profile.viewerMaterial);
             foreach (Renderer renderer in referenceRenderers)
+            {
+                PrepareOverlayRenderer(renderer);
+            }
+            foreach (Renderer renderer in previewRenderers)
             {
                 PrepareOverlayRenderer(renderer);
             }
@@ -434,6 +464,7 @@ namespace Urp.ArDemo
 
         public void SetTrackingEnabled(bool enabled)
         {
+            poseCoordinateDiagnostic?.HideAllDebugLines();
             modeEnabled = enabled;
             recognitionRunning = false;
             repairRequested = false;
@@ -444,6 +475,7 @@ namespace Urp.ArDemo
             {
                 trackingState = TrackingState.Idle;
                 SetReferenceHierarchyVisible(false);
+                SetPreviewHierarchyVisible(false);
                 SetRepairHierarchyVisible(false);
                 UpdateStatus(string.Empty);
                 return;
@@ -452,6 +484,7 @@ namespace Urp.ArDemo
             {
                 trackingState = TrackingState.Idle;
                 SetReferenceHierarchyVisible(false);
+                SetPreviewHierarchyVisible(false);
                 SetRepairHierarchyVisible(false);
                 UpdateStatus("尚未选择跟踪对象。");
                 return;
@@ -460,6 +493,7 @@ namespace Urp.ArDemo
             {
                 trackingState = TrackingState.Idle;
                 SetReferenceHierarchyVisible(false);
+                SetPreviewHierarchyVisible(false);
                 SetRepairHierarchyVisible(false);
                 UpdateStatus($"{activeProfile.displayName} 的新模型 B 或三维特征库不可用。");
                 return;
@@ -495,6 +529,7 @@ namespace Urp.ArDemo
             }
 
             RigidPoseSnapshot before = CaptureRigidPoseSnapshot();
+            poseCoordinateDiagnostic?.HideAllDebugLines();
             capVisibilityDiagnostic?.LogSnapshot("start-before");
 
             // Start is a pure presentation gate. The stable A-to-B pose was
@@ -517,6 +552,7 @@ namespace Urp.ArDemo
             repairRequested = false;
             hasEverRegisteredSinceReset = false;
             ResetRegistration();
+            poseCoordinateDiagnostic?.HideAllDebugLines();
             if (modeEnabled)
             {
                 PlacePreAlignmentPose();
@@ -529,6 +565,7 @@ namespace Urp.ArDemo
             {
                 trackingState = TrackingState.Idle;
                 SetReferenceHierarchyVisible(false);
+                SetPreviewHierarchyVisible(false);
                 SetRepairHierarchyVisible(false);
             }
         }
@@ -539,6 +576,7 @@ namespace Urp.ArDemo
             if (trackedObjectPoseRoot == null || arCamera == null || calibration == null)
             {
                 SetReferenceHierarchyVisible(false);
+                SetPreviewHierarchyVisible(false);
                 SetRepairHierarchyVisible(false);
                 return;
             }
@@ -777,11 +815,17 @@ namespace Urp.ArDemo
             SetRenderersEnabled(referenceRenderers, visible);
         }
 
+        public void SetPreviewHierarchyVisible(bool visible)
+        {
+            SetRenderersEnabled(previewRenderers, visible);
+        }
+
         public void ShowRepairPresentation()
         {
             if (activeProfile == null)
             {
                 SetReferenceHierarchyVisible(false);
+                SetPreviewHierarchyVisible(false);
                 SetRepairHierarchyVisible(false);
                 return;
             }
@@ -790,7 +834,9 @@ namespace Urp.ArDemo
             // the scanned bottle/neck can never z-occlude the clean cap C.
             // SetRenderersEnabled updates enabled and forceRenderingOff.
             SetReferenceHierarchyVisible(false);
+            SetPreviewHierarchyVisible(false);
             SetRepairHierarchyVisible(true);
+            poseCoordinateDiagnostic?.HideAllDebugLines();
         }
 
         private void ShowPreAlignmentPair()
@@ -800,7 +846,7 @@ namespace Urp.ArDemo
                 return;
             }
             ApplyMaterial(
-                referenceRenderers,
+                previewRenderers,
                 activeProfile.preAlignmentMaterial != null
                     ? activeProfile.preAlignmentMaterial
                     : activeProfile.viewerMaterial);
@@ -809,7 +855,8 @@ namespace Urp.ArDemo
                 activeProfile.repairMaterial != null
                     ? activeProfile.repairMaterial
                     : activeProfile.viewerMaterial);
-            SetReferenceHierarchyVisible(true);
+            SetReferenceHierarchyVisible(false);
+            SetPreviewHierarchyVisible(true);
             SetRepairHierarchyVisible(true);
         }
 
@@ -1226,10 +1273,10 @@ namespace Urp.ArDemo
                         pose,
                         targetPosition,
                         targetRotation);
-                    ApplyTrackedRootPose(
+                    ApplyVerifiedPoseCandidate(
                         targetPosition,
                         targetRotation,
-                        true,
+                        pose,
                         confidence);
                 }
             }
@@ -1252,6 +1299,71 @@ namespace Urp.ArDemo
                   + $"{consistencyVerifiedFrames}/"
                   + $"{Mathf.Max(3, consistencyConfirmationFrames)}.";
             return true;
+        }
+
+        private void ApplyVerifiedPoseCandidate(
+            Vector3 targetPosition,
+            Quaternion targetRotation,
+            NativeOrbResult pose,
+            float confidence)
+        {
+            if (verifiedPoseLock == null || !verifiedPoseLockSettings.enabled)
+            {
+                ApplyTrackedRootPose(
+                    targetPosition,
+                    targetRotation,
+                    true,
+                    confidence);
+                return;
+            }
+
+            VerifiedPoseLock.Candidate candidate =
+                new VerifiedPoseLock.Candidate(
+                    targetPosition,
+                    targetRotation,
+                    pose.poseInliers,
+                    pose.inlierRatio,
+                    pose.reprojectionError,
+                    Mathf.Min(pose.coverageX, pose.coverageY),
+                    confidence);
+            VerifiedPoseLock.Result result = verifiedPoseLock.Step(
+                candidate,
+                trackedObjectPoseRoot.position,
+                trackedObjectPoseRoot.rotation);
+            if (result.applyToRoot)
+            {
+                // Once a pose is verified, write the robust locked pose
+                // exactly. Slow-drift alpha has already been applied inside
+                // the lock; feeding it back through the high-confidence EMA
+                // would re-introduce the jitter this layer removes.
+                bool acquiring = verifiedPoseLock.State ==
+                    VerifiedPoseLock.LockState.Acquiring;
+                ApplyTrackedRootPose(
+                    result.position,
+                    result.rotation,
+                    acquiring,
+                    confidence);
+            }
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+            Debug.Log(
+                "[URP_POSE_LOCK_DIAG] "
+                + $"state={verifiedPoseLock.State.ToString().ToUpperInvariant()} "
+                + $"lockFrames={verifiedPoseLock.WindowFrames} "
+                + $"candidateDeltaMm={result.positionDeltaMeters * 1000f:F3} "
+                + $"candidateDeltaDeg={result.rotationDeltaDegrees:F3} "
+                + $"positionSpreadMm={result.positionSpreadMeters * 1000f:F3} "
+                + $"rotationSpreadDeg={result.rotationSpreadDegrees:F3} "
+                + $"deadband={(result.deadband ? "YES" : "NO")} "
+                + $"persistentDriftFrames={verifiedPoseLock.PersistentDriftFrames} "
+                + $"relocalizationFrames={verifiedPoseLock.RelocationFrames} "
+                + $"lockedPose=({verifiedPoseLock.LockedPosition.x:F6},"
+                + $"{verifiedPoseLock.LockedPosition.y:F6},"
+                + $"{verifiedPoseLock.LockedPosition.z:F6})/"
+                + $"{verifiedPoseLock.LockedRotation.eulerAngles} "
+                + $"candidatePose=({targetPosition.x:F6},"
+                + $"{targetPosition.y:F6},{targetPosition.z:F6})/"
+                + $"{targetRotation.eulerAngles}");
+#endif
         }
 
         private void ObserveMathematicalConsistency(
@@ -1496,6 +1608,7 @@ namespace Urp.ArDemo
             lastVerifiedReadyPoseTime = float.NegativeInfinity;
             consistencyVerifiedFrames = 0;
             consistencyFailureFrames = 0;
+            verifiedPoseLock?.Reset();
             // Retain the last accepted world pose while ORB relocalizes. AR
             // camera motion continues to provide correct perspective during
             // the hold; the next accepted pose is validated before correction.
@@ -1525,6 +1638,7 @@ namespace Urp.ArDemo
             lastAcceptedPosition = Vector3.zero;
             lastAcceptedRotation = Quaternion.identity;
             lastRootPoseApplicationTime = float.NegativeInfinity;
+            verifiedPoseLock?.Reset();
             RestoreProfileCoordinateAlignment();
         }
 
@@ -1642,11 +1756,13 @@ namespace Urp.ArDemo
             }
             registeredBottlePairRoot = null;
             registeredReferenceModel = null;
+            registeredPreviewModel = null;
             registeredReferenceNeck = null;
             registeredRepairPart = null;
             referenceBodyRenderers = Array.Empty<Renderer>();
             referenceNeckRenderers = Array.Empty<Renderer>();
             referenceRenderers = Array.Empty<Renderer>();
+            previewRenderers = Array.Empty<Renderer>();
             repairRenderers = Array.Empty<Renderer>();
         }
 
@@ -1711,6 +1827,9 @@ namespace Urp.ArDemo
             temporaryLossHoldSeconds = settings.temporaryLossHoldSeconds;
             positionSmoothing = settings.positionSmoothing;
             rotationSmoothing = settings.rotationSmoothing;
+            verifiedPoseLockSettings = settings.verifiedPoseLock
+                ?? new VerifiedPoseLockSettings();
+            verifiedPoseLock = new VerifiedPoseLock(verifiedPoseLockSettings);
         }
 
         private CameraIntrinsics GetCameraIntrinsics(
@@ -1835,6 +1954,36 @@ namespace Urp.ArDemo
                 }
             }
             return null;
+        }
+
+        private static Transform CreateBottlePreview(
+            Transform productionB,
+            Transform bottleRepairRoot)
+        {
+            if (productionB == null || bottleRepairRoot == null)
+            {
+                return null;
+            }
+            Transform source = FindDescendant(
+                productionB,
+                "ProductionBCleanBackingShell");
+            MeshFilter sourceFilter = source != null
+                ? source.GetComponent<MeshFilter>()
+                : null;
+            if (sourceFilter == null || sourceFilter.sharedMesh == null)
+            {
+                return null;
+            }
+
+            GameObject preview = new GameObject("BottlePreviewB");
+            preview.transform.SetParent(bottleRepairRoot, false);
+            preview.transform.localPosition = Vector3.zero;
+            preview.transform.localRotation = Quaternion.identity;
+            preview.transform.localScale = Vector3.one;
+            MeshFilter previewFilter = preview.AddComponent<MeshFilter>();
+            previewFilter.sharedMesh = sourceFilter.sharedMesh;
+            preview.AddComponent<MeshRenderer>();
+            return preview.transform;
         }
 
         private static void ApplyMaterial(Renderer[] renderers, Material material)

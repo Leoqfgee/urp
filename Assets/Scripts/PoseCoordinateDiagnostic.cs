@@ -12,7 +12,10 @@ namespace Urp.ArDemo
     /// </summary>
     public sealed class PoseCoordinateDiagnostic : MonoBehaviour
     {
-        [SerializeField] private bool poseCoordinateDebug = true;
+        [Tooltip("Draw development-only world-space axes and landmark markers.")]
+        [SerializeField] private bool drawPoseDebugOverlays = false;
+        [Tooltip("Keep adb/Editor pose diagnostics without drawing overlays.")]
+        [SerializeField] private bool emitPoseDiagnosticLogs = true;
         [SerializeField] private Camera arCamera;
         [SerializeField] private ARCameraManager cameraManager;
 
@@ -83,7 +86,7 @@ namespace Urp.ArDemo
         }
 
         public string CompactSummary =>
-            !DiagnosticsEnabled
+            !LogsEnabled
                 ? string.Empty
                 : $"\nDBG CPU {cpuWidth}x{cpuHeight} rot={rotationClockwise} "
                   + $"Screen={Screen.orientation} | "
@@ -104,9 +107,10 @@ namespace Urp.ArDemo
             Matrix4x4 orbToRenderedB,
             PoseConsistencyResult consistency)
         {
-            if (!DiagnosticsEnabled || arCamera == null || calibration == null
+            if (!LogsEnabled || arCamera == null || calibration == null
                 || trackedRoot == null || renderedB == null)
             {
+                HideAllDebugLines();
                 return;
             }
 
@@ -143,12 +147,19 @@ namespace Urp.ArDemo
             bX = ScreenDirection(bOriginWorld, bWorld[0]);
             bY = ScreenDirection(bOriginWorld, bWorld[1]);
             bZ = ScreenDirection(bOriginWorld, bWorld[2]);
-            UpdateLine(0, "ORB X", Color.red, orbOriginWorld, orbWorld[0], 0.003f);
-            UpdateLine(1, "ORB Y", Color.green, orbOriginWorld, orbWorld[1], 0.003f);
-            UpdateLine(2, "ORB Z", Color.blue, orbOriginWorld, orbWorld[2], 0.003f);
-            UpdateLine(3, "B X", new Color(1f, 0.4f, 0.4f), bOriginWorld, bWorld[0], 0.0015f);
-            UpdateLine(4, "B Y", new Color(0.4f, 1f, 0.4f), bOriginWorld, bWorld[1], 0.0015f);
-            UpdateLine(5, "B Z", new Color(0.4f, 0.6f, 1f), bOriginWorld, bWorld[2], 0.0015f);
+            if (OverlaysEnabled)
+            {
+                UpdateLine(0, "ORB X", Color.red, orbOriginWorld, orbWorld[0], 0.003f);
+                UpdateLine(1, "ORB Y", Color.green, orbOriginWorld, orbWorld[1], 0.003f);
+                UpdateLine(2, "ORB Z", Color.blue, orbOriginWorld, orbWorld[2], 0.003f);
+                UpdateLine(3, "B X", new Color(1f, 0.4f, 0.4f), bOriginWorld, bWorld[0], 0.0015f);
+                UpdateLine(4, "B Y", new Color(0.4f, 1f, 0.4f), bOriginWorld, bWorld[1], 0.0015f);
+                UpdateLine(5, "B Z", new Color(0.4f, 0.6f, 1f), bOriginWorld, bWorld[2], 0.0015f);
+            }
+            else
+            {
+                HideAllDebugLines();
+            }
             UpdateRegistrationLandmarks(rootMatrix);
 
             StringBuilder log = new StringBuilder(4096);
@@ -223,33 +234,24 @@ namespace Urp.ArDemo
             {
                 return;
             }
-            DrawLandmarkPair(
-                6,
-                7,
-                "Mouth",
-                modelRegistration.mouth_center_orb,
-                modelRegistration.registered_mouth_center_b_orb,
-                Color.yellow,
-                new Color(1f, 0.45f, 0f),
-                candidateRoot);
-            DrawLandmarkPair(
-                8,
-                9,
-                "Base",
-                modelRegistration.base_center_orb,
-                modelRegistration.registered_base_center_b_orb,
-                Color.cyan,
-                new Color(0f, 0.4f, 1f),
-                candidateRoot);
-            DrawLandmarkPair(
-                10,
-                11,
-                "Front",
-                modelRegistration.front_point_orb,
-                modelRegistration.registered_front_point_b_orb,
-                Color.magenta,
-                new Color(1f, 0.35f, 0.75f),
-                candidateRoot);
+            if (OverlaysEnabled)
+            {
+                DrawLandmarkPair(
+                    6, 7, "Mouth",
+                    modelRegistration.mouth_center_orb,
+                    modelRegistration.registered_mouth_center_b_orb,
+                    Color.yellow, new Color(1f, 0.45f, 0f), candidateRoot);
+                DrawLandmarkPair(
+                    8, 9, "Base",
+                    modelRegistration.base_center_orb,
+                    modelRegistration.registered_base_center_b_orb,
+                    Color.cyan, new Color(0f, 0.4f, 1f), candidateRoot);
+                DrawLandmarkPair(
+                    10, 11, "Front",
+                    modelRegistration.front_point_orb,
+                    modelRegistration.registered_front_point_b_orb,
+                    Color.magenta, new Color(1f, 0.35f, 0.75f), candidateRoot);
+            }
             LogLandmarkDeltas(candidateRoot);
         }
 
@@ -363,7 +365,7 @@ namespace Urp.ArDemo
             float positionAlpha,
             float rotationAlpha)
         {
-            if (!DiagnosticsEnabled || arCamera == null || appliedRoot == null)
+            if (!LogsEnabled || arCamera == null || appliedRoot == null)
             {
                 return;
             }
@@ -427,6 +429,10 @@ namespace Urp.ArDemo
             Vector3 end,
             float width)
         {
+            if (!OverlaysEnabled)
+            {
+                return;
+            }
             if (axisLines[index] == null)
             {
                 GameObject lineObject = new GameObject(lineName);
@@ -439,6 +445,7 @@ namespace Urp.ArDemo
                 line.endColor = color;
                 axisLines[index] = line;
             }
+            axisLines[index].enabled = true;
             axisLines[index].startWidth = width;
             axisLines[index].endWidth = width;
             axisLines[index].SetPosition(0, start);
@@ -490,7 +497,26 @@ namespace Urp.ArDemo
             + $"{value.m20:F6},{value.m21:F6},{value.m22:F6},{value.m23:F6};"
             + $"{value.m30:F6},{value.m31:F6},{value.m32:F6},{value.m33:F6}]";
 
-        private bool DiagnosticsEnabled =>
-            poseCoordinateDebug && (Debug.isDebugBuild || Application.isEditor);
+        public bool DrawPoseDebugOverlays => drawPoseDebugOverlays;
+        public bool EmitPoseDiagnosticLogs => emitPoseDiagnosticLogs;
+
+        public void HideAllDebugLines()
+        {
+            foreach (LineRenderer line in axisLines)
+            {
+                if (line != null)
+                {
+                    line.enabled = false;
+                }
+            }
+        }
+
+        private void OnDisable() => HideAllDebugLines();
+
+        private bool LogsEnabled =>
+            emitPoseDiagnosticLogs && (Debug.isDebugBuild || Application.isEditor);
+
+        private bool OverlaysEnabled =>
+            drawPoseDebugOverlays && (Debug.isDebugBuild || Application.isEditor);
     }
 }

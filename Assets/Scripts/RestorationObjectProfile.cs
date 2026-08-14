@@ -30,6 +30,8 @@ namespace Urp.ArDemo
         public float temporaryLossHoldSeconds = 0.8f;
         [Range(0.01f, 1f)] public float positionSmoothing = 0.30f;
         [Range(0.01f, 1f)] public float rotationSmoothing = 0.25f;
+        public VerifiedPoseLockSettings verifiedPoseLock =
+            new VerifiedPoseLockSettings();
     }
 
     [CreateAssetMenu(menuName = "URP AR/Restoration Object Profile")]
@@ -60,7 +62,7 @@ namespace Urp.ArDemo
         public TextAsset trackingReferenceDatabase;
         public RepairCalibrationProfile calibration;
         public TrackingSettings trackingSettings = new TrackingSettings();
-        [Tooltip("Semi-transparent textured B used only before registration so A remains visible.")]
+        [Tooltip("Untextured translucent ghost used by BottlePreviewB while searching and verifying alignment.")]
         public Material preAlignmentMaterial;
         public Material repairMaterial;
         [FormerlySerializedAs("referenceValidationMaterial")]

@@ -39,6 +39,8 @@ namespace Urp.ArDemo.Editor
             + "Textures/bottle_full_clean_v2_albedo.png";
         private const string BottleCapMaterialPath =
             "Assets/Materials/CleanBottleCapLit.mat";
+        private const string BottleGhostMaterialPath =
+            "Assets/Materials/BottlePreAlignmentGhost.mat";
         private const string ControllerPath =
             "Assets/Scripts/OrbImageTrackingController.cs";
         private const string SetupPath =
@@ -272,12 +274,16 @@ namespace Urp.ArDemo.Editor
                     == BottleCapMaterialPath,
                 "B must use the photogrammetry texture and clean C must use its own white material.");
             Require(
-                profile.preAlignmentMaterial == profile.viewerMaterial
-                && profile.preAlignmentMaterial != null
-                && profile.preAlignmentMaterial.GetTexture("_BaseMap") != null
-                && profile.preAlignmentMaterial.GetFloat("_Surface") < 0.5f
-                && profile.preAlignmentMaterial.GetColor("_BaseColor").a > 0.95f,
-                "Pre-alignment B+C must use the requested opaque textured material.");
+                profile.preAlignmentMaterial != null
+                && profile.preAlignmentMaterial != profile.viewerMaterial
+                && AssetDatabase.GetAssetPath(profile.preAlignmentMaterial)
+                    == BottleGhostMaterialPath
+                && profile.preAlignmentMaterial.GetTexture("_BaseMap") == null
+                && profile.preAlignmentMaterial.GetFloat("_Surface") > 0.5f
+                && Mathf.Abs(profile.preAlignmentMaterial.GetFloat("_Metallic")) < 0.001f
+                && Mathf.Abs(profile.preAlignmentMaterial.GetFloat("_Smoothness") - 0.2f) < 0.01f
+                && Mathf.Abs(profile.preAlignmentMaterial.GetColor("_BaseColor").a - 0.28f) < 0.01f,
+                "BottlePreviewB must use the untextured translucent ghost material.");
             Require(
                 profile.referenceDepthOcclusionMaterial == null,
                 "B must not retain a depth material that can occlude C after Start.");
@@ -377,12 +383,12 @@ namespace Urp.ArDemo.Editor
             string appController = File.ReadAllText(AppControllerPath);
             string buildIdentity = File.ReadAllText(BuildIdentityPath);
             Require(
-                appController.Contains("v44")
+                appController.Contains("v45")
                 && buildIdentity.Contains(
-                    "orb-tracking-v44-capture-pose-real-sim3")
+                    "orb-tracking-v45-verified-pose-lock-ghost-preview")
                 && buildIdentity.Contains(
                     "coconut-v44-real-trimmed-sim3-production-b"),
-                "Visible application/build identity still reports a pre-v44 build.");
+                "Visible application/build identity still reports a pre-v45 build.");
             string[] prohibitedControllerTokens =
             {
                 "displayMatrix",
@@ -428,6 +434,9 @@ namespace Urp.ArDemo.Editor
                 && controller.Contains("recognitionRunning = true")
                 && controller.Contains("SetReferenceHierarchyVisible(false)")
                 && controller.Contains("ConfidenceWeightedPoseFusion.Step")
+                && controller.Contains("VerifiedPoseLock")
+                && controller.Contains("BottlePreviewB")
+                && controller.Contains("SetPreviewHierarchyVisible")
                 && !controller.Contains("maximumWorldPositionCorrectionMetersPerSecond")
                 && !controller.Contains("maximumWorldRotationCorrectionDegreesPerSecond")
                 && controller.Contains("trackingState = TrackingState.Repair")
@@ -575,6 +584,8 @@ namespace Urp.ArDemo.Editor
                 GetPrivateField<Transform>(controller, "registeredReferenceModel");
             Transform neck =
                 GetPrivateField<Transform>(controller, "registeredReferenceNeck");
+            Transform preview =
+                GetPrivateField<Transform>(controller, "registeredPreviewModel");
             Transform cap =
                 GetPrivateField<Transform>(controller, "registeredRepairPart");
             Transform pair =
@@ -645,17 +656,30 @@ namespace Urp.ArDemo.Editor
                 Vector3.Distance(body.position, cap.position) < 0.0001f,
                 "Imported B and C no longer share the Blender mouth origin.");
             Require(
-                AnyEnabled(body.GetComponentsInChildren<Renderer>(true))
+                !AnyEnabled(body.GetComponentsInChildren<Renderer>(true))
+                && preview != null
+                && AnyEnabled(preview.GetComponentsInChildren<Renderer>(true))
                 && AnyEnabled(cap.GetComponentsInChildren<Renderer>(true)),
-                "Entering tracking must show the Blender-aligned B+C pair.");
+                "Entering tracking must show BottlePreviewB + C while hiding production B.");
             Require(
                 AllUseMaterial(
-                    body.GetComponentsInChildren<Renderer>(true),
+                    preview.GetComponentsInChildren<Renderer>(true),
                     profile.preAlignmentMaterial)
                 && AllUseMaterial(
                     cap.GetComponentsInChildren<Renderer>(true),
                     profile.repairMaterial),
-                "Pre-alignment must use opaque textured B and the clean white C material.");
+                "Pre-alignment must use the translucent ghost B and clean white C material.");
+            if (SystemInfo.graphicsDeviceType != GraphicsDeviceType.Null)
+            {
+                int previewPixels = CountEditorSyntheticRepairPixelDifference(
+                    camera,
+                    preview.GetComponentsInChildren<Renderer>(true));
+                Require(previewPixels > 100,
+                    $"BottlePreviewB ghost did not change enough rendered pixels: {previewPixels}.");
+                Debug.Log(
+                    $"BOTTLE_PREVIEW_GHOST_PIXEL_VISIBILITY_OK pixels={previewPixels} "
+                    + "notDeviceVerification=true");
+            }
             Matrix4x4 capLocalBefore = pair.worldToLocalMatrix * cap.localToWorldMatrix;
 
             Vector3 measuredPosition = new Vector3(0.08f, -0.03f, 0.62f);
@@ -713,9 +737,10 @@ namespace Urp.ArDemo.Editor
                     GetPrivateField<Quaternion>(controller, "derivedAlignmentRotation")) < 0.1f,
                 "PreStartStablePoseIsActuallyApplied failed: B+C did not receive the stable PnP Pose.");
             Require(
-                AnyEnabled(body.GetComponentsInChildren<Renderer>(true))
+                !AnyEnabled(body.GetComponentsInChildren<Renderer>(true))
+                && AnyEnabled(preview.GetComponentsInChildren<Renderer>(true))
                 && AnyEnabled(cap.GetComponentsInChildren<Renderer>(true)),
-                "Stable pre-Start registration must keep both B and C visible.");
+                "Stable pre-Start registration must keep Ghost B and C visible.");
             object[] registeredPriorArguments = { 0, null };
             Require(
                 (bool)buildPrior.Invoke(controller, registeredPriorArguments),
@@ -809,10 +834,16 @@ namespace Urp.ArDemo.Editor
                 cap.localToWorldMatrix);
             Renderer[] bodyRenderers =
                 body.GetComponentsInChildren<Renderer>(true);
+            Renderer[] previewRenderers =
+                preview.GetComponentsInChildren<Renderer>(true);
             Renderer[] capRenderersAfterStart =
                 cap.GetComponentsInChildren<Renderer>(true);
             Require(
                 bodyRenderers.All(renderer =>
+                    renderer != null
+                    && !renderer.enabled
+                    && renderer.forceRenderingOff)
+                && previewRenderers.All(renderer =>
                     renderer != null
                     && !renderer.enabled
                     && renderer.forceRenderingOff)

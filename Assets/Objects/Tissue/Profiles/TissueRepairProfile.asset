@@ -43,6 +43,23 @@ MonoBehaviour:
     temporaryLossHoldSeconds: 0.8
     positionSmoothing: 0.3
     rotationSmoothing: 0.25
+    verifiedPoseLock:
+      enabled: 1
+      confirmationFrames: 10
+      minimumLockInliers: 20
+      maximumLockRmsPixels: 2
+      maximumPositionSpreadMeters: 0.003
+      maximumRotationSpreadDegrees: 0.5
+      positionDeadbandMeters: 0.003
+      rotationDeadbandDegrees: 0.5
+      persistentDriftConfirmationFrames: 8
+      persistentDriftPositionMeters: 0.004
+      persistentDriftRotationDegrees: 0.7
+      slowDriftCorrectionAlpha: 0.05
+      relocationPositionThresholdMeters: 0.018
+      relocationRotationThresholdDegrees: 3
+      relocationConfirmationFrames: 4
+      relocalizationStableFrames: 6
   preAlignmentMaterial: {fileID: 0}
   repairMaterial: {fileID: 0}
   referenceDepthOcclusionMaterial: {fileID: 0}
