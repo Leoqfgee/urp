@@ -1,0 +1,39 @@
+{
+    "baseline_commit": "774f79f4d4a2f4e2cfecd4d17d01564f9c0932bc",
+    "pair_fbx_sha256": "F0661ADB5E953A1DA4605A943995E251ACD4039C0397A14B99F0418319562D21",
+    "imported_mesh_sha256": "10642ED34185213B7CF56297EE82CD36CDD017BAF6E49232EB9EEDAF7C4FE381",
+    "vertex_count": 11911,
+    "triangle_count": 9504,
+    "index_count": 28512,
+    "sub_mesh_count": 1,
+    "local_bounds_center": {
+        "x": 0.000006884685717523098,
+        "y": -0.0002858189109247178,
+        "z": -0.00006793736247345805
+    },
+    "local_bounds_size": {
+        "x": 0.002651047660037875,
+        "y": 0.0007391221006400883,
+        "z": 0.0026507461443543436
+    },
+    "local_position": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0
+    },
+    "local_rotation": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0,
+        "w": 1.0
+    },
+    "local_scale": {
+        "x": 1.0,
+        "y": 1.0,
+        "z": 1.0
+    },
+    "parent_path": "BottleRepairRoot/BottleCapC",
+    "material_guid": "4e2ac76533fd4bba8da1cdb51f07b8d1",
+    "material_path": "Assets/Materials/CleanBottleCapLit.mat",
+    "matches_v46": true
+}

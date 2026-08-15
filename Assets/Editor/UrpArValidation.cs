@@ -62,7 +62,8 @@ namespace Urp.ArDemo.Editor
 
         public static void RunFromCommandLine()
         {
-            UrpArProjectSetup.SetupPrototypeScene();
+            Require(File.Exists(ScenePath),
+                "Saved v46-baseline production scene is missing.");
             ValidatePoseConversion();
             ValidateFormalAssets();
             ValidateSingleTrackingArchitecture();
@@ -73,7 +74,8 @@ namespace Urp.ArDemo.Editor
 
         public static void RunPlayModeSmokeFromCommandLine()
         {
-            UrpArProjectSetup.SetupPrototypeScene();
+            Require(File.Exists(ScenePath),
+                "Saved v46-baseline production scene is missing.");
             EditorSceneManager.OpenScene(ScenePath);
             SessionState.SetBool(PlayModeSessionKey, true);
             SubscribePlayModeSmoke();
@@ -284,7 +286,7 @@ namespace Urp.ArDemo.Editor
                     "Assets/Materials/PaperLinearEyeDepth.mat") != null
                 && AssetDatabase.LoadAssetAtPath<Material>(
                     "Assets/Materials/PaperDepthComposite.mat") != null,
-                "Paper 3.4.1 depth-composite materials or metric epsilon are missing.");
+                "The paper depth-composite materials or numerical epsilon are invalid.");
 
             byte[] database = File.ReadAllBytes(DatabasePath);
             Require(
@@ -381,12 +383,12 @@ namespace Urp.ArDemo.Editor
             string appController = File.ReadAllText(AppControllerPath);
             string buildIdentity = File.ReadAllText(BuildIdentityPath);
             Require(
-                appController.Contains("v47")
+                appController.Contains("v48")
                 && buildIdentity.Contains(
-                    "orb-tracking-v47-paper-depth-composite")
+                    "orb-tracking-v48-v46-baseline-paper-depth")
                 && buildIdentity.Contains(
                     "coconut-v44-real-trimmed-sim3-production-b"),
-                "Visible application/build identity does not report v47 with the unchanged v44 calibration.");
+                "Visible application/build identity does not report v48 with the v46 tracking baseline and unchanged v44 calibration.");
             string[] prohibitedControllerTokens =
             {
                 "displayMatrix",
@@ -454,20 +456,20 @@ namespace Urp.ArDemo.Editor
                 preAlignmentStart - repairPresentationStart);
             Require(
                 repairPresentation.Contains("SetReferenceHierarchyVisible(false)")
-                && repairPresentation.Contains("SetRepairHierarchyVisible(false)")
+                && repairPresentation.Contains("SetRepairHierarchyVisible(true)")
                 && repairPresentation.Contains("PaperOcclusionRegistry.Enable(this)")
                 && !repairPresentation.Contains("ApplyMaterial")
                 && !repairPresentation.Contains("ApplyTrackedRootPose")
                 && !repairPresentation.Contains("RestoreProfileCoordinateAlignment"),
-                "Start presentation must hide direct B/C colour and enable paper depth composition.");
+                "Start presentation must only hide B and retain C.");
             string capDiagnostic = File.ReadAllText(CapDiagnosticPath);
             Require(
                 capDiagnostic.Contains("[URP_CAP_DIAG]")
                 && capDiagnostic.Contains("CalculateFrustumPlanes")
-                && capDiagnostic.Contains("currentEnvironmentDepthMode")
-                && capDiagnostic.Contains("forceCapDiagnosticMaterial")
-                && capDiagnostic.Contains("BottleCapC.corner"),
-                "Android cap diagnostics are incomplete.");
+                && !capDiagnostic.Contains("new Material")
+                && !capDiagnostic.Contains("CreatePrimitive")
+                && !capDiagnostic.Contains("sharedMaterials ="),
+                "BottleCapC diagnostics must be read-only and log-only.");
             string poseDiagnostic = File.ReadAllText(PoseDiagnosticPath);
             string canonicalRegistration = File.ReadAllText(CanonicalRegistrationPath);
             string unityPoseGate = File.ReadAllText(UnityPoseGatePath);
@@ -826,9 +828,9 @@ namespace Urp.ArDemo.Editor
                     && !renderer.forceRenderingOff)
                 && capRenderersAfterStart.All(renderer =>
                     renderer != null
-                    && !renderer.enabled
+                    && renderer.enabled
                     && !renderer.forceRenderingOff),
-                "Repair stage must remove direct B/C colour while retaining both for off-screen DrawRenderer.");
+                "Repair stage must remove B from normal colour rendering while keeping it available for the explicit paper depth draw and retaining C.");
             Require(
                 AllUseMaterial(
                     cap.GetComponentsInChildren<Renderer>(true),

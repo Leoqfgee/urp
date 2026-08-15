@@ -41,7 +41,7 @@ namespace Urp.ArDemo.Generated
     public static class BuildIdentity
     {
         public const string TrackingBuildVersion =
-            "orb-tracking-v47-paper-depth-composite";
+            "orb-tracking-v48-v46-baseline-paper-depth";
         public const string CalibrationVersion =
             "coconut-v44-real-trimmed-sim3-production-b";
         public const string OrbDatabaseVersion =

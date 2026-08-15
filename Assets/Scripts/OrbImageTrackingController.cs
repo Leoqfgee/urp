@@ -246,10 +246,8 @@ namespace Urp.ArDemo
                 return;
             }
 
-            // Start changes presentation only. It must never deactivate C or
-            // leave the authored B neck proxy in the colour pass. Reassert the
-            // renderer contract after every frame so loss/relocalisation and
-            // imported renderer state cannot make C disappear.
+            // Start changes presentation only. Reassert the paper renderer
+            // contract after every frame without touching any B/C transform.
             ShowRepairPresentation();
         }
 
@@ -513,6 +511,7 @@ namespace Urp.ArDemo
 
             // Start is a pure presentation gate. The stable A-to-B pose was
             // already applied before this method became eligible to run.
+            PaperOcclusionRegistry.RequestDevelopmentCapture(this);
             repairRequested = true;
             trackingState = TrackingState.Repair;
             poseCoordinateDiagnostic?.HideAllDebugLines();
@@ -802,14 +801,15 @@ namespace Urp.ArDemo
                 PaperOcclusionRegistry.Disable(this);
                 return;
             }
-            // Paper 3.4.1 presentation: B and C leave the main colour pass.
-            // The renderer feature draws the complete B into BDepthRT and the
-            // byte-for-byte original C into independent CDepthRT/CColorRT,
-            // then composites only C pixels that are in front of B.
+            // Start is presentation-only. Full B leaves the main colour pass
+            // but remains available for explicit BDepth; immutable C stays on
+            // the normal URP colour path and also supplies explicit CDepth.
             SetReferenceHierarchyVisible(false);
-            SetRepairHierarchyVisible(false);
             PreparePaperOcclusionRenderers(referenceRenderers);
-            PreparePaperOcclusionRenderers(repairRenderers);
+            // The immutable C stays in the ordinary URP colour pass. The
+            // feature extracts those already-lit pixels with CDepth, so no
+            // replacement material or manual Lit pass can recolour it.
+            SetRepairHierarchyVisible(true);
             PaperOcclusionRegistry.Enable(this);
         }
 
@@ -834,19 +834,6 @@ namespace Urp.ArDemo
             SetRepairHierarchyVisible(true);
         }
 
-        private static void PreparePaperOcclusionRenderers(Renderer[] renderers)
-        {
-            foreach (Renderer renderer in renderers ?? Array.Empty<Renderer>())
-            {
-                if (renderer == null) continue;
-                // Disabled removes the renderer from the Main Camera cull.
-                // forceRenderingOff must remain false so DrawRenderer can use
-                // the same immutable renderer in the independent B/C buffers.
-                renderer.enabled = false;
-                renderer.forceRenderingOff = false;
-            }
-        }
-
         private void ShowPresentationForCurrentState()
         {
             if (repairRequested && hasEverRegisteredSinceReset)
@@ -856,6 +843,16 @@ namespace Urp.ArDemo
             else
             {
                 ShowPreAlignmentPair();
+            }
+        }
+
+        private static void PreparePaperOcclusionRenderers(Renderer[] renderers)
+        {
+            foreach (Renderer renderer in renderers ?? Array.Empty<Renderer>())
+            {
+                if (renderer == null) continue;
+                renderer.enabled = false;
+                renderer.forceRenderingOff = false;
             }
         }
 
@@ -2108,7 +2105,7 @@ namespace Urp.ArDemo
                     + $"rootRotationDeg={Quaternion.Angle(before.root.rotation, after.root.rotation):F6} "
                     + $"capPositionMm={MatrixPositionDeltaMeters(before.cap, after.cap) * 1000f:F6} "
                     + $"capRotationDeg={Quaternion.Angle(before.cap.rotation, after.cap.rotation):F6} "
-                    + $"capBasisLengthDelta={Vector3.Distance(MatrixScale(before.cap), MatrixScale(after.cap)):E6}");
+                    + $"capWorldMatrixScaleDelta={Vector3.Distance(MatrixScale(before.cap), MatrixScale(after.cap)):E6}");
             }
         }
 

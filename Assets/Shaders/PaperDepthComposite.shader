@@ -35,7 +35,7 @@ Shader "Hidden/URP/Paper Depth Composite"
                     _PaperBDepthRT, sampler_PaperBDepthRT, uv).r;
                 float depthC = SAMPLE_TEXTURE2D(
                     _PaperCDepthRT, sampler_PaperCDepthRT, uv).r;
-                bool capExists = cap.a > 0.001 && depthC < 999.0;
+                bool capExists = depthC < 999.0;
                 bool bottleExists = depthB < 999.0;
                 bool capInFront = !bottleExists
                     || depthC < depthB - _PaperOcclusionDepthEpsilonMeters;
@@ -74,11 +74,41 @@ Shader "Hidden/URP/Paper Depth Composite"
                     _PaperBDepthRT, sampler_PaperBDepthRT, uv).r;
                 float depthC = SAMPLE_TEXTURE2D(
                     _PaperCDepthRT, sampler_PaperCDepthRT, uv).r;
-                bool capExists = capAlpha > 0.001 && depthC < 999.0;
+                bool capExists = depthC < 999.0;
                 bool bottleExists = depthB < 999.0;
                 bool visible = capExists && (!bottleExists
                     || depthC < depthB - _PaperOcclusionDepthEpsilonMeters);
                 return visible ? half4(1, 1, 1, 1) : half4(0, 0, 0, 1);
+            }
+            ENDHLSL
+        }
+
+        Pass
+        {
+            Name "ExtractOriginalCapColor"
+            ZWrite Off
+            ZTest Always
+            Cull Off
+
+            HLSLPROGRAM
+            #pragma vertex Vert
+            #pragma fragment FragExtract
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #include "Packages/com.unity.render-pipelines.core/Runtime/Utilities/Blit.hlsl"
+
+            TEXTURE2D(_PaperCDepthRT);
+            SAMPLER(sampler_PaperCDepthRT);
+
+            half4 FragExtract(Varyings input) : SV_Target
+            {
+                float2 uv = input.texcoord;
+                float depthC = SAMPLE_TEXTURE2D(
+                    _PaperCDepthRT, sampler_PaperCDepthRT, uv).r;
+                if (depthC >= 999.0)
+                    return half4(0, 0, 0, 0);
+                half4 directCameraColor = SAMPLE_TEXTURE2D_X(
+                    _BlitTexture, sampler_LinearClamp, uv);
+                return half4(directCameraColor.rgb, 1.0);
             }
             ENDHLSL
         }

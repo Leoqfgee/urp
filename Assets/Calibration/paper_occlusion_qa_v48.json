@@ -1,0 +1,221 @@
+{
+    "algorithm": "paper_3_4_1: visibleC = noB || depthC < depthB - epsilon",
+    "source_geometry_b": "complete DamagedBottleB hierarchy",
+    "source_geometry_c": "unmodified original BottleCapC",
+    "depth_format": "R32_SFloat",
+    "depth_unit": "linear camera-space metres (-viewPosition.z)",
+    "epsilon_meters": 0.0005000000237487257,
+    "bottle_cap_c_mesh_sha256": "10642ED34185213B7CF56297EE82CD36CDD017BAF6E49232EB9EEDAF7C4FE381",
+    "pair_fbx_sha256": "F0661ADB5E953A1DA4605A943995E251ACD4039C0397A14B99F0418319562D21",
+    "cap_vertex_count": 11911,
+    "cap_triangle_count": 9504,
+    "cap_bounds_center": {
+        "x": 0.000006884685717523098,
+        "y": -0.0002858189109247178,
+        "z": -0.00006793736247345805
+    },
+    "cap_bounds_size": {
+        "x": 0.002651047660037875,
+        "y": 0.0007391221006400883,
+        "z": 0.0026507461443543436
+    },
+    "cap_local_position": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0
+    },
+    "cap_local_rotation": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0,
+        "w": 1.0
+    },
+    "cap_local_scale": {
+        "x": 1.0,
+        "y": 1.0,
+        "z": 1.0
+    },
+    "synthetic_gpu_cpu_mask_agreement": 1.0,
+    "views": [
+        {
+            "view": "front",
+            "camera_png": "Artifacts/V48OcclusionQA/front/camera.png",
+            "b_depth_exr": "Artifacts/V48OcclusionQA/front/B_depth.exr",
+            "b_depth_png": "Artifacts/V48OcclusionQA/front/B_depth.png",
+            "c_depth_exr": "Artifacts/V48OcclusionQA/front/C_depth.exr",
+            "c_depth_png": "Artifacts/V48OcclusionQA/front/C_depth.png",
+            "c_color_png": "Artifacts/V48OcclusionQA/front/PaperCColorRT.png",
+            "direct_original_c_png": "Artifacts/V48OcclusionQA/front/DirectOriginalC.png",
+            "no_occlusion_composite_png": "Artifacts/V48OcclusionQA/front/NoOcclusionComposite.png",
+            "mask_png": "Artifacts/V48OcclusionQA/front/OcclusionMask.png",
+            "composite_png": "Artifacts/V48OcclusionQA/front/FinalComposite.png",
+            "cap_pixel_count": 11965,
+            "visible_cap_pixel_count": 2951,
+            "b_in_front_pixel_count": 9014,
+            "c_in_front_pixel_count": 668,
+            "visible_ratio": 0.2466360181570053,
+            "mask_centroid_x": 267.786865234375,
+            "mask_centroid_y": 266.744140625,
+            "gpu_cpu_mask_agreement": 1.0,
+            "every_mask_pixel_explained_by_depth": true,
+            "direct_vs_paper_rgb_rms": 0.0,
+            "direct_alpha_pixels": 11965,
+            "paper_alpha_pixels": 11965,
+            "direct_bounds": {
+                "x": 153.0,
+                "y": 228.0,
+                "z": 359.0,
+                "w": 287.0
+            },
+            "paper_bounds": {
+                "x": 153.0,
+                "y": 228.0,
+                "z": 359.0,
+                "w": 287.0
+            },
+            "direct_centroid": {
+                "x": 255.6598358154297,
+                "y": 257.0827331542969
+            },
+            "paper_centroid": {
+                "x": 255.6598358154297,
+                "y": 257.0827331542969
+            }
+        },
+        {
+            "view": "left",
+            "camera_png": "Artifacts/V48OcclusionQA/left/camera.png",
+            "b_depth_exr": "Artifacts/V48OcclusionQA/left/B_depth.exr",
+            "b_depth_png": "Artifacts/V48OcclusionQA/left/B_depth.png",
+            "c_depth_exr": "Artifacts/V48OcclusionQA/left/C_depth.exr",
+            "c_depth_png": "Artifacts/V48OcclusionQA/left/C_depth.png",
+            "c_color_png": "Artifacts/V48OcclusionQA/left/PaperCColorRT.png",
+            "direct_original_c_png": "Artifacts/V48OcclusionQA/left/DirectOriginalC.png",
+            "no_occlusion_composite_png": "Artifacts/V48OcclusionQA/left/NoOcclusionComposite.png",
+            "mask_png": "Artifacts/V48OcclusionQA/left/OcclusionMask.png",
+            "composite_png": "Artifacts/V48OcclusionQA/left/FinalComposite.png",
+            "cap_pixel_count": 11979,
+            "visible_cap_pixel_count": 2796,
+            "b_in_front_pixel_count": 9183,
+            "c_in_front_pixel_count": 600,
+            "visible_ratio": 0.23340846598148347,
+            "mask_centroid_x": 253.68812561035157,
+            "mask_centroid_y": 265.8626708984375,
+            "gpu_cpu_mask_agreement": 1.0,
+            "every_mask_pixel_explained_by_depth": true,
+            "direct_vs_paper_rgb_rms": 0.0,
+            "direct_alpha_pixels": 11979,
+            "paper_alpha_pixels": 11979,
+            "direct_bounds": {
+                "x": 152.0,
+                "y": 227.0,
+                "z": 359.0,
+                "w": 287.0
+            },
+            "paper_bounds": {
+                "x": 152.0,
+                "y": 227.0,
+                "z": 359.0,
+                "w": 287.0
+            },
+            "direct_centroid": {
+                "x": 255.9285430908203,
+                "y": 256.5170593261719
+            },
+            "paper_centroid": {
+                "x": 255.9285430908203,
+                "y": 256.5170593261719
+            }
+        },
+        {
+            "view": "right",
+            "camera_png": "Artifacts/V48OcclusionQA/right/camera.png",
+            "b_depth_exr": "Artifacts/V48OcclusionQA/right/B_depth.exr",
+            "b_depth_png": "Artifacts/V48OcclusionQA/right/B_depth.png",
+            "c_depth_exr": "Artifacts/V48OcclusionQA/right/C_depth.exr",
+            "c_depth_png": "Artifacts/V48OcclusionQA/right/C_depth.png",
+            "c_color_png": "Artifacts/V48OcclusionQA/right/PaperCColorRT.png",
+            "direct_original_c_png": "Artifacts/V48OcclusionQA/right/DirectOriginalC.png",
+            "no_occlusion_composite_png": "Artifacts/V48OcclusionQA/right/NoOcclusionComposite.png",
+            "mask_png": "Artifacts/V48OcclusionQA/right/OcclusionMask.png",
+            "composite_png": "Artifacts/V48OcclusionQA/right/FinalComposite.png",
+            "cap_pixel_count": 11990,
+            "visible_cap_pixel_count": 3666,
+            "b_in_front_pixel_count": 8324,
+            "c_in_front_pixel_count": 1312,
+            "visible_ratio": 0.30575478076934817,
+            "mask_centroid_x": 280.5507507324219,
+            "mask_centroid_y": 263.620849609375,
+            "gpu_cpu_mask_agreement": 1.0,
+            "every_mask_pixel_explained_by_depth": true,
+            "direct_vs_paper_rgb_rms": 0.0,
+            "direct_alpha_pixels": 11990,
+            "paper_alpha_pixels": 11990,
+            "direct_bounds": {
+                "x": 152.0,
+                "y": 228.0,
+                "z": 359.0,
+                "w": 287.0
+            },
+            "paper_bounds": {
+                "x": 152.0,
+                "y": 228.0,
+                "z": 359.0,
+                "w": 287.0
+            },
+            "direct_centroid": {
+                "x": 255.51976013183595,
+                "y": 257.255615234375
+            },
+            "paper_centroid": {
+                "x": 255.51976013183595,
+                "y": 257.255615234375
+            }
+        },
+        {
+            "view": "top",
+            "camera_png": "Artifacts/V48OcclusionQA/top/camera.png",
+            "b_depth_exr": "Artifacts/V48OcclusionQA/top/B_depth.exr",
+            "b_depth_png": "Artifacts/V48OcclusionQA/top/B_depth.png",
+            "c_depth_exr": "Artifacts/V48OcclusionQA/top/C_depth.exr",
+            "c_depth_png": "Artifacts/V48OcclusionQA/top/C_depth.png",
+            "c_color_png": "Artifacts/V48OcclusionQA/top/PaperCColorRT.png",
+            "direct_original_c_png": "Artifacts/V48OcclusionQA/top/DirectOriginalC.png",
+            "no_occlusion_composite_png": "Artifacts/V48OcclusionQA/top/NoOcclusionComposite.png",
+            "mask_png": "Artifacts/V48OcclusionQA/top/OcclusionMask.png",
+            "composite_png": "Artifacts/V48OcclusionQA/top/FinalComposite.png",
+            "cap_pixel_count": 27152,
+            "visible_cap_pixel_count": 16102,
+            "b_in_front_pixel_count": 11050,
+            "c_in_front_pixel_count": 13572,
+            "visible_ratio": 0.5930318236351013,
+            "mask_centroid_x": 265.0412902832031,
+            "mask_centroid_y": 232.9799346923828,
+            "gpu_cpu_mask_agreement": 1.0,
+            "every_mask_pixel_explained_by_depth": true,
+            "direct_vs_paper_rgb_rms": 0.0,
+            "direct_alpha_pixels": 27152,
+            "paper_alpha_pixels": 27152,
+            "direct_bounds": {
+                "x": 152.0,
+                "y": 170.0,
+                "z": 359.0,
+                "w": 327.0
+            },
+            "paper_bounds": {
+                "x": 152.0,
+                "y": 170.0,
+                "z": 359.0,
+                "w": 327.0
+            },
+            "direct_centroid": {
+                "x": 255.7365264892578,
+                "y": 248.78477478027345
+            },
+            "paper_centroid": {
+                "x": 255.7365264892578,
+                "y": 248.78477478027345
+            }
+        }
+    ]
+}
