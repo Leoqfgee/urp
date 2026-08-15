@@ -381,12 +381,12 @@ namespace Urp.ArDemo.Editor
             string appController = File.ReadAllText(AppControllerPath);
             string buildIdentity = File.ReadAllText(BuildIdentityPath);
             Require(
-                appController.Contains("v49")
+                appController.Contains("v50")
                 && buildIdentity.Contains(
-                    "orb-tracking-v49-v46-baseline-main-depth")
+                    "orb-tracking-v50-rigid-bc-main-depth")
                 && buildIdentity.Contains(
                     "coconut-v44-real-trimmed-sim3-production-b"),
-                "Visible application/build identity does not report v49 with the v46 tracking baseline and unchanged v44 calibration.");
+                "Visible application/build identity does not report v50 with the v46 tracking baseline and unchanged v44 calibration.");
             string[] prohibitedControllerTokens =
             {
                 "displayMatrix",
@@ -822,12 +822,16 @@ namespace Urp.ArDemo.Editor
             Require(
                 bodyRenderers.All(renderer =>
                     renderer != null
-                    && !renderer.enabled
-                    && !renderer.forceRenderingOff)
+                    && renderer.enabled
+                    && !renderer.forceRenderingOff
+                    && renderer.gameObject.layer
+                        == PaperOcclusionRegistry.BottleDepthOnlyLayer)
                 && capRenderersAfterStart.All(renderer =>
                     renderer != null
                     && renderer.enabled
-                    && !renderer.forceRenderingOff),
+                    && !renderer.forceRenderingOff)
+                && (camera.cullingMask
+                    & (1 << PaperOcclusionRegistry.BottleDepthOnlyLayer)) == 0,
                 "Repair stage must remove B from normal colour rendering while keeping it available for the explicit paper depth draw and retaining C.");
             Require(
                 AllUseMaterial(

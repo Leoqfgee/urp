@@ -51,6 +51,10 @@ namespace Urp.ArDemo
         [SerializeField] private CapVisibilityDiagnostic capVisibilityDiagnostic;
         [SerializeField] private PoseCoordinateDiagnostic poseCoordinateDiagnostic;
 
+        [Header("3D registration diagnostics")]
+        [SerializeField] private bool registrationDebugMode;
+        [SerializeField] private bool emitRepairRegistrationDiagnostics = true;
+
         [Header("Runtime profile")]
         [SerializeField] private RestorationObjectProfile activeProfile;
         [SerializeField] private int maxFrameWidth = 640;
@@ -100,6 +104,10 @@ namespace Urp.ArDemo
         private Renderer[] referenceNeckRenderers = Array.Empty<Renderer>();
         private Renderer[] referenceRenderers = Array.Empty<Renderer>();
         private Renderer[] repairRenderers = Array.Empty<Renderer>();
+        private Material runtimeRegistrationDebugMaterial;
+        private BottlePairRegistrationGeometry.Result bottlePairGeometry;
+        private bool bottlePairGeometryAvailable;
+        private float nextRepairRegistrationDiagnosticTime;
         private RepairCalibrationProfile calibration;
         private bool modeEnabled;
         private bool recognitionRunning;
@@ -204,6 +212,10 @@ namespace Urp.ArDemo
         {
             PaperOcclusionRegistry.Unbind(this);
             DisposeTrackers();
+            if (runtimeRegistrationDebugMaterial != null)
+            {
+                Destroy(runtimeRegistrationDebugMaterial);
+            }
             if (frameTexture != null)
             {
                 Destroy(frameTexture);
@@ -212,6 +224,14 @@ namespace Urp.ArDemo
 
         private void Update()
         {
+            if (modeEnabled
+                && emitRepairRegistrationDiagnostics
+                && (Debug.isDebugBuild || Application.isEditor)
+                && Time.unscaledTime >= nextRepairRegistrationDiagnosticTime)
+            {
+                nextRepairRegistrationDiagnosticTime = Time.unscaledTime + 1f;
+                LogRepairRegistrationDiagnostic("runtime");
+            }
             if (!modeEnabled || !recognitionRunning || Time.unscaledTime < nextProcessTime)
             {
                 return;
@@ -365,6 +385,17 @@ namespace Urp.ArDemo
             CorrectProductionVisualWinding(referenceBodyRenderers);
             repairRenderers =
                 registeredRepairPart.GetComponentsInChildren<Renderer>(true);
+            bottlePairGeometryAvailable = BottlePairRegistrationGeometry.TryMeasure(
+                registeredBottlePairRoot,
+                registeredReferenceNeck,
+                registeredRepairPart,
+                out bottlePairGeometry,
+                out string bottlePairGeometryReason);
+            if (!bottlePairGeometryAvailable)
+            {
+                Debug.LogWarning("[REPAIR_REGISTRATION_DIAG] "
+                    + bottlePairGeometryReason);
+            }
             PaperOcclusionRegistry.Bind(
                 this,
                 arCamera,
@@ -430,6 +461,7 @@ namespace Urp.ArDemo
                     calibration,
                     runtimeDatabaseSha256);
             }
+            LogRepairRegistrationDiagnostic("bind");
             if (occlusionRoot != null)
             {
                 occlusionRoot.gameObject.SetActive(false);
@@ -507,6 +539,7 @@ namespace Urp.ArDemo
             }
 
             RigidPoseSnapshot before = CaptureRigidPoseSnapshot();
+            LogRepairRegistrationDiagnostic("start-before");
             capVisibilityDiagnostic?.LogSnapshot("start-before");
             appearanceConsistency?.LogAppearanceSnapshot("start-before");
 
@@ -519,6 +552,7 @@ namespace Urp.ArDemo
 
             RigidPoseSnapshot after = CaptureRigidPoseSnapshot();
             AssertStartPoseUnchanged(before, after);
+            LogRepairRegistrationDiagnostic("start-after");
             capVisibilityDiagnostic?.LogSnapshot("start-after");
             appearanceConsistency?.LogAppearanceSnapshot("start-after");
             UpdateStatus(
@@ -820,9 +854,11 @@ namespace Urp.ArDemo
             }
             ApplyMaterial(
                 referenceRenderers,
-                activeProfile.preAlignmentMaterial != null
-                    ? activeProfile.preAlignmentMaterial
-                    : activeProfile.viewerMaterial);
+                registrationDebugMode
+                    ? GetRegistrationDebugMaterial()
+                    : activeProfile.preAlignmentMaterial != null
+                        ? activeProfile.preAlignmentMaterial
+                        : activeProfile.viewerMaterial);
             ApplyMaterial(
                 repairRenderers,
                 activeProfile.repairMaterial != null
@@ -832,6 +868,113 @@ namespace Urp.ArDemo
             SetReferenceHierarchyVisible(true);
             SetRepairHierarchyVisible(true);
         }
+
+        public bool RegistrationDebugModeEnabled => registrationDebugMode;
+
+        public void ToggleRegistrationDebugMode()
+        {
+            if (!Debug.isDebugBuild && !Application.isEditor)
+                return;
+            registrationDebugMode = !registrationDebugMode;
+            poseCoordinateDiagnostic?.SetDrawPoseDebugOverlays(registrationDebugMode);
+            if (!repairRequested)
+                ShowPreAlignmentPair();
+            LogRepairRegistrationDiagnostic(
+                registrationDebugMode ? "debug-enabled" : "debug-disabled");
+            UpdateStatus(registrationDebugMode
+                ? "RegistrationDebugMode: B 半透明、C 正常三维渲染；几何轴线已启用。"
+                : "RegistrationDebugMode 已关闭。屏幕诊断线保持隐藏。");
+        }
+
+        private Material GetRegistrationDebugMaterial()
+        {
+            if (runtimeRegistrationDebugMaterial != null)
+                return runtimeRegistrationDebugMaterial;
+            Material source = activeProfile != null
+                ? activeProfile.viewerMaterial
+                : null;
+            if (source == null) return null;
+            runtimeRegistrationDebugMaterial = new Material(source)
+            {
+                name = "BottleB Registration Debug (runtime)",
+                renderQueue = 1999
+            };
+            Color color = runtimeRegistrationDebugMaterial.HasProperty("_BaseColor")
+                ? runtimeRegistrationDebugMaterial.GetColor("_BaseColor")
+                : Color.white;
+            color.a = 0.38f;
+            runtimeRegistrationDebugMaterial.SetColor("_BaseColor", color);
+            runtimeRegistrationDebugMaterial.SetFloat("_Surface", 1f);
+            runtimeRegistrationDebugMaterial.SetFloat("_Blend", 0f);
+            runtimeRegistrationDebugMaterial.SetFloat("_SrcBlend", 5f);
+            runtimeRegistrationDebugMaterial.SetFloat("_DstBlend", 10f);
+            runtimeRegistrationDebugMaterial.SetFloat("_ZWrite", 1f);
+            runtimeRegistrationDebugMaterial.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            return runtimeRegistrationDebugMaterial;
+        }
+
+        private void LogRepairRegistrationDiagnostic(string phase)
+        {
+            if (!emitRepairRegistrationDiagnostics
+                || (!Debug.isDebugBuild && !Application.isEditor)
+                || !bottlePairGeometryAvailable
+                || registeredBottlePairRoot == null
+                || arCamera == null)
+                return;
+            Vector3 neckWorld = registeredBottlePairRoot.TransformPoint(
+                bottlePairGeometry.neckCenterInPair);
+            Vector3 capWorld = registeredBottlePairRoot.TransformPoint(
+                bottlePairGeometry.capSeatCenterInPair);
+            Vector3 neckAxisWorld = registeredBottlePairRoot.TransformDirection(
+                bottlePairGeometry.neckAxisInPair).normalized;
+            Vector3 capAxisWorld = registeredBottlePairRoot.TransformDirection(
+                bottlePairGeometry.capAxisInPair).normalized;
+            float planeGapMm = Vector3.Dot(
+                    capWorld - neckWorld,
+                    neckAxisWorld) * 1000f;
+            float radialMm = Vector3.ProjectOnPlane(
+                    capWorld - neckWorld,
+                    neckAxisWorld).magnitude * 1000f;
+            Vector2 neckViewport = ProjectWorldToViewport(neckWorld);
+            Vector2 capViewport = ProjectWorldToViewport(capWorld);
+            Vector2 viewportDelta = neckViewport - capViewport;
+            float projectedDelta = new Vector2(
+                viewportDelta.x * Screen.width,
+                viewportDelta.y * Screen.height).magnitude;
+            Debug.Log(
+                "[REPAIR_REGISTRATION_DIAG] "
+                + $"phase={phase} rootPose={FormatMatrix(trackedObjectPoseRoot != null ? trackedObjectPoseRoot.localToWorldMatrix : Matrix4x4.identity)} "
+                + $"neckCenterWorld={FormatVector(neckWorld)} capCenterWorld={FormatVector(capWorld)} "
+                + $"neckAxisWorld={FormatVector(neckAxisWorld)} capAxisWorld={FormatVector(capAxisWorld)} "
+                + $"axisAngleDeg={Vector3.Angle(neckAxisWorld, capAxisWorld):F4} "
+                + $"planeGapMm={planeGapMm:F3} radialCenterDeltaMm={radialMm:F3} "
+                + $"projectedCenterDeltaPx={projectedDelta:F3} "
+                + $"neckVertices={bottlePairGeometry.neckVertexCount} capVertices={bottlePairGeometry.capVertexCount} "
+                + $"screenSpaceOffset=false debugMode={registrationDebugMode}");
+        }
+
+        private Vector2 ProjectWorldToViewport(Vector3 worldPoint)
+        {
+            Vector4 cameraPoint = arCamera.worldToCameraMatrix
+                * new Vector4(worldPoint.x, worldPoint.y, worldPoint.z, 1f);
+            Vector4 clipPoint = arCamera.projectionMatrix * cameraPoint;
+            if (Mathf.Abs(clipPoint.w) <= 1e-6f)
+                return Vector2.zero;
+
+            float inverseW = 1f / clipPoint.w;
+            return new Vector2(
+                clipPoint.x * inverseW * 0.5f + 0.5f,
+                clipPoint.y * inverseW * 0.5f + 0.5f);
+        }
+
+        private static string FormatVector(Vector3 value) =>
+            $"({value.x:F6},{value.y:F6},{value.z:F6})";
+
+        private static string FormatMatrix(Matrix4x4 matrix) =>
+            $"[{matrix.m00:F5},{matrix.m01:F5},{matrix.m02:F5},{matrix.m03:F5};"
+            + $"{matrix.m10:F5},{matrix.m11:F5},{matrix.m12:F5},{matrix.m13:F5};"
+            + $"{matrix.m20:F5},{matrix.m21:F5},{matrix.m22:F5},{matrix.m23:F5};"
+            + $"{matrix.m30:F5},{matrix.m31:F5},{matrix.m32:F5},{matrix.m33:F5}]";
 
         private void ShowPresentationForCurrentState()
         {
@@ -850,7 +993,10 @@ namespace Urp.ArDemo
             foreach (Renderer renderer in renderers ?? Array.Empty<Renderer>())
             {
                 if (renderer == null) continue;
-                renderer.enabled = false;
+                // Keep the one production B renderer alive so the explicit
+                // main-depth pass can rasterize it on Android.  Registry.Enable
+                // moves it to a layer excluded from the normal colour camera.
+                renderer.enabled = true;
                 renderer.forceRenderingOff = false;
             }
         }

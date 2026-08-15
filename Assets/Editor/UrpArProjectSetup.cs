@@ -40,7 +40,7 @@ namespace Urp.ArDemo.Editor
             "Assets/Materials/PaperLinearEyeDepth.mat";
         private const string PaperCompositeMaterialPath =
             "Assets/Materials/PaperDepthComposite.mat";
-        private const string AndroidApkPath = "Builds/BottleRepairAR_v49.apk";
+        private const string AndroidApkPath = "Builds/BottleRepairAR_v50.apk";
         private const string BottleReferenceOrbPath =
             "Assets/OrbModels/bottle_reference_b.bytes";
         private const string BottleCalibrationPath =
@@ -196,14 +196,14 @@ namespace Urp.ArDemo.Editor
 
         private static void ConfigureAndroidProject()
         {
-            PlayerSettings.productName = "瓶盖AR修复 v49";
+            PlayerSettings.productName = "瓶盖AR修复 v50";
             PlayerSettings.companyName = "qfgeeee";
-            PlayerSettings.bundleVersion = "4.5.9";
+            PlayerSettings.bundleVersion = "4.6.0";
             PlayerSettings.SetApplicationIdentifier(
                 BuildTargetGroup.Android, "com.qfgeeee.paper52objecttrackingar");
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
-            PlayerSettings.Android.bundleVersionCode = 459;
+            PlayerSettings.Android.bundleVersionCode = 460;
             PlayerSettings.SetScriptingBackend(
                 BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
@@ -324,8 +324,33 @@ namespace Urp.ArDemo.Editor
                 AssetDatabase.LoadAssetAtPath<Material>(PaperDepthMaterialPath);
             feature.Settings.passEvent = RenderPassEvent.BeforeRenderingOpaques;
             feature.Create();
+            MoveBottleDepthFeatureAfterArBackground(renderer, feature);
             EditorUtility.SetDirty(feature);
             EditorUtility.SetDirty(renderer);
+        }
+
+        private static void MoveBottleDepthFeatureAfterArBackground(
+            UniversalRendererData renderer,
+            RepairOcclusionRendererFeature feature)
+        {
+            int depthIndex = renderer.rendererFeatures.IndexOf(feature);
+            int backgroundIndex = renderer.rendererFeatures.FindIndex(value =>
+                value != null && value.name == "AR Background Renderer Feature");
+            if (depthIndex < 0 || backgroundIndex < 0 || depthIndex > backgroundIndex)
+                return;
+
+            SerializedObject serializedRenderer = new SerializedObject(renderer);
+            SerializedProperty featureMap = serializedRenderer.FindProperty(
+                "m_RendererFeatureMap");
+            long depthLocalId = featureMap.GetArrayElementAtIndex(depthIndex).longValue;
+            renderer.rendererFeatures.RemoveAt(depthIndex);
+            featureMap.DeleteArrayElementAtIndex(depthIndex);
+            backgroundIndex--;
+            int insertIndex = backgroundIndex + 1;
+            renderer.rendererFeatures.Insert(insertIndex, feature);
+            featureMap.InsertArrayElementAtIndex(insertIndex);
+            featureMap.GetArrayElementAtIndex(insertIndex).longValue = depthLocalId;
+            serializedRenderer.ApplyModifiedPropertiesWithoutUndo();
         }
 
         private static XRGeneralSettingsPerBuildTarget GetOrCreateXRSettings()

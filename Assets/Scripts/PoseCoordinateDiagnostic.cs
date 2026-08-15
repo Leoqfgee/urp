@@ -46,6 +46,12 @@ namespace Urp.ArDemo
         private Vector3 captureCameraPosition;
         private Quaternion captureCameraRotation = Quaternion.identity;
 
+        public void SetDrawPoseDebugOverlays(bool enabled)
+        {
+            drawPoseDebugOverlays = enabled;
+            if (!enabled) HideAllDebugLines();
+        }
+
         public void UpdateCameraSynchronization(
             float deltaMs,
             string motionClass,

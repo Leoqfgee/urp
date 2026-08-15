@@ -8,7 +8,7 @@ using UnityEngine;
 
 namespace Urp.ArDemo.Tests.Editor
 {
-    public sealed class V49MainDepthOcclusionTests
+    public sealed class V50RigidRegistrationAndMainDepthTests
     {
         private const string Controller = "Assets/Scripts/OrbImageTrackingController.cs";
         private const string Feature = "Assets/Scripts/RepairOcclusionRendererFeature.cs";
@@ -60,8 +60,42 @@ namespace Urp.ArDemo.Tests.Editor
         }
 
         [Test]
-        public void V49DirectCapMatchesV44Appearance() =>
+        public void V50DirectCapMatchesV44Appearance() =>
             BottleCapMaterialIsV44CleanBottleCapLit();
+
+        [Test]
+        public void BottleCapCIsOriginalReal3DRenderer()
+        {
+            GameObject pair = AssetDatabase.LoadAssetAtPath<GameObject>(Pair);
+            Transform cap = Find(pair.transform, "BottleCapC");
+            Assert.NotNull(cap.GetComponentInChildren<MeshRenderer>(true));
+            Assert.NotNull(cap.GetComponentInChildren<MeshFilter>(true)?.sharedMesh);
+            Assert.IsNull(cap.GetComponentInChildren<SpriteRenderer>(true));
+            Assert.AreEqual("BottleRepairRoot", cap.parent.name);
+        }
+
+        [Test]
+        public void BottleAndCapShareOneRigidRoot()
+        {
+            GameObject pair = AssetDatabase.LoadAssetAtPath<GameObject>(Pair);
+            Transform bottle = Find(pair.transform, "DamagedBottleB");
+            Transform cap = Find(pair.transform, "BottleCapC");
+            Assert.AreSame(bottle.parent, cap.parent);
+            Assert.AreEqual(Vector3.zero, bottle.localPosition);
+            Assert.AreEqual(Vector3.zero, cap.localPosition);
+            Assert.AreEqual(Vector3.one, bottle.localScale);
+            Assert.AreEqual(Vector3.one, cap.localScale);
+        }
+
+        [Test]
+        public void IndependentBottleCapInterfaceMeasurementPasses()
+        {
+            string artifact = File.ReadAllText(
+                "Assets/Calibration/bottle_bc_registration_v50.json");
+            StringAssert.Contains("\"model_space_correction_applied\": false", artifact);
+            StringAssert.Contains("\"screen_space_correction_present\": false", artifact);
+            StringAssert.Contains("\"T_C_relative_to_B\"", artifact);
+        }
 
         [Test]
         public void FullBDepthWrittenBeforeCapForwardPass()
@@ -71,8 +105,18 @@ namespace Urp.ArDemo.Tests.Editor
             StringAssert.Contains("PaperOcclusionRegistry.BottleRenderers", feature);
             StringAssert.Contains("cameraDepthTargetHandle", feature);
             StringAssert.Contains("cmd.DrawRenderer", feature);
-            string renderer = File.ReadAllText("Assets/Settings/UrpMobileRenderer.asset");
+            string registry = File.ReadAllText(Registry);
+            StringAssert.Contains("BottleDepthOnlyLayer = 31", registry);
+            StringAssert.Contains("renderer.enabled = true", registry);
+            StringAssert.Contains("Camera.cullingMask &= ~(1 << BottleDepthOnlyLayer)", registry);
+            string renderer = File.ReadAllText("Assets/Settings/UrpMobileRenderer.asset")
+                .Replace("\r", string.Empty);
             StringAssert.Contains("passEvent: 250", renderer);
+            StringAssert.Contains(
+                "m_RendererFeatures:\n  - {fileID: 5348762365857661857}\n"
+                + "  - {fileID: 3209457855913661365}",
+                renderer,
+                "AR background must be enqueued before the B main-depth pass.");
         }
 
         [Test]
@@ -114,6 +158,30 @@ namespace Urp.ArDemo.Tests.Editor
             StringAssert.DoesNotContain("Blitter", feature);
             StringAssert.DoesNotContain("cameraColor, composite", feature);
             StringAssert.DoesNotContain("AfterRenderingTransparents", feature);
+        }
+
+        [Test]
+        public void NoScreenSpaceCapOrRegistrationHackExists()
+        {
+            string runtime = File.ReadAllText(Controller)
+                + File.ReadAllText(Feature)
+                + File.ReadAllText(Registry);
+            foreach (string forbidden in new[]
+                     {
+                         "capYOffset", "screenSpaceCap", "capOffset",
+                         "Graphics.Blit", "CColorRT", "SpriteRenderer"
+                     })
+                StringAssert.DoesNotContain(forbidden, runtime);
+        }
+
+        [Test]
+        public void RegistrationDebugModeUsesRealBottleAndCapHierarchy()
+        {
+            string controller = File.ReadAllText(Controller);
+            StringAssert.Contains("ToggleRegistrationDebugMode", controller);
+            StringAssert.Contains("SetReferenceHierarchyVisible(true)", controller);
+            StringAssert.Contains("SetRepairHierarchyVisible(true)", controller);
+            StringAssert.Contains("[REPAIR_REGISTRATION_DIAG]", controller);
         }
 
         [Test]

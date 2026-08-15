@@ -1,0 +1,47 @@
+{
+    "algorithm": "complete B writes Main Camera depth; original C uses normal URP ForwardLit and standard ZTest",
+    "production_path": "no CColorRT, no blit, no fullscreen cap composite",
+    "geometry_b": "the one complete DamagedBottleB plus authored ReferenceNeckProxyB hierarchy",
+    "geometry_c": "the original unchanged BottleCapC MeshRenderer",
+    "render_order": "AR background -> B depth at BeforeRenderingOpaques -> C ForwardLit -> UI",
+    "views": [
+        {
+            "view": "front",
+            "visible_cap_pixels_before": 13357,
+            "visible_cap_pixels_after": 8387,
+            "occluded_ratio": 0.37208953499794009,
+            "before_image": "Assets/Calibration/V50MainDepthQA/front/BeforeOcclusion.png",
+            "bottle_depth_visualization": "Assets/Calibration/V50MainDepthQA/front/BDepthVisualization.png",
+            "after_depth_test": "Assets/Calibration/V50MainDepthQA/front/AfterDepthTest.png"
+        },
+        {
+            "view": "left25",
+            "visible_cap_pixels_before": 13196,
+            "visible_cap_pixels_after": 8360,
+            "occluded_ratio": 0.3664746880531311,
+            "before_image": "Assets/Calibration/V50MainDepthQA/left25/BeforeOcclusion.png",
+            "bottle_depth_visualization": "Assets/Calibration/V50MainDepthQA/left25/BDepthVisualization.png",
+            "after_depth_test": "Assets/Calibration/V50MainDepthQA/left25/AfterDepthTest.png"
+        },
+        {
+            "view": "right25",
+            "visible_cap_pixels_before": 13397,
+            "visible_cap_pixels_after": 8378,
+            "occluded_ratio": 0.37463611364364626,
+            "before_image": "Assets/Calibration/V50MainDepthQA/right25/BeforeOcclusion.png",
+            "bottle_depth_visualization": "Assets/Calibration/V50MainDepthQA/right25/BDepthVisualization.png",
+            "after_depth_test": "Assets/Calibration/V50MainDepthQA/right25/AfterDepthTest.png"
+        },
+        {
+            "view": "top25",
+            "visible_cap_pixels_before": 16200,
+            "visible_cap_pixels_after": 16200,
+            "occluded_ratio": 0.0,
+            "before_image": "Assets/Calibration/V50MainDepthQA/top25/BeforeOcclusion.png",
+            "bottle_depth_visualization": "Assets/Calibration/V50MainDepthQA/top25/BDepthVisualization.png",
+            "after_depth_test": "Assets/Calibration/V50MainDepthQA/top25/AfterDepthTest.png"
+        }
+    ],
+    "left_right_masks_differ": true,
+    "full_cap_survives_without_b_depth": true
+}

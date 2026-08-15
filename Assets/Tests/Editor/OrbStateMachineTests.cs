@@ -421,7 +421,9 @@ namespace Urp.ArDemo.Tests
         {
             Renderer[] renderers = root.GetComponentsInChildren<Renderer>(true);
             return renderers.Length > 0 && renderers.All(renderer =>
-                !renderer.enabled && !renderer.forceRenderingOff);
+                renderer.enabled &&
+                !renderer.forceRenderingOff &&
+                renderer.gameObject.layer == PaperOcclusionRegistry.BottleDepthOnlyLayer);
         }
 
         private static void AssertMatrixUnchanged(

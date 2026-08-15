@@ -35,6 +35,16 @@ namespace Urp.ArDemo
             orbTracker.ResetTracking();
         }
 
+        public void ToggleRegistrationDebugMode()
+        {
+            if (orbTracker == null)
+            {
+                UpdateStatus("RegistrationDebugMode unavailable.");
+                return;
+            }
+            orbTracker.ToggleRegistrationDebugMode();
+        }
+
         private void UpdateStatus(string message)
         {
             if (statusText != null)

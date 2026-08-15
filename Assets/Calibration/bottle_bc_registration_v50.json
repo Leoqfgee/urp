@@ -1,0 +1,51 @@
+{
+    "version": "v50-independent-b-neck-to-original-c-geometry",
+    "measurement_method": "independent current ReferenceNeckProxyB top ring and BottleCapC upper inner-seat vertex bands",
+    "coordinate_frame": "shared rigid BottleRepairRoot model space; no camera or screen coordinates",
+    "b_neck_mouth_center_pair": {
+        "x": 0.000004139786597079365,
+        "y": -0.000009764357855601702,
+        "z": -0.00007247577741509303
+    },
+    "c_inner_seat_center_pair": {
+        "x": 0.000010507234946999233,
+        "y": -0.00002240651156171225,
+        "z": -0.000067735934862867
+    },
+    "b_neck_axis_pair": {
+        "x": 0.0,
+        "y": 1.0,
+        "z": 0.0
+    },
+    "c_cap_axis_pair": {
+        "x": 0.0,
+        "y": 1.0,
+        "z": 0.0
+    },
+    "radial_center_error_mm": 0.1349445879459381,
+    "axis_angle_deg": 0.0,
+    "seat_plane_gap_mm": -0.2149166315793991,
+    "b_neck_vertex_count": 1250,
+    "c_cap_vertex_count": 11911,
+    "T_C_relative_to_B": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+    ],
+    "model_space_correction_applied": false,
+    "screen_space_correction_present": false,
+    "conclusion": "B and C are already concentrically authored with a small seating overlap; missing B depth caused the apparent floating/full-ring cap."
+}

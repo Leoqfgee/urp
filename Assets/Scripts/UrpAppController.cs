@@ -310,7 +310,7 @@ namespace Urp.ArDemo
         private GameObject BuildTrackingPage()
         {
             GameObject page = CreatePage("TrackingPageContent");
-            CreateHeader(page.transform, "三维物体跟踪 · v49", () => ShowPage(Page.Selection));
+            CreateHeader(page.transform, "三维物体跟踪 · v50", () => ShowPage(Page.Selection));
             trackingSubtitle = CreateText(page.transform, string.Empty, 20, Color.white,
                 new Vector2(0.52f, 0.872f), new Vector2(0.94f, 0.915f), TextAnchor.MiddleRight);
             trackingStatus = CreateStatusBar(page.transform, "请选择对象。", 0.805f);
@@ -334,6 +334,20 @@ namespace Urp.ArDemo
                     new Vector2(0.02f, top - 0.18f), new Vector2(0.98f, top),
                     actions[i], new Color32(255, 255, 255, 235), Ink,
                     labels[i].Length > 2 ? 19 : 24);
+            }
+            if (Debug.isDebugBuild || Application.isEditor)
+            {
+                CreateButton(
+                    page.transform,
+                    "3D配准调试",
+                    new Vector2(0.72f, 0.735f),
+                    new Vector2(0.95f, 0.785f),
+                    repairController != null
+                        ? repairController.ToggleRegistrationDebugMode
+                        : (Action)null,
+                    new Color32(235, 242, 250, 230),
+                    Ink,
+                    17);
             }
             return page;
         }
