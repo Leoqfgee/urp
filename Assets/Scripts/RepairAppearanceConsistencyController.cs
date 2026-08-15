@@ -33,6 +33,7 @@ namespace Urp.ArDemo
         private Color sceneCorrection = Color.white;
         private Color referenceCorrection = Color.white;
         private Color smoothedCorrection = Color.white;
+        private Color lastValidCorrection = Color.white;
         private Color repairBaseColor = Color.white;
         private bool hasSceneCorrection;
         private bool hasReferenceCorrection;
@@ -40,6 +41,7 @@ namespace Urp.ArDemo
 
         public bool HasLightEstimate { get; private set; }
         public Color CurrentCorrection => smoothedCorrection;
+        public Color LastValidCorrection => lastValidCorrection;
 
         public void BindRepairRenderers(Renderer[] renderers)
         {
@@ -200,6 +202,28 @@ namespace Urp.ArDemo
             {
                 propertyBlock = new MaterialPropertyBlock();
             }
+            Color corrected = new Color(
+                repairBaseColor.r * smoothedCorrection.r,
+                repairBaseColor.g * smoothedCorrection.g,
+                repairBaseColor.b * smoothedCorrection.b,
+                1f);
+            Color.RGBToHSV(corrected, out _, out _, out float value);
+            if (value < 0.35f)
+            {
+                Debug.LogWarning(
+                    "[URP_CAP_APPEARANCE_DIAG] CAP_APPEARANCE_OUT_OF_RANGE "
+                    + $"candidateValue={value:F4} fallbackCorrection={lastValidCorrection}");
+                smoothedCorrection = lastValidCorrection;
+                corrected = new Color(
+                    repairBaseColor.r * smoothedCorrection.r,
+                    repairBaseColor.g * smoothedCorrection.g,
+                    repairBaseColor.b * smoothedCorrection.b,
+                    1f);
+            }
+            else
+            {
+                lastValidCorrection = smoothedCorrection;
+            }
             foreach (Renderer renderer in repairRenderers)
             {
                 if (renderer == null)
@@ -207,14 +231,39 @@ namespace Urp.ArDemo
                     continue;
                 }
                 renderer.GetPropertyBlock(propertyBlock);
-                propertyBlock.SetColor(
-                    BaseColorId,
-                    new Color(
-                        repairBaseColor.r * smoothedCorrection.r,
-                        repairBaseColor.g * smoothedCorrection.g,
-                        repairBaseColor.b * smoothedCorrection.b,
-                        1f));
+                propertyBlock.SetColor(BaseColorId, corrected);
                 renderer.SetPropertyBlock(propertyBlock);
+            }
+        }
+
+        public void LogAppearanceSnapshot(string stage)
+        {
+            if (!Debug.isDebugBuild && !Application.isEditor)
+                return;
+            string lightInfo = estimatedMainLight != null
+                ? $"intensity={estimatedMainLight.intensity:F4} "
+                  + $"direction={estimatedMainLight.transform.forward}"
+                : "none";
+            foreach (Renderer renderer in repairRenderers)
+            {
+                if (renderer == null) continue;
+                Material material = renderer.sharedMaterial;
+                Color materialBase = material != null && material.HasProperty(BaseColorId)
+                    ? material.GetColor(BaseColorId)
+                    : Color.clear;
+                renderer.GetPropertyBlock(propertyBlock);
+                Color blockBase = propertyBlock.HasColor(BaseColorId)
+                    ? propertyBlock.GetColor(BaseColorId)
+                    : materialBase;
+                Debug.Log(
+                    "[URP_CAP_APPEARANCE_DIAG] "
+                    + $"stage={stage} renderer={renderer.name} "
+                    + $"material={(material != null ? material.name : "null")} "
+                    + $"materialBaseColor={materialBase} propertyBlockBaseColor={blockBase} "
+                    + $"correction={smoothedCorrection} lastValid={lastValidCorrection} "
+                    + $"mainLight={lightInfo} ambientMode={RenderSettings.ambientMode} "
+                    + $"ambientIntensity={RenderSettings.ambientIntensity:F4} "
+                    + $"enabled={renderer.enabled} forceRenderingOff={renderer.forceRenderingOff}");
             }
         }
 

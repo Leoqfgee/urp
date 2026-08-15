@@ -508,10 +508,10 @@ namespace Urp.ArDemo
 
             RigidPoseSnapshot before = CaptureRigidPoseSnapshot();
             capVisibilityDiagnostic?.LogSnapshot("start-before");
+            appearanceConsistency?.LogAppearanceSnapshot("start-before");
 
             // Start is a pure presentation gate. The stable A-to-B pose was
             // already applied before this method became eligible to run.
-            PaperOcclusionRegistry.RequestDevelopmentCapture(this);
             repairRequested = true;
             trackingState = TrackingState.Repair;
             poseCoordinateDiagnostic?.HideAllDebugLines();
@@ -520,6 +520,7 @@ namespace Urp.ArDemo
             RigidPoseSnapshot after = CaptureRigidPoseSnapshot();
             AssertStartPoseUnchanged(before, after);
             capVisibilityDiagnostic?.LogSnapshot("start-after");
+            appearanceConsistency?.LogAppearanceSnapshot("start-after");
             UpdateStatus(
                 "已隐藏参考瓶 B；瓶盖 C 保持 Start 前完全相同的三维位姿。"
                 + "ORB/PnP 将继续驱动整个 B+C 刚性根节点。");
@@ -802,13 +803,11 @@ namespace Urp.ArDemo
                 return;
             }
             // Start is presentation-only. Full B leaves the main colour pass
-            // but remains available for explicit BDepth; immutable C stays on
-            // the normal URP colour path and also supplies explicit CDepth.
+            // but the v49 render pass writes that same geometry into the main
+            // camera depth attachment. Immutable C stays on its original URP
+            // ForwardLit path; no off-screen cap colour or full-screen cap composite.
             SetReferenceHierarchyVisible(false);
             PreparePaperOcclusionRenderers(referenceRenderers);
-            // The immutable C stays in the ordinary URP colour pass. The
-            // feature extracts those already-lit pixels with CDepth, so no
-            // replacement material or manual Lit pass can recolour it.
             SetRepairHierarchyVisible(true);
             PaperOcclusionRegistry.Enable(this);
         }

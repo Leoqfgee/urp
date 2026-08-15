@@ -1,14 +1,16 @@
-Shader "Hidden/URP/Paper Linear Eye Depth"
+Shader "Hidden/URP/Bottle Real Object Depth Only"
 {
     SubShader
     {
         Tags { "RenderPipeline"="UniversalPipeline" "RenderType"="Opaque" }
         Pass
         {
-            Name "LinearEyeDepth"
+            Name "BottleRealObjectDepthOnly"
+            ColorMask 0
             ZWrite On
             ZTest LEqual
             Cull Back
+            Blend Off
 
             HLSLPROGRAM
             #pragma vertex Vert
@@ -16,24 +18,18 @@ Shader "Hidden/URP/Paper Linear Eye Depth"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 
             struct Attributes { float4 positionOS : POSITION; };
-            struct Varyings
-            {
-                float4 positionCS : SV_POSITION;
-                float eyeDepthMeters : TEXCOORD0;
-            };
+            struct Varyings { float4 positionCS : SV_POSITION; };
 
             Varyings Vert(Attributes input)
             {
                 Varyings output;
-                float3 positionWS = TransformObjectToWorld(input.positionOS.xyz);
-                output.positionCS = TransformWorldToHClip(positionWS);
-                output.eyeDepthMeters = -TransformWorldToView(positionWS).z;
+                output.positionCS = TransformObjectToHClip(input.positionOS.xyz);
                 return output;
             }
 
-            float Frag(Varyings input) : SV_Target
+            half4 Frag(Varyings input) : SV_Target
             {
-                return max(input.eyeDepthMeters, 0.0);
+                return 0;
             }
             ENDHLSL
         }

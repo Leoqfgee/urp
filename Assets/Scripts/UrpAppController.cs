@@ -310,7 +310,7 @@ namespace Urp.ArDemo
         private GameObject BuildTrackingPage()
         {
             GameObject page = CreatePage("TrackingPageContent");
-            CreateHeader(page.transform, "三维物体跟踪 · v48", () => ShowPage(Page.Selection));
+            CreateHeader(page.transform, "三维物体跟踪 · v49", () => ShowPage(Page.Selection));
             trackingSubtitle = CreateText(page.transform, string.Empty, 20, Color.white,
                 new Vector2(0.52f, 0.872f), new Vector2(0.94f, 0.915f), TextAnchor.MiddleRight);
             trackingStatus = CreateStatusBar(page.transform, "请选择对象。", 0.805f);

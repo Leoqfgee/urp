@@ -283,10 +283,8 @@ namespace Urp.ArDemo.Editor
             Require(
                 Mathf.Abs(profile.occlusionDepthEpsilonMeters - 0.0005f) < 0.000001f
                 && AssetDatabase.LoadAssetAtPath<Material>(
-                    "Assets/Materials/PaperLinearEyeDepth.mat") != null
-                && AssetDatabase.LoadAssetAtPath<Material>(
-                    "Assets/Materials/PaperDepthComposite.mat") != null,
-                "The paper depth-composite materials or numerical epsilon are invalid.");
+                    "Assets/Materials/PaperLinearEyeDepth.mat") != null,
+                "The main-camera bottle depth material or documented numerical epsilon is invalid.");
 
             byte[] database = File.ReadAllBytes(DatabasePath);
             Require(
@@ -383,12 +381,12 @@ namespace Urp.ArDemo.Editor
             string appController = File.ReadAllText(AppControllerPath);
             string buildIdentity = File.ReadAllText(BuildIdentityPath);
             Require(
-                appController.Contains("v48")
+                appController.Contains("v49")
                 && buildIdentity.Contains(
-                    "orb-tracking-v48-v46-baseline-paper-depth")
+                    "orb-tracking-v49-v46-baseline-main-depth")
                 && buildIdentity.Contains(
                     "coconut-v44-real-trimmed-sim3-production-b"),
-                "Visible application/build identity does not report v48 with the v46 tracking baseline and unchanged v44 calibration.");
+                "Visible application/build identity does not report v49 with the v46 tracking baseline and unchanged v44 calibration.");
             string[] prohibitedControllerTokens =
             {
                 "displayMatrix",
