@@ -382,12 +382,12 @@ namespace Urp.ArDemo.Editor
             string appController = File.ReadAllText(AppControllerPath);
             string buildIdentity = File.ReadAllText(BuildIdentityPath);
             Require(
-                appController.Contains("v51")
+                appController.Contains("v52")
                 && buildIdentity.Contains(
-                    "orb-tracking-v51-converged-main-depth")
+                    "orb-tracking-v52-continuous-accepted-pose-fusion")
                 && buildIdentity.Contains(
                     "coconut-v44-real-trimmed-sim3-production-b"),
-                "Visible application/build identity does not report v51 with the frozen v50 rigid B/C and main-depth baseline.");
+                "Visible application/build identity does not report v52 with continuous accepted-pose fusion and the frozen v50 rigid B/C/main-depth baseline.");
             string[] prohibitedControllerTokens =
             {
                 "displayMatrix",

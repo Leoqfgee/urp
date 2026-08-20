@@ -147,6 +147,9 @@ namespace Urp.ArDemo
         private float lastPoseFusionConfidence = 1f;
         private float lastPoseFusionPositionAlpha = 1f;
         private float lastPoseFusionRotationAlpha = 1f;
+        private string lastPoseUpdateState = "HOLD_LOST";
+        private float lastRawToAppliedTranslationMm;
+        private float lastRawToAppliedRotationDeg;
         private Vector3 derivedAlignmentPosition;
         private Quaternion derivedAlignmentRotation = Quaternion.identity;
         private Vector3 derivedAlignmentScale = Vector3.one;
@@ -1373,21 +1376,14 @@ namespace Urp.ArDemo
                 // Both B and C stay visible so the user can visually verify
                 // the complete coordinate chain against the real bottle A.
                 EstablishRegistration(stablePosition, stableRotation);
+                RecordPoseApplication(
+                    targetPosition,
+                    targetRotation,
+                    pose,
+                    "APPLIED");
             }
             else
             {
-                if (!PassesHighConfidenceTrackedUpdate(pose, out reason))
-                {
-#if DEVELOPMENT_BUILD || UNITY_EDITOR
-                    Debug.Log(
-                        "[URP_HIGH_CONFIDENCE_POSE_DIAG] action=HOLD_LAST_RELIABLE "
-                        + $"inliers={pose.poseInliers} ratio={pose.inlierRatio:F3} "
-                        + $"rms={pose.reprojectionError:F3} coverage="
-                        + $"{pose.coverageX:F3}x{pose.coverageY:F3} "
-                        + $"grid={pose.occupiedGridCells}");
-#endif
-                    return false;
-                }
                 float positionJump =
                     Vector3.Distance(lastAcceptedPosition, targetPosition);
                 float rotationJump =
@@ -1423,6 +1419,15 @@ namespace Urp.ArDemo
                         targetRotation,
                         true,
                         confidence);
+                    RecordPoseApplication(
+                        targetPosition,
+                        targetRotation,
+                        pose,
+                        "FUSED");
+                }
+                else
+                {
+                    lastPoseUpdateState = "HOLD_VERIFICATION";
                 }
             }
 
@@ -1446,27 +1451,37 @@ namespace Urp.ArDemo
             return true;
         }
 
-        private bool PassesHighConfidenceTrackedUpdate(
-            NativeOrbResult pose,
-            out string reason)
+        private float CalculateHighConfidenceWeight(NativeOrbResult pose)
         {
-            bool spatiallyDistributed = pose.coverageX >= minimumCoverageX
-                && pose.coverageY >= minimumCoverageY
-                && pose.occupiedGridCells >= 4;
-            if (pose.poseInliers >= highConfidencePoseInliers
-                && pose.inlierRatio >= highConfidenceInlierRatio
-                && pose.reprojectionError <= highConfidenceMaximumRmsPixels
-                && spatiallyDistributed)
-            {
-                reason = string.Empty;
-                return true;
-            }
-            reason = "当前 PnP 已通过 acquisition gate，但未达到连续精确更新门槛；"
-                + "保持上一可靠 world pose，继续搜索高置信度测量。"
-                + $" inliers={pose.poseInliers}/{highConfidencePoseInliers},"
-                + $" ratio={pose.inlierRatio:F2}/{highConfidenceInlierRatio:F2},"
-                + $" RMS={pose.reprojectionError:F2}/{highConfidenceMaximumRmsPixels:F2}px。";
-            return false;
+            // v52: high-confidence measurements follow more strongly, while
+            // every pose already accepted by PassesPoseQuality still receives
+            // a non-zero update. Coverage near the acquisition threshold may
+            // lower the fusion weight, but can never freeze an oblique pose.
+            float count = Mathf.Clamp01(
+                pose.poseInliers / (float)Mathf.Max(1, highConfidencePoseInliers));
+            float ratio = Mathf.InverseLerp(
+                minimumInlierRatio,
+                Mathf.Max(minimumInlierRatio + 0.01f, highConfidenceInlierRatio),
+                pose.inlierRatio);
+            float rms = 1f - Mathf.InverseLerp(
+                highConfidenceMaximumRmsPixels,
+                Mathf.Max(
+                    highConfidenceMaximumRmsPixels + 0.01f,
+                    maximumReprojectionErrorPixels),
+                pose.reprojectionError);
+            float coverageX = Mathf.Clamp01(
+                pose.coverageX / Mathf.Max(0.001f, minimumCoverageX * 2f));
+            float coverageY = Mathf.Clamp01(
+                pose.coverageY / Mathf.Max(0.001f, minimumCoverageY * 2f));
+            float grid = Mathf.Clamp01(pose.occupiedGridCells / 4f);
+            float quality = Mathf.Clamp01(
+                0.25f * count
+                + 0.20f * ratio
+                + 0.20f * rms
+                + 0.10f * coverageX
+                + 0.15f * coverageY
+                + 0.10f * grid);
+            return Mathf.Lerp(0.35f, 1f, quality);
         }
 
         private void ObserveMathematicalConsistency(
@@ -1585,6 +1600,9 @@ namespace Urp.ArDemo
                 smoothedRootPosition = position;
                 smoothedRootRotation = rotation;
                 hasSmoothedPose = true;
+                lastPoseFusionConfidence = 1f;
+                lastPoseFusionPositionAlpha = 1f;
+                lastPoseFusionRotationAlpha = 1f;
             }
             else
             {
@@ -1631,7 +1649,7 @@ namespace Urp.ArDemo
                 ? Quaternion.Angle(lastAcceptedRotation, targetRotation)
                     / (registrationRotationToleranceDegrees * 2f)
                 : 0f;
-            return ConfidenceWeightedPoseFusion.Score(
+            float baseConfidence = ConfidenceWeightedPoseFusion.Score(
                 pose,
                 minimumInlierRatio,
                 maximumReprojectionErrorPixels,
@@ -1639,6 +1657,61 @@ namespace Urp.ArDemo
                 minimumCoverageY,
                 positionContinuity,
                 rotationContinuity);
+            float highConfidenceWeight = CalculateHighConfidenceWeight(pose);
+            float highConfidenceBonus = Mathf.InverseLerp(
+                0.35f,
+                1f,
+                highConfidenceWeight) * 0.15f;
+            // Never reduce the v50 confidence. High-confidence evidence is a
+            // continuous bonus only, so v52 cannot make an accepted oblique
+            // update respond more slowly than the v50 fusion baseline.
+            float weightedConfidence = Mathf.Lerp(
+                baseConfidence,
+                1f,
+                highConfidenceBonus);
+            // ConfidenceWeightedPoseFusion historically holds values below
+            // 0.28. An already ACCEPTED v52 pose is therefore clamped just
+            // above that internal boundary so it always participates with a
+            // small, continuous alpha instead of becoming a binary hold.
+            return Mathf.Clamp(weightedConfidence, 0.30f, 1f);
+        }
+
+        private void RecordPoseApplication(
+            Vector3 rawPosition,
+            Quaternion rawRotation,
+            NativeOrbResult pose,
+            string updateKind)
+        {
+            if (trackedObjectPoseRoot == null)
+            {
+                return;
+            }
+            lastRawToAppliedTranslationMm = Vector3.Distance(
+                rawPosition,
+                trackedObjectPoseRoot.position) * 1000f;
+            lastRawToAppliedRotationDeg = Quaternion.Angle(
+                rawRotation,
+                trackedObjectPoseRoot.rotation);
+            lastPoseUpdateState = updateKind == "APPLIED"
+                ? "APPLIED"
+                : $"FUSED(alpha={lastPoseFusionRotationAlpha:F3})";
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+            Debug.Log(
+                "[URP_POSE_APPLICATION_DIAG] "
+                + $"PoseUpdate={lastPoseUpdateState} "
+                + $"rawPosition={rawPosition:F6} rawRotation={rawRotation.eulerAngles:F4} "
+                + $"appliedPosition={trackedObjectPoseRoot.position:F6} "
+                + $"appliedRotation={trackedObjectPoseRoot.rotation.eulerAngles:F4} "
+                + $"rawToAppliedTranslationMm={lastRawToAppliedTranslationMm:F3} "
+                + $"rawToAppliedRotationDeg={lastRawToAppliedRotationDeg:F4} "
+                + $"fusionConfidence={lastPoseFusionConfidence:F4} "
+                + $"positionAlpha={lastPoseFusionPositionAlpha:F4} "
+                + $"rotationAlpha={lastPoseFusionRotationAlpha:F4} "
+                + $"poseInliers={pose.poseInliers} inlierRatio={pose.inlierRatio:F4} "
+                + $"RMS={pose.reprojectionError:F4} "
+                + $"coverageX={pose.coverageX:F4} coverageY={pose.coverageY:F4} "
+                + $"gridCells={pose.occupiedGridCells}");
+#endif
         }
 
         private void EstablishRegistration(
@@ -1677,6 +1750,7 @@ namespace Urp.ArDemo
 
         private void HandleTrackingLoss()
         {
+            lastPoseUpdateState = "HOLD_LOST";
             TrackingState previousState = trackingState;
             trackingState = TrackingState.Lost;
             if (!registrationEstablished)
@@ -1719,6 +1793,9 @@ namespace Urp.ArDemo
 
         private void ResetRegistration()
         {
+            lastPoseUpdateState = "HOLD_LOST";
+            lastRawToAppliedTranslationMm = 0f;
+            lastRawToAppliedRotationDeg = 0f;
             registrationEstablished = false;
             stablePnpPoseAvailable = false;
             poseAppliedToRigidRoot = false;
@@ -2365,6 +2442,9 @@ namespace Urp.ArDemo
                 + $"uniqueMatches={pose.uniqueMatches} poseInliers={pose.poseInliers}\n"
                 + $"PnP: RMS={pose.reprojectionError:F2}px "
                 + $"rejectionCode={RejectionCodeName(pose.rejectionCode)}\n"
+                + $"PoseUpdate={lastPoseUpdateState} "
+                + $"rawToApplied={lastRawToAppliedTranslationMm:F2}mm/"
+                + $"{lastRawToAppliedRotationDeg:F3}deg\n"
                 + $"Stable: {registrationStableFrames}/"
                 + $"{Mathf.Max(2, registrationConfirmationFrames)} "
                 + $"Consistency: {consistencyVerifiedFrames}/"

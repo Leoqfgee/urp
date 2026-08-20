@@ -74,19 +74,21 @@ namespace Urp.ArDemo.Tests.Editor
             Material material = AssetDatabase.LoadAssetAtPath<Material>(
                 "Assets/Materials/CleanBottleCapLit.mat");
             Assert.NotNull(material);
-            Assert.AreEqual(2f, material.GetFloat("_Cull"));
-            Assert.IsFalse(material.doubleSidedGI);
+            Assert.AreEqual(0f, material.GetFloat("_Cull"),
+                "v52 intentionally restores the v50 Cull Off appearance baseline.");
+            Assert.IsTrue(material.doubleSidedGI);
         }
 
         [Test]
-        public void HighConfidencePoseUpdateUsesQualityAndCoverageWithoutPoseLock()
+        public void HighConfidencePoseUpdateIsContinuousWeightNotBinaryGate()
         {
             string source = File.ReadAllText("Assets/Scripts/OrbImageTrackingController.cs");
-            StringAssert.Contains("PassesHighConfidenceTrackedUpdate", source);
-            StringAssert.Contains("pose.poseInliers >= highConfidencePoseInliers", source);
-            StringAssert.Contains("pose.inlierRatio >= highConfidenceInlierRatio", source);
-            StringAssert.Contains("pose.reprojectionError <= highConfidenceMaximumRmsPixels", source);
-            StringAssert.Contains("pose.occupiedGridCells >= 4", source);
+            StringAssert.Contains("CalculateHighConfidenceWeight", source);
+            StringAssert.Contains("Mathf.Lerp(0.35f, 1f, quality)", source);
+            StringAssert.Contains("Never reduce the v50 confidence", source);
+            StringAssert.Contains("Mathf.Clamp(weightedConfidence, 0.30f, 1f)", source);
+            StringAssert.DoesNotContain("PassesHighConfidenceTrackedUpdate", source);
+            StringAssert.DoesNotContain("HOLD_LAST_RELIABLE", source);
             StringAssert.DoesNotContain("VerifiedPoseLock", source);
             StringAssert.DoesNotContain("positionDeadband", source);
         }

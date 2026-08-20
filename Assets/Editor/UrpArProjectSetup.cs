@@ -40,7 +40,7 @@ namespace Urp.ArDemo.Editor
             "Assets/Materials/PaperLinearEyeDepth.mat";
         private const string PaperCompositeMaterialPath =
             "Assets/Materials/PaperDepthComposite.mat";
-        private const string AndroidApkPath = "Builds/BottleRepairAR_v51.apk";
+        private const string AndroidApkPath = "Builds/BottleRepairAR_v52.apk";
         private const string BottleReferenceOrbPath =
             "Assets/OrbModels/bottle_reference_b.bytes";
         private const string BottleCalibrationPath =
@@ -186,14 +186,14 @@ namespace Urp.ArDemo.Editor
 
         private static void ConfigureAndroidProject()
         {
-            PlayerSettings.productName = "瓶盖AR修复 v51";
+            PlayerSettings.productName = "瓶盖AR修复 v52";
             PlayerSettings.companyName = "qfgeeee";
-            PlayerSettings.bundleVersion = "4.6.1";
+            PlayerSettings.bundleVersion = "4.6.2";
             PlayerSettings.SetApplicationIdentifier(
                 BuildTargetGroup.Android, "com.qfgeeee.paper52objecttrackingar");
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
-            PlayerSettings.Android.bundleVersionCode = 461;
+            PlayerSettings.Android.bundleVersionCode = 462;
             PlayerSettings.SetScriptingBackend(
                 BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
@@ -404,7 +404,7 @@ namespace Urp.ArDemo.Editor
             Material bottleSurfaceMaterial = CreateLitMaterial(
                 BottleSurfaceMaterialPath, BottleAlbedoPath, 0.12f, false);
             Material bottleCapMaterial = CreateLitMaterial(
-                BottleCapMaterialPath, null, 0.28f, false);
+                BottleCapMaterialPath, null, 0.28f, true);
             bottleCapMaterial.SetColor(
                 "_BaseColor",
                 new Color(0.96f, 0.96f, 0.94f, 1f));
