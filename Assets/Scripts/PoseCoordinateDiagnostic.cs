@@ -40,6 +40,9 @@ namespace Urp.ArDemo
         private Vector3 appliedRelativeEuler;
         private float poseLagCentimetres;
         private float poseLagDegrees;
+        private Vector3 previousCameraPosition;
+        private Quaternion previousCameraRotation = Quaternion.identity;
+        private float previousFusionLogTime = float.NegativeInfinity;
         private ModelRegistrationEvidence modelRegistration;
         private float capturePoseDeltaMs;
         private string captureMotionClass = "UNAVAILABLE";
@@ -391,6 +394,19 @@ namespace Urp.ArDemo
             poseLagDegrees = Quaternion.Angle(
                 pnpWorldRotation,
                 appliedRoot.rotation);
+            float now = Time.unscaledTime;
+            float elapsed = float.IsFinite(previousFusionLogTime)
+                ? Mathf.Max(0.001f, now - previousFusionLogTime)
+                : 0f;
+            float cameraTranslationVelocity = elapsed > 0f
+                ? Vector3.Distance(arCamera.transform.position, previousCameraPosition) / elapsed
+                : 0f;
+            float cameraAngularVelocity = elapsed > 0f
+                ? Quaternion.Angle(arCamera.transform.rotation, previousCameraRotation) / elapsed
+                : 0f;
+            previousCameraPosition = arCamera.transform.position;
+            previousCameraRotation = arCamera.transform.rotation;
+            previousFusionLogTime = now;
             Debug.Log(
                 "[URP_POSE_FUSION_DIAG] "
                 + $"pnpCameraPosition={Format(pnpRelativePosition)} "
@@ -399,7 +415,9 @@ namespace Urp.ArDemo
                 + $"appliedCameraYpr={Format(appliedRelativeEuler)} "
                 + $"lagCm={poseLagCentimetres:F3} "
                 + $"lagDeg={poseLagDegrees:F3} confidence={confidence:F3} "
-                + $"positionAlpha={positionAlpha:F3} rotationAlpha={rotationAlpha:F3}");
+                + $"positionAlpha={positionAlpha:F3} rotationAlpha={rotationAlpha:F3} "
+                + $"cameraVelocityMps={cameraTranslationVelocity:F4} "
+                + $"cameraAngularVelocityDps={cameraAngularVelocity:F3}");
         }
 
         private Vector3 PnpPointToWorld(NativeOrbResult pose, Vector3 modelPoint)

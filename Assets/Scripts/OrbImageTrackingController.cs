@@ -91,6 +91,10 @@ namespace Urp.ArDemo
         [SerializeField] private float positionSmoothing = 0.30f;
         [Range(0.01f, 1f)]
         [SerializeField] private float rotationSmoothing = 0.25f;
+        [Header("High-confidence tracked-pose updates")]
+        [SerializeField] private int highConfidencePoseInliers = 20;
+        [SerializeField] private float highConfidenceInlierRatio = 0.45f;
+        [SerializeField] private float highConfidenceMaximumRmsPixels = 2.3f;
 
         private readonly List<NativeOrbTracker> trackers = new List<NativeOrbTracker>();
         private readonly List<Mesh> correctedVisualMeshes = new List<Mesh>();
@@ -1372,6 +1376,18 @@ namespace Urp.ArDemo
             }
             else
             {
+                if (!PassesHighConfidenceTrackedUpdate(pose, out reason))
+                {
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+                    Debug.Log(
+                        "[URP_HIGH_CONFIDENCE_POSE_DIAG] action=HOLD_LAST_RELIABLE "
+                        + $"inliers={pose.poseInliers} ratio={pose.inlierRatio:F3} "
+                        + $"rms={pose.reprojectionError:F3} coverage="
+                        + $"{pose.coverageX:F3}x{pose.coverageY:F3} "
+                        + $"grid={pose.occupiedGridCells}");
+#endif
+                    return false;
+                }
                 float positionJump =
                     Vector3.Distance(lastAcceptedPosition, targetPosition);
                 float rotationJump =
@@ -1428,6 +1444,29 @@ namespace Urp.ArDemo
                   + $"{consistencyVerifiedFrames}/"
                   + $"{Mathf.Max(3, consistencyConfirmationFrames)}.";
             return true;
+        }
+
+        private bool PassesHighConfidenceTrackedUpdate(
+            NativeOrbResult pose,
+            out string reason)
+        {
+            bool spatiallyDistributed = pose.coverageX >= minimumCoverageX
+                && pose.coverageY >= minimumCoverageY
+                && pose.occupiedGridCells >= 4;
+            if (pose.poseInliers >= highConfidencePoseInliers
+                && pose.inlierRatio >= highConfidenceInlierRatio
+                && pose.reprojectionError <= highConfidenceMaximumRmsPixels
+                && spatiallyDistributed)
+            {
+                reason = string.Empty;
+                return true;
+            }
+            reason = "当前 PnP 已通过 acquisition gate，但未达到连续精确更新门槛；"
+                + "保持上一可靠 world pose，继续搜索高置信度测量。"
+                + $" inliers={pose.poseInliers}/{highConfidencePoseInliers},"
+                + $" ratio={pose.inlierRatio:F2}/{highConfidenceInlierRatio:F2},"
+                + $" RMS={pose.reprojectionError:F2}/{highConfidenceMaximumRmsPixels:F2}px。";
+            return false;
         }
 
         private void ObserveMathematicalConsistency(
@@ -1961,6 +2000,10 @@ namespace Urp.ArDemo
             temporaryLossHoldSeconds = settings.temporaryLossHoldSeconds;
             positionSmoothing = settings.positionSmoothing;
             rotationSmoothing = settings.rotationSmoothing;
+            highConfidencePoseInliers = settings.highConfidencePoseInliers;
+            highConfidenceInlierRatio = settings.highConfidenceInlierRatio;
+            highConfidenceMaximumRmsPixels =
+                settings.highConfidenceMaximumRmsPixels;
         }
 
         private CameraIntrinsics GetCameraIntrinsics(

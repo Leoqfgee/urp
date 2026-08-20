@@ -235,8 +235,9 @@ namespace Urp.ArDemo.Editor
             Require(catalog != null && profile != null, "Catalog or bottle profile is missing.");
             Require(
                 catalog.objects != null
-                && catalog.objects.Count(item => item == profile) == 1,
-                "The formal catalog must contain the new bottle profile exactly once.");
+                && catalog.objects.Length == 1
+                && catalog.objects[0] == profile,
+                "The production catalog must contain only CoconutBottleRepairProfile.");
             Require(
                 profile.objectId == "bottle_orb_v42_proven_observations",
                 "The formal bottle profile still has the legacy object id.");
@@ -381,12 +382,12 @@ namespace Urp.ArDemo.Editor
             string appController = File.ReadAllText(AppControllerPath);
             string buildIdentity = File.ReadAllText(BuildIdentityPath);
             Require(
-                appController.Contains("v50")
+                appController.Contains("v51")
                 && buildIdentity.Contains(
-                    "orb-tracking-v50-rigid-bc-main-depth")
+                    "orb-tracking-v51-converged-main-depth")
                 && buildIdentity.Contains(
                     "coconut-v44-real-trimmed-sim3-production-b"),
-                "Visible application/build identity does not report v50 with the v46 tracking baseline and unchanged v44 calibration.");
+                "Visible application/build identity does not report v51 with the frozen v50 rigid B/C and main-depth baseline.");
             string[] prohibitedControllerTokens =
             {
                 "displayMatrix",

@@ -8,11 +8,11 @@ using UnityEngine.Rendering;
 
 namespace Urp.ArDemo.Editor
 {
-    public static class V50MainDepthOcclusionDiagnostics
+    public static class V51CapCullingDiagnostics
     {
         private const string PairPath = "Assets/Models/CleanBottleReconstruction/"
             + "BottleFullAlignedV2/bottle_full_aligned_v2.fbx";
-        private const string OutputRoot = "Assets/Calibration/V50MainDepthQA";
+        private const string OutputRoot = "Assets/Calibration/V51CapCullingQA";
 
         [Serializable]
         private sealed class ViewResult
@@ -21,7 +21,11 @@ namespace Urp.ArDemo.Editor
             public int visible_cap_pixels_before;
             public int visible_cap_pixels_after;
             public float occluded_ratio;
-            public string before_image;
+            public int cull_off_pixels;
+            public int cull_back_pixels;
+            public float cull_back_retained_ratio;
+            public string cull_off_image;
+            public string cull_back_image;
             public string bottle_depth_visualization;
             public string after_depth_test;
         }
@@ -37,9 +41,12 @@ namespace Urp.ArDemo.Editor
             public ViewResult[] views;
             public bool left_right_masks_differ;
             public bool full_cap_survives_without_b_depth;
+            public float cap_normal_winding_consistency;
+            public bool production_cull_back;
+            public string top25_zero_reason;
         }
 
-        [MenuItem("URP AR/V50/Run Main Depth Occlusion QA")]
+        [MenuItem("URP AR/V51/Run Cap Culling + Elevation Sweep QA")]
         public static void RunFromCommandLine()
         {
             Directory.CreateDirectory(OutputRoot);
@@ -49,16 +56,26 @@ namespace Urp.ArDemo.Editor
             Material capMaterial = AssetDatabase.LoadAssetAtPath<Material>(
                 "Assets/Materials/CleanBottleCapLit.mat");
             if (prefab == null || bottleMaterial == null || capMaterial == null)
-                throw new InvalidOperationException("V50 QA assets are missing.");
+                throw new InvalidOperationException("V51 QA assets are missing.");
 
             Vector3[] directions =
             {
                 Vector3.forward,
                 (Vector3.forward + Vector3.left * 0.47f).normalized,
                 (Vector3.forward + Vector3.right * 0.47f).normalized,
-                (Vector3.forward + Vector3.up * 0.47f).normalized
+                Elevation(10f),
+                Elevation(20f),
+                Elevation(25f),
+                Elevation(30f),
+                Elevation(40f),
+                Elevation(50f),
+                Elevation(-25f)
             };
-            string[] names = { "front", "left25", "right25", "top25" };
+            string[] names =
+            {
+                "front", "left25", "right25", "top10", "top20", "top25",
+                "top30", "top40", "top50", "bottom_oblique25"
+            };
             List<ViewResult> results = new List<ViewResult>();
             List<bool[]> masks = new List<bool[]>();
             for (int index = 0; index < names.Length; index++)
@@ -70,6 +87,8 @@ namespace Urp.ArDemo.Editor
                     names[index],
                     masks));
 
+            float normalConsistency = MeasureCapNormalConsistency(prefab);
+            ViewResult top25 = results.First(result => result.view == "top25");
             Artifact artifact = new Artifact
             {
                 algorithm = "complete B writes Main Camera depth; original C uses normal URP ForwardLit and standard ZTest",
@@ -81,17 +100,23 @@ namespace Urp.ArDemo.Editor
                 left_right_masks_differ = masks.Count >= 3
                     && masks[1].Zip(masks[2], (left, right) => left != right).Any(value => value),
                 full_cap_survives_without_b_depth = results.All(result =>
-                    result.visible_cap_pixels_before > 100)
+                    result.visible_cap_pixels_before > 100),
+                cap_normal_winding_consistency = normalConsistency,
+                production_cull_back = normalConsistency > 0.98f
+                    && results.All(result => result.cull_back_pixels > 100),
+                top25_zero_reason = top25.occluded_ratio <= 0.001f
+                    ? "measured B/C geometry has no B surface in front of outward-facing C pixels at this exact elevation"
+                    : "top25 has non-zero depth occlusion in the current geometry"
             };
             File.WriteAllText(
-                "Assets/Calibration/v50_main_depth_occlusion_qa.json",
+                "Assets/Calibration/v51_cap_culling_and_top_sweep_qa.json",
                 JsonUtility.ToJson(artifact, true));
             AssetDatabase.Refresh();
             if (!artifact.left_right_masks_differ
                 || !artifact.full_cap_survives_without_b_depth
                 || results.Any(result => result.visible_cap_pixels_after <= 0))
                 throw new InvalidOperationException(
-                    "V50 main-depth QA did not produce view-dependent partial C visibility.");
+                    "V51 main-depth QA did not preserve a visible cap in every view.");
         }
 
         private static ViewResult RenderView(
@@ -118,7 +143,7 @@ namespace Urp.ArDemo.Editor
             Apply(capRenderers, capMaterial);
             Bounds bounds = CombinedBounds(bottleRenderers.Concat(capRenderers));
 
-            GameObject cameraObject = new GameObject("V50MainDepthCamera");
+            GameObject cameraObject = new GameObject("V51CapCullingCamera");
             Camera camera = cameraObject.AddComponent<Camera>();
             camera.clearFlags = CameraClearFlags.SolidColor;
             camera.backgroundColor = new Color(0.12f, 0.16f, 0.20f, 1f);
@@ -131,18 +156,30 @@ namespace Urp.ArDemo.Editor
             RenderTexture target = new RenderTexture(720, 1280, 24, RenderTextureFormat.ARGB32);
             target.Create();
             camera.targetTexture = target;
-            GameObject lightObject = new GameObject("V50MainDepthLight");
+            GameObject lightObject = new GameObject("V51CapCullingLight");
             Light light = lightObject.AddComponent<Light>();
             light.type = LightType.Directional;
             light.intensity = 1.1f;
             light.transform.rotation = Quaternion.LookRotation(-direction, Vector3.up);
 
+            Material cullOff = new Material(capMaterial) { hideFlags = HideFlags.HideAndDontSave };
+            Material cullBack = new Material(capMaterial) { hideFlags = HideFlags.HideAndDontSave };
+            cullOff.SetFloat("_Cull", 0f);
+            cullOff.doubleSidedGI = true;
+            cullBack.SetFloat("_Cull", 2f);
+            cullBack.doubleSidedGI = false;
             foreach (Renderer renderer in bottleRenderers) renderer.enabled = false;
+            Apply(capRenderers, cullOff);
+            camera.Render();
+            Texture2D cullOffImage = Read(target);
+            bool[] cullOffMask = CapMask(cullOffImage.GetPixels32());
+
+            Apply(capRenderers, cullBack);
             camera.Render();
             Texture2D before = Read(target);
             bool[] beforeMask = CapMask(before.GetPixels32());
 
-            GameObject owner = new GameObject("V50RegistryOwner");
+            GameObject owner = new GameObject("V51RegistryOwner");
             PaperOcclusionRegistry.Bind(owner, camera, bottleRenderers, capRenderers, 0.0005f);
             PaperOcclusionRegistry.Enable(owner);
             camera.Render();
@@ -153,8 +190,10 @@ namespace Urp.ArDemo.Editor
 
             string folder = $"{OutputRoot}/{view}";
             Directory.CreateDirectory(folder);
-            string beforePath = $"{folder}/BeforeOcclusion.png";
+            string cullOffPath = $"{folder}/CapCullOff.png";
+            string beforePath = $"{folder}/CapCullBack.png";
             string afterPath = $"{folder}/AfterDepthTest.png";
+            File.WriteAllBytes(cullOffPath, cullOffImage.EncodeToPNG());
             File.WriteAllBytes(beforePath, before.EncodeToPNG());
             File.WriteAllBytes(afterPath, after.EncodeToPNG());
 
@@ -179,20 +218,67 @@ namespace Urp.ArDemo.Editor
                 occluded_ratio = beforePixels > 0
                     ? 1f - afterPixels / (float)beforePixels
                     : 0f,
-                before_image = beforePath,
+                cull_off_pixels = cullOffMask.Count(value => value),
+                cull_back_pixels = beforePixels,
+                cull_back_retained_ratio = cullOffMask.Count(value => value) > 0
+                    ? beforePixels / (float)cullOffMask.Count(value => value)
+                    : 0f,
+                cull_off_image = cullOffPath,
+                cull_back_image = beforePath,
                 bottle_depth_visualization = depthPath,
                 after_depth_test = afterPath
             };
             UnityEngine.Object.DestroyImmediate(before);
+            UnityEngine.Object.DestroyImmediate(cullOffImage);
             UnityEngine.Object.DestroyImmediate(after);
             UnityEngine.Object.DestroyImmediate(bottleVisual);
             UnityEngine.Object.DestroyImmediate(owner);
             UnityEngine.Object.DestroyImmediate(lightObject);
             UnityEngine.Object.DestroyImmediate(cameraObject);
             UnityEngine.Object.DestroyImmediate(instance);
+            UnityEngine.Object.DestroyImmediate(cullOff);
+            UnityEngine.Object.DestroyImmediate(cullBack);
             target.Release();
             UnityEngine.Object.DestroyImmediate(target);
             return result;
+        }
+
+        private static Vector3 Elevation(float degrees)
+        {
+            float radians = degrees * Mathf.Deg2Rad;
+            return new Vector3(0f, Mathf.Sin(radians), Mathf.Cos(radians)).normalized;
+        }
+
+        private static float MeasureCapNormalConsistency(GameObject prefab)
+        {
+            Transform cap = Find(prefab.transform, "BottleCapC");
+            int compared = 0;
+            int consistent = 0;
+            foreach (MeshFilter filter in cap.GetComponentsInChildren<MeshFilter>(true))
+            {
+                Mesh mesh = filter.sharedMesh;
+                if (mesh == null || mesh.normals == null || mesh.normals.Length != mesh.vertexCount)
+                    continue;
+                Vector3[] vertices = mesh.vertices;
+                Vector3[] normals = mesh.normals;
+                for (int subMesh = 0; subMesh < mesh.subMeshCount; subMesh++)
+                {
+                    int[] triangles = mesh.GetTriangles(subMesh);
+                    for (int i = 0; i + 2 < triangles.Length; i += 3)
+                    {
+                        int a = triangles[i];
+                        int b = triangles[i + 1];
+                        int c = triangles[i + 2];
+                        Vector3 face = Vector3.Cross(vertices[b] - vertices[a], vertices[c] - vertices[a]);
+                        if (face.sqrMagnitude < 1e-16f) continue;
+                        Vector3 average = normals[a] + normals[b] + normals[c];
+                        if (average.sqrMagnitude < 1e-16f) continue;
+                        compared++;
+                        if (Vector3.Dot(face, average) > 0f) consistent++;
+                    }
+                }
+            }
+            return compared > 0 ? consistent / (float)compared : 0f;
         }
 
         private static bool[] CapMask(Color32[] pixels) => pixels.Select(pixel =>

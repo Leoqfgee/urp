@@ -30,6 +30,9 @@ namespace Urp.ArDemo
         public float temporaryLossHoldSeconds = 0.8f;
         [Range(0.01f, 1f)] public float positionSmoothing = 0.30f;
         [Range(0.01f, 1f)] public float rotationSmoothing = 0.25f;
+        [Min(4)] public int highConfidencePoseInliers = 20;
+        [Range(0f, 1f)] public float highConfidenceInlierRatio = 0.45f;
+        [Min(0.1f)] public float highConfidenceMaximumRmsPixels = 2.3f;
     }
 
     [CreateAssetMenu(menuName = "URP AR/Restoration Object Profile")]

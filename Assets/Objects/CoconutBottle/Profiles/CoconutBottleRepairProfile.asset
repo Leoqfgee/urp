@@ -53,6 +53,9 @@ MonoBehaviour:
     temporaryLossHoldSeconds: 2.5
     positionSmoothing: 0.2
     rotationSmoothing: 0.18
+    highConfidencePoseInliers: 20
+    highConfidenceInlierRatio: 0.45
+    highConfidenceMaximumRmsPixels: 2.3
   preAlignmentMaterial: {fileID: 2100000, guid: e497a3cc2235ddb4a969ad53bb1da4df, type: 2}
   repairMaterial: {fileID: 2100000, guid: 4e2ac76533fd4bba8da1cdb51f07b8d1, type: 2}
   occlusionDepthEpsilonMeters: 0.0005

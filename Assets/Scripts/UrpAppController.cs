@@ -156,8 +156,15 @@ namespace Urp.ArDemo
             selectionInstruction = CreateText(page.transform, "请选择要查看的文物", 24, Muted,
                 new Vector2(0.08f, 0.82f), new Vector2(0.92f, 0.88f), TextAnchor.MiddleCenter);
 
+            int count = catalog == null ? 0 : catalog.objects.Length;
+            Vector2 viewportMin = count == 1
+                ? new Vector2(0.08f, 0.42f)
+                : new Vector2(0.06f, 0.06f);
+            Vector2 viewportMax = count == 1
+                ? new Vector2(0.92f, 0.79f)
+                : new Vector2(0.94f, 0.81f);
             GameObject viewport = CreatePanel(page.transform, "ObjectCardViewport", Color.clear,
-                new Vector2(0.06f, 0.06f), new Vector2(0.94f, 0.81f), false);
+                viewportMin, viewportMax, false);
             viewport.AddComponent<RectMask2D>();
             GameObject content = new GameObject("ObjectCardContent");
             content.transform.SetParent(viewport.transform, false);
@@ -166,9 +173,10 @@ namespace Urp.ArDemo
             contentRect.anchorMax = new Vector2(1f, 1f);
             contentRect.pivot = new Vector2(0.5f, 1f);
             contentRect.anchoredPosition = Vector2.zero;
-            int count = catalog == null ? 0 : catalog.objects.Length;
-            contentRect.sizeDelta = new Vector2(0f, Mathf.Max(700f, 36f + count * 390f
-                + Mathf.Max(0, count - 1) * 28f));
+            contentRect.sizeDelta = new Vector2(0f, count == 1
+                ? 426f
+                : Mathf.Max(700f, 36f + count * 390f
+                    + Mathf.Max(0, count - 1) * 28f));
             VerticalLayoutGroup layout = content.AddComponent<VerticalLayoutGroup>();
             layout.padding = new RectOffset(18, 18, 18, 18);
             layout.spacing = 28f;
@@ -310,10 +318,12 @@ namespace Urp.ArDemo
         private GameObject BuildTrackingPage()
         {
             GameObject page = CreatePage("TrackingPageContent");
-            CreateHeader(page.transform, "三维物体跟踪 · v50", () => ShowPage(Page.Selection));
+            CreateHeader(page.transform, "三维物体跟踪 · v51", () => ShowPage(Page.Selection));
             trackingSubtitle = CreateText(page.transform, string.Empty, 20, Color.white,
                 new Vector2(0.52f, 0.872f), new Vector2(0.94f, 0.915f), TextAnchor.MiddleRight);
-            trackingStatus = CreateStatusBar(page.transform, "请选择对象。", 0.805f);
+            trackingStatus = Debug.isDebugBuild || Application.isEditor
+                ? CreateStatusBar(page.transform, "请选择对象。", 0.805f)
+                : null;
             GameObject controls = CreatePanel(page.transform, "TrackingControls", Color.clear,
                 new Vector2(0.025f, 0.305f), new Vector2(0.225f, 0.755f), false);
             string[] labels =

@@ -40,23 +40,15 @@ namespace Urp.ArDemo.Editor
             "Assets/Materials/PaperLinearEyeDepth.mat";
         private const string PaperCompositeMaterialPath =
             "Assets/Materials/PaperDepthComposite.mat";
-        private const string AndroidApkPath = "Builds/BottleRepairAR_v50.apk";
+        private const string AndroidApkPath = "Builds/BottleRepairAR_v51.apk";
         private const string BottleReferenceOrbPath =
             "Assets/OrbModels/bottle_reference_b.bytes";
         private const string BottleCalibrationPath =
             "Assets/Calibration/CoconutBottleRepairCalibration.asset";
         private const string BottleRegistrationArtifactPath =
             "Assets/Calibration/bottle_orb_to_b_registration_v44.json";
-        private const string TissueModelPath =
-            "Assets/Objects/Tissue/Viewer/Processed/tissue_processed.obj";
-        private const string TissueTexturePath =
-            "Assets/Objects/Tissue/Viewer/Processed/tissue_albedo.png";
-        private const string TissueThumbnailPath =
-            "Assets/Objects/Tissue/Thumbnails/tissue_front.png";
         private const string BottleProfilePath =
             "Assets/Objects/CoconutBottle/Profiles/CoconutBottleRepairProfile.asset";
-        private const string TissueProfilePath =
-            "Assets/Objects/Tissue/Profiles/TissueRepairProfile.asset";
         private const string CatalogPath =
             "Assets/Objects/RestorationObjectCatalog.asset";
 
@@ -187,8 +179,6 @@ namespace Urp.ArDemo.Editor
                 "Assets/Calibration", "Assets/Docs", "Assets/Materials",
                 "Assets/Objects/CoconutBottle/Profiles",
                 "Assets/Objects/CoconutBottle/Prefabs",
-                "Assets/Objects/Tissue/Profiles",
-                "Assets/Objects/Tissue/Calibration",
                 "Assets/Shaders", "Assets/Resources"
             };
             foreach (string folder in folders) Directory.CreateDirectory(folder);
@@ -196,14 +186,14 @@ namespace Urp.ArDemo.Editor
 
         private static void ConfigureAndroidProject()
         {
-            PlayerSettings.productName = "瓶盖AR修复 v50";
+            PlayerSettings.productName = "瓶盖AR修复 v51";
             PlayerSettings.companyName = "qfgeeee";
-            PlayerSettings.bundleVersion = "4.6.0";
+            PlayerSettings.bundleVersion = "4.6.1";
             PlayerSettings.SetApplicationIdentifier(
                 BuildTargetGroup.Android, "com.qfgeeee.paper52objecttrackingar");
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
-            PlayerSettings.Android.bundleVersionCode = 460;
+            PlayerSettings.Android.bundleVersionCode = 461;
             PlayerSettings.SetScriptingBackend(
                 BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
@@ -366,10 +356,7 @@ namespace Urp.ArDemo.Editor
 
         private static void ConfigureImportedAssets()
         {
-            foreach (string path in new[]
-                     {
-                         BottleRegisteredPairPath, TissueModelPath
-                     })
+            foreach (string path in new[] { BottleRegisteredPairPath })
             {
                 RequireFile(path);
                 AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
@@ -395,8 +382,6 @@ namespace Urp.ArDemo.Editor
 
             ConfigureTexture(BottleThumbnailPath, 1024);
             ConfigureTexture(BottleAlbedoPath, 4096);
-            ConfigureTexture(TissueTexturePath, 2048);
-            ConfigureTexture(TissueThumbnailPath, 1024);
         }
 
         private static void ConfigureTexture(string path, int maximumSize)
@@ -416,12 +401,10 @@ namespace Urp.ArDemo.Editor
 
         private static RestorationObjectCatalog CreateProfiles()
         {
-            Material tissueMaterial = CreateLitMaterial(
-                "Assets/Objects/Tissue/Materials/TissueViewerLit.mat", TissueTexturePath, 0.16f);
             Material bottleSurfaceMaterial = CreateLitMaterial(
                 BottleSurfaceMaterialPath, BottleAlbedoPath, 0.12f, false);
             Material bottleCapMaterial = CreateLitMaterial(
-                BottleCapMaterialPath, null, 0.28f, true);
+                BottleCapMaterialPath, null, 0.28f, false);
             bottleCapMaterial.SetColor(
                 "_BaseColor",
                 new Color(0.96f, 0.96f, 0.94f, 1f));
@@ -513,6 +496,9 @@ namespace Urp.ArDemo.Editor
             bottle.trackingSettings.temporaryLossHoldSeconds = 2.5f;
             bottle.trackingSettings.positionSmoothing = 0.20f;
             bottle.trackingSettings.rotationSmoothing = 0.18f;
+            bottle.trackingSettings.highConfidencePoseInliers = 20;
+            bottle.trackingSettings.highConfidenceInlierRatio = 0.45f;
+            bottle.trackingSettings.highConfidenceMaximumRmsPixels = 2.3f;
             bottle.physicalScaleVerified =
                 bottle.calibration != null && bottle.calibration.physicalScaleVerified;
             bottle.physicalMeasurements = new[]
@@ -541,62 +527,9 @@ namespace Urp.ArDemo.Editor
             };
             EditorUtility.SetDirty(bottle);
 
-            RepairCalibrationProfile tissueCalibration =
-                LoadOrCreate<RepairCalibrationProfile>(
-                    "Assets/Objects/Tissue/Calibration/TissueCalibration.asset");
-            tissueCalibration.objectOriginInModel = new Vector3(0.027f, -0.151f, 1.789f);
-            tissueCalibration.mouthCenterInModel = tissueCalibration.objectOriginInModel;
-            tissueCalibration.mouthRightInModel =
-                tissueCalibration.objectOriginInModel + Vector3.right;
-            tissueCalibration.mouthFrontInModel =
-                tissueCalibration.objectOriginInModel + Vector3.forward;
-            tissueCalibration.neckAxisPointInModel =
-                tissueCalibration.objectOriginInModel - Vector3.up;
-            tissueCalibration.hasAuthoredBLandmarks = true;
-            tissueCalibration.authoredBOrigin = tissueCalibration.objectOriginInModel;
-            tissueCalibration.authoredBMouthCenter = tissueCalibration.mouthCenterInModel;
-            tissueCalibration.authoredBMouthRight = tissueCalibration.mouthRightInModel;
-            tissueCalibration.authoredBMouthFront = tissueCalibration.mouthFrontInModel;
-            tissueCalibration.authoredBNeckAxisPoint =
-                tissueCalibration.neckAxisPointInModel;
-            tissueCalibration.metersPerModelUnit = 1f;
-            tissueCalibration.physicalScaleVerified = false;
-            tissueCalibration.expectedPhysicalNeckDiameter = 0f;
-            tissueCalibration.expectedPhysicalCapDiameter = 0f;
-            tissueCalibration.expectedPhysicalCapHeight = 0f;
-            EditorUtility.SetDirty(tissueCalibration);
-
-            RestorationObjectProfile tissue = LoadOrCreate<RestorationObjectProfile>(
-                TissueProfilePath);
-            tissue.objectId = "tissue";
-            tissue.displayName = "Tissue 重建对象";
-            tissue.shortDescription =
-                "源照片中的维达纸巾盒 Meshroom 重建；当前仅确认一套带纹理网格。";
-            tissue.viewerDescription =
-                "已从绿色行李箱和室内背景中提取纸巾盒主体用于三维查看。"
-                + "源数据未提供独立完整/残缺模型，因此完整模型入口会明确提示资料缺失。";
-            tissue.trackingDescription =
-                "当前对象的 ORB 数据、修复部件与连接区域仍需完成标定，"
-                + "不会加载饮料瓶的模型、文字或标定参数。";
-            tissue.missingPartName = "尚未确认";
-            tissue.thumbnail = AssetDatabase.LoadAssetAtPath<Texture2D>(TissueThumbnailPath);
-            tissue.damagedViewerPrefab =
-                AssetDatabase.LoadAssetAtPath<GameObject>(TissueModelPath);
-            tissue.completeViewerPrefab = null;
-            tissue.trackingReferencePrefab = null;
-            tissue.registeredBottlePairPrefab = null;
-            tissue.trackingReferenceDatabase = null;
-            tissue.calibration = tissueCalibration;
-            tissue.viewerMaterial = tissueMaterial;
-            tissue.repairMaterial = null;
-            tissue.defaultViewerEuler = new Vector3(-90f, 0f, 0f);
-            tissue.viewerMargin = 0.20f;
-            tissue.physicalScaleVerified = false;
-            EditorUtility.SetDirty(tissue);
-
             RestorationObjectCatalog catalog =
                 LoadOrCreate<RestorationObjectCatalog>(CatalogPath);
-            catalog.objects = new[] { bottle, tissue };
+            catalog.objects = new[] { bottle };
             EditorUtility.SetDirty(catalog);
             return catalog;
         }

@@ -1,0 +1,36 @@
+{
+  "version": "v51",
+  "portrait_intrinsics_rotation": {
+    "rotations": {
+      "0": {
+        "rms_px": 0.0,
+        "max_px": 0.0
+      },
+      "90": {
+        "rms_px": 0.0,
+        "max_px": 0.0
+      },
+      "180": {
+        "rms_px": 8.806144583576081e-14,
+        "max_px": 1.1368683772161603e-13
+      },
+      "270": {
+        "rms_px": 8.806144583576081e-14,
+        "max_px": 1.1368683772161603e-13
+      }
+    },
+    "overall_rms_px": 6.226884551155832e-14,
+    "pass_threshold_px": 0.1,
+    "passed": true
+  },
+  "pnp_refinement": {
+    "ransac_inliers": 89,
+    "before_refine_rms_px": 1.232293232660189,
+    "after_refine_rms_px": 1.232293232657812,
+    "rms_improvement_px": 2.37698749572246e-12,
+    "rotation_delta_deg": 1.5489264249155105e-06,
+    "translation_delta_mm": 2.0600947951835942e-06,
+    "passed": true,
+    "runtime_note": "native already applies solvePnPRefineLM to the RANSAC inlier set"
+  }
+}
