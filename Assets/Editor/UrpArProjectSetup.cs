@@ -40,7 +40,7 @@ namespace Urp.ArDemo.Editor
             "Assets/Materials/PaperLinearEyeDepth.mat";
         private const string PaperCompositeMaterialPath =
             "Assets/Materials/PaperDepthComposite.mat";
-        private const string AndroidApkPath = "Builds/BottleRepairAR_v52.apk";
+        private const string AndroidApkPath = "Builds/BottleRepairAR_v53.apk";
         private const string BottleReferenceOrbPath =
             "Assets/OrbModels/bottle_reference_b.bytes";
         private const string BottleCalibrationPath =
@@ -80,14 +80,13 @@ namespace Urp.ArDemo.Editor
             AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
             CleanStaleSimulationTempAssets();
             Directory.CreateDirectory("Builds");
-            DeleteSupersededBuildArtifacts();
             BuildReport report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
             {
                 scenes = new[] { ScenePath },
                 locationPathName = AndroidApkPath,
                 target = BuildTarget.Android,
                 targetGroup = BuildTargetGroup.Android,
-                options = BuildOptions.Development
+                options = BuildOptions.None
             });
             if (report.summary.result != BuildResult.Succeeded)
             {
@@ -186,14 +185,14 @@ namespace Urp.ArDemo.Editor
 
         private static void ConfigureAndroidProject()
         {
-            PlayerSettings.productName = "瓶盖AR修复 v52";
+            PlayerSettings.productName = "瓶盖AR修复 v53";
             PlayerSettings.companyName = "qfgeeee";
-            PlayerSettings.bundleVersion = "4.6.2";
+            PlayerSettings.bundleVersion = "4.7.0";
             PlayerSettings.SetApplicationIdentifier(
                 BuildTargetGroup.Android, "com.qfgeeee.paper52objecttrackingar");
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
-            PlayerSettings.Android.bundleVersionCode = 462;
+            PlayerSettings.Android.bundleVersionCode = 470;
             PlayerSettings.SetScriptingBackend(
                 BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;

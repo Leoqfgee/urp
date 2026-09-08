@@ -111,7 +111,7 @@ namespace Urp.ArDemo.Tests
         }
 
         [Test]
-        public void PreStartStablePoseIsActuallyApplied()
+        public void VerifiedPoseAutomaticallyShowsOnlyRepairPart()
         {
             Vector3 stablePosition = new Vector3(0.08f, -0.03f, 0.62f);
             Quaternion stableRotation = Quaternion.Euler(24f, 37f, -12f);
@@ -125,15 +125,16 @@ namespace Urp.ArDemo.Tests
             Assert.That(controller.IsRigidRegistrationEstablished, Is.True);
             Assert.That(
                 controller.State,
-                Is.EqualTo(OrbImageTrackingController.TrackingState.ReadyForRepair));
+                Is.EqualTo(OrbImageTrackingController.TrackingState.Repair));
             Assert.That(
                 Vector3.Distance(rootObject.transform.position, stablePosition),
                 Is.LessThan(0.00001f));
             Assert.That(
                 Quaternion.Angle(rootObject.transform.rotation, stableRotation),
                 Is.LessThan(0.01f));
-            Assert.That(AllVisible(body), Is.True);
+            Assert.That(AllPaperOnly(body), Is.True);
             Assert.That(AllVisible(cap), Is.True);
+            Assert.That(PaperOcclusionRegistry.IsEnabled, Is.True);
             AssertMatrixUnchanged(
                 capRelativeBefore,
                 pair.worldToLocalMatrix * cap.localToWorldMatrix,
@@ -153,11 +154,11 @@ namespace Urp.ArDemo.Tests
             AssertMatrixUnchanged(
                 capRelativeBeforeUpdate,
                 pair.worldToLocalMatrix * cap.localToWorldMatrix,
-                "C rigid relationship during pre-Start tracking");
+                "C rigid relationship during automatic repair tracking");
         }
 
         [Test]
-        public void StartDoesNotChangeRigidPose()
+        public void LegacyStartCallIsIdempotentAfterAutomaticRepair()
         {
             Vector3 stablePosition = new Vector3(0.08f, -0.03f, 0.62f);
             Quaternion stableRotation = Quaternion.Euler(24f, 37f, -12f);
@@ -195,12 +196,12 @@ namespace Urp.ArDemo.Tests
                 CollectionAssert.AreEqual(
                     capMaterialsBefore[rendererIndex],
                     capRenderers[rendererIndex].sharedMaterials,
-                    "Start must not replace C materials.");
+                    "Automatic repair and legacy Start must not replace C materials.");
             }
         }
 
         [Test]
-        public void StartDoesNotChangeCMatrix()
+        public void LegacyStartCallDoesNotChangeCMatrix()
         {
             Vector3 position = new Vector3(0.08f, -0.03f, 0.62f);
             Quaternion rotation = Quaternion.Euler(24f, 37f, -12f);
@@ -229,7 +230,7 @@ namespace Urp.ArDemo.Tests
             Assert.That(controller.IsModelRegistrationVerified, Is.True);
             Assert.That(controller.CanStartRepair, Is.True);
             Assert.That(controller.State,
-                Is.EqualTo(OrbImageTrackingController.TrackingState.ReadyForRepair));
+                Is.EqualTo(OrbImageTrackingController.TrackingState.Repair));
             Assert.That(
                 Vector3.Distance(rootObject.transform.position, stablePosition),
                 Is.LessThan(0.00001f));
@@ -287,7 +288,7 @@ namespace Urp.ArDemo.Tests
         }
 
         [Test]
-        public void FailedPoseChainBlocksStartButKeepsPreview()
+        public void FailedPoseChainKeepsAcquisitionVisualsHidden()
         {
             Vector3 stablePosition = new Vector3(0.06f, -0.02f, 0.61f);
             Quaternion stableRotation = Quaternion.Euler(12f, 25f, -6f);
@@ -315,8 +316,8 @@ namespace Urp.ArDemo.Tests
             Assert.That(controller.CanStartRepair, Is.False);
             Assert.That(controller.State,
                 Is.EqualTo(OrbImageTrackingController.TrackingState.PoseValidating));
-            Assert.That(AllVisible(body), Is.True);
-            Assert.That(AllVisible(cap), Is.True);
+            Assert.That(AllHidden(body), Is.True);
+            Assert.That(AllHidden(cap), Is.True);
             Assert.That(
                 Vector3.Distance(rootObject.transform.position, stablePosition),
                 Is.LessThan(0.00001f));
@@ -325,8 +326,8 @@ namespace Urp.ArDemo.Tests
             Matrix4x4 capBefore = cap.localToWorldMatrix;
             controller.StartRecognition();
             Assert.That(controller.IsRepairMode, Is.False);
-            Assert.That(AllVisible(body), Is.True);
-            Assert.That(AllVisible(cap), Is.True);
+            Assert.That(AllHidden(body), Is.True);
+            Assert.That(AllHidden(cap), Is.True);
             AssertMatrixUnchanged(rootBefore, rootObject.transform.localToWorldMatrix, "root");
             AssertMatrixUnchanged(capBefore, cap.localToWorldMatrix, "C");
         }

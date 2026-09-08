@@ -37,6 +37,9 @@ namespace Urp.ArDemo
         private Text selectionInstruction;
         private Text trackingStatus;
         private Text trackingSubtitle;
+        private Image trackingStatusBackground;
+        private Image trackingStatusDot;
+        private string lastTrackingStatusValue;
         private GameObject infoModal;
         private Text infoTitle;
         private Text infoBody;
@@ -47,11 +50,14 @@ namespace Urp.ArDemo
         private Button completeButton;
         private Coroutine arActivationRoutine;
 
-        private static readonly Color Ink = new Color32(20, 48, 89, 255);
-        private static readonly Color Muted = new Color32(82, 96, 118, 255);
-        private static readonly Color Accent = new Color32(31, 91, 169, 255);
-        private static readonly Color Surface = new Color32(246, 249, 253, 255);
+        private static readonly Color Ink = new Color32(24, 50, 67, 255);
+        private static readonly Color Muted = new Color32(100, 116, 126, 255);
+        private static readonly Color Accent = new Color32(35, 122, 108, 255);
+        private static readonly Color AccentSoft = new Color32(226, 241, 237, 255);
+        private static readonly Color HeritageGold = new Color32(190, 142, 65, 255);
+        private static readonly Color Surface = new Color32(246, 245, 241, 255);
         private static readonly Color Card = Color.white;
+        private static Sprite roundedSprite;
 
         private void Awake()
         {
@@ -64,6 +70,7 @@ namespace Urp.ArDemo
 
         private void Update()
         {
+            RefreshTrackingStatusAppearance();
             if (Keyboard.current == null
                 || !Keyboard.current.escapeKey.wasPressedThisFrame)
             {
@@ -107,7 +114,7 @@ namespace Urp.ArDemo
             fullScreenBackground = CreatePanel(canvas.transform, "FullScreenBackground", Surface,
                 Vector2.zero, Vector2.one, false);
             trackingTopChrome = CreatePanel(canvas.transform, "TrackingTopSystemBarCover",
-                new Color32(250, 252, 255, 255), new Vector2(0f, 0.895f), Vector2.one, false);
+                new Color32(248, 247, 243, 255), new Vector2(0f, 0.895f), Vector2.one, false);
             trackingBottomChrome = CreatePanel(canvas.transform, "TrackingBottomSystemBarCover",
                 new Color32(9, 16, 25, 235), Vector2.zero, new Vector2(1f, 0.025f), false);
             trackingTopChrome.SetActive(false);
@@ -140,12 +147,35 @@ namespace Urp.ArDemo
         private GameObject BuildHomePage()
         {
             GameObject page = CreatePage("HomePageContent");
-            CreateText(page.transform, "文化遗址数字修复及 AR 呈现系统", 48, Ink,
-                new Vector2(0.10f, 0.65f), new Vector2(0.90f, 0.83f), TextAnchor.MiddleCenter);
-            CreateFixedButton(page.transform, "三维资源查看", 810f, 124f, 0f, 80f,
-                () => OpenSelection(Page.Resource), Card, Ink, 36);
-            CreateFixedButton(page.transform, "三维跟踪修复", 810f, 124f, 0f, -100f,
-                () => OpenSelection(Page.Tracking), Card, Ink, 36);
+            CreateText(page.transform, "DIGITAL HERITAGE  ·  AR", 19, HeritageGold,
+                new Vector2(0.12f, 0.78f), new Vector2(0.88f, 0.83f), TextAnchor.MiddleCenter);
+            CreateText(page.transform, "文化遗址数字修复\n与 AR 呈现", 52, Ink,
+                new Vector2(0.10f, 0.61f), new Vector2(0.90f, 0.79f), TextAnchor.MiddleCenter);
+            CreateText(page.transform, "让残缺文物以数字方式重新完整", 24, Muted,
+                new Vector2(0.12f, 0.55f), new Vector2(0.88f, 0.61f), TextAnchor.MiddleCenter);
+
+            GameObject resourceShadow = CreateRoundedPanel(page.transform, "ResourceEntryShadow",
+                new Color32(20, 48, 63, 28), new Vector2(0.115f, 0.405f),
+                new Vector2(0.885f, 0.492f), false);
+            resourceShadow.GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, -10f);
+            Button resourceButton = CreateButton(page.transform,
+                "三维资源查看\n<size=22><color=#64747E>浏览残缺模型与数字修复成果</color></size>",
+                new Vector2(0.10f, 0.41f), new Vector2(0.90f, 0.50f),
+                () => OpenSelection(Page.Resource), Card, Ink, 32);
+            resourceButton.GetComponentInChildren<Text>().supportRichText = true;
+
+            GameObject trackingShadow = CreateRoundedPanel(page.transform, "TrackingEntryShadow",
+                new Color32(20, 48, 63, 30), new Vector2(0.115f, 0.285f),
+                new Vector2(0.885f, 0.372f), false);
+            trackingShadow.GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, -10f);
+            Button trackingButton = CreateButton(page.transform,
+                "AR 实景修复\n<size=22><color=#FFFFFFCC>对准实物，自动呈现修复部分</color></size>",
+                new Vector2(0.10f, 0.29f), new Vector2(0.90f, 0.38f),
+                () => OpenSelection(Page.Tracking), Accent, Color.white, 32);
+            trackingButton.GetComponentInChildren<Text>().supportRichText = true;
+
+            CreateText(page.transform, "数字建模  ·  自然特征跟踪  ·  实时叠加", 18, Muted,
+                new Vector2(0.10f, 0.12f), new Vector2(0.90f, 0.18f), TextAnchor.MiddleCenter);
             return page;
         }
 
@@ -153,8 +183,8 @@ namespace Urp.ArDemo
         {
             GameObject page = CreatePage("ObjectSelectionPageContent");
             CreateHeader(page.transform, "文物选择", () => ShowPage(Page.Home));
-            selectionInstruction = CreateText(page.transform, "请选择要查看的文物", 24, Muted,
-                new Vector2(0.08f, 0.82f), new Vector2(0.92f, 0.88f), TextAnchor.MiddleCenter);
+            selectionInstruction = CreateText(page.transform, "请选择要查看的文物", 25, Muted,
+                new Vector2(0.08f, 0.82f), new Vector2(0.92f, 0.88f), TextAnchor.MiddleLeft);
 
             int count = catalog == null ? 0 : catalog.objects.Length;
             Vector2 viewportMin = count == 1
@@ -222,6 +252,8 @@ namespace Urp.ArDemo
         {
             GameObject card = CreatePanel(parent, profile.objectId + " Card", Card,
                 Vector2.zero, Vector2.one, true);
+            ApplyRoundedAppearance(card);
+            AddSoftShadow(card, new Color32(22, 49, 65, 24), new Vector2(0f, -8f));
             RectTransform cardRect = card.GetComponent<RectTransform>();
             cardRect.anchorMin = new Vector2(0f, 1f);
             cardRect.anchorMax = new Vector2(1f, 1f);
@@ -246,10 +278,12 @@ namespace Urp.ArDemo
 
             CreateText(card.transform, profile.displayName, 32, Ink,
                 new Vector2(0.44f, 0.67f), new Vector2(0.94f, 0.88f), TextAnchor.MiddleLeft);
-            CreateText(card.transform, $"缺失部位：{profile.missingPartName}", 22, Accent,
-                new Vector2(0.44f, 0.52f), new Vector2(0.94f, 0.69f), TextAnchor.MiddleLeft);
+            GameObject missingPartChip = CreateRoundedPanel(card.transform, "MissingPartChip",
+                AccentSoft, new Vector2(0.44f, 0.53f), new Vector2(0.79f, 0.68f), false);
+            CreateText(missingPartChip.transform, $"缺失部位 · {profile.missingPartName}", 20, Accent,
+                Vector2.zero, Vector2.one, TextAnchor.MiddleCenter);
             CreateText(card.transform, profile.shortDescription, 21, Muted,
-                new Vector2(0.44f, 0.14f), new Vector2(0.94f, 0.53f), TextAnchor.UpperLeft);
+                new Vector2(0.44f, 0.13f), new Vector2(0.94f, 0.51f), TextAnchor.UpperLeft);
 
             // Keep the tap target as the last child so it is the top-most UI
             // raycast target.  Text and thumbnails never participate in raycasts.
@@ -318,46 +352,34 @@ namespace Urp.ArDemo
         private GameObject BuildTrackingPage()
         {
             GameObject page = CreatePage("TrackingPageContent");
-            CreateHeader(page.transform, "三维物体跟踪 · v52", () => ShowPage(Page.Selection));
-            trackingSubtitle = CreateText(page.transform, string.Empty, 20, Color.white,
-                new Vector2(0.52f, 0.872f), new Vector2(0.94f, 0.915f), TextAnchor.MiddleRight);
-            trackingStatus = Debug.isDebugBuild || Application.isEditor
-                ? CreateStatusBar(page.transform, "请选择对象。", 0.805f)
-                : null;
-            GameObject controls = CreatePanel(page.transform, "TrackingControls", Color.clear,
-                new Vector2(0.025f, 0.305f), new Vector2(0.225f, 0.755f), false);
+            CreateHeader(page.transform, "AR 实景修复", () => ShowPage(Page.Selection));
+            trackingSubtitle = CreateText(page.transform, string.Empty, 18,
+                new Color32(236, 244, 241, 255),
+                new Vector2(0.58f, 0.885f), new Vector2(0.94f, 0.915f), TextAnchor.MiddleRight);
+            trackingStatus = CreateStatusBar(page.transform, "请将目标物体放入画面", 0.815f);
+
+            GameObject controls = CreateRoundedPanel(page.transform, "TrackingControls",
+                new Color32(249, 250, 248, 235),
+                new Vector2(0.055f, 0.035f), new Vector2(0.945f, 0.115f), true);
+            AddSoftShadow(controls, new Color32(4, 15, 22, 70), new Vector2(0f, -4f));
             string[] labels =
             {
-                "开始", "重置", "文字介绍", "返回"
+                "重新识别", "文物介绍", "退出跟踪"
             };
             Action[] actions =
             {
-                repairController != null ? repairController.StartRecognition : (Action)null,
                 repairController != null ? repairController.ResetRecognition : (Action)null,
                 ShowInformation,
                 () => ShowPage(Page.Selection)
             };
             for (int i = 0; i < labels.Length; i++)
             {
-                float top = 0.99f - i * 0.245f;
+                float left = 0.015f + i * 0.33f;
+                bool primary = i == 0;
                 CreateButton(controls.transform, labels[i],
-                    new Vector2(0.02f, top - 0.18f), new Vector2(0.98f, top),
-                    actions[i], new Color32(255, 255, 255, 235), Ink,
-                    labels[i].Length > 2 ? 19 : 24);
-            }
-            if (Debug.isDebugBuild || Application.isEditor)
-            {
-                CreateButton(
-                    page.transform,
-                    "3D配准调试",
-                    new Vector2(0.72f, 0.735f),
-                    new Vector2(0.95f, 0.785f),
-                    repairController != null
-                        ? repairController.ToggleRegistrationDebugMode
-                        : (Action)null,
-                    new Color32(235, 242, 250, 230),
-                    Ink,
-                    17);
+                    new Vector2(left, 0.14f), new Vector2(left + 0.31f, 0.86f),
+                    actions[i], primary ? Accent : Color.clear,
+                    primary ? Color.white : Ink, 21);
             }
             return page;
         }
@@ -590,21 +612,29 @@ namespace Urp.ArDemo
 
         private void CreateHeader(Transform parent, string title, Action backAction)
         {
-            GameObject header = CreatePanel(parent, "Header", new Color32(250, 252, 255, 252),
+            GameObject header = CreatePanel(parent, "Header", new Color32(249, 248, 244, 252),
                 new Vector2(0f, 0.92f), new Vector2(1f, 1f), true);
             CreateButton(header.transform, "‹", new Vector2(0.01f, 0f), new Vector2(0.14f, 1f),
                 backAction, new Color(1f, 1f, 1f, 0.001f), Ink, 50);
             CreateText(header.transform, title, 32, Ink,
                 new Vector2(0.14f, 0.08f), new Vector2(0.94f, 0.92f), TextAnchor.MiddleCenter);
+            CreatePanel(header.transform, "HeaderAccent", HeritageGold,
+                new Vector2(0.44f, 0f), new Vector2(0.56f, 0.018f), false);
         }
 
         private Text CreateStatusBar(Transform parent, string value, float bottom)
         {
-            GameObject bar = CreatePanel(parent, "TrackingStatus",
-                new Color32(12, 22, 32, 190), new Vector2(0.06f, bottom),
-                new Vector2(0.94f, bottom + 0.065f), false);
-            return CreateText(bar.transform, value, 20, Color.white,
-                new Vector2(0.03f, 0f), new Vector2(0.97f, 1f), TextAnchor.MiddleCenter);
+            GameObject bar = CreateRoundedPanel(parent, "TrackingStatus",
+                new Color32(24, 50, 67, 225), new Vector2(0.12f, bottom),
+                new Vector2(0.88f, bottom + 0.06f), false);
+            trackingStatusBackground = bar.GetComponent<Image>();
+            AddSoftShadow(bar, new Color32(0, 0, 0, 70), new Vector2(0f, -4f));
+
+            GameObject dot = CreateRoundedPanel(bar.transform, "StatusDot", Color.white,
+                new Vector2(0.055f, 0.34f), new Vector2(0.105f, 0.66f), false);
+            trackingStatusDot = dot.GetComponent<Image>();
+            return CreateText(bar.transform, value, 22, Color.white,
+                new Vector2(0.12f, 0f), new Vector2(0.96f, 1f), TextAnchor.MiddleLeft);
         }
 
         private GameObject CreateFixedButton(Transform parent, string label, float width,
@@ -633,11 +663,21 @@ namespace Urp.ArDemo
             return panel;
         }
 
+        private GameObject CreateRoundedPanel(Transform parent, string name, Color color,
+            Vector2 anchorMin, Vector2 anchorMax, bool blocksRaycasts)
+        {
+            GameObject panel = CreatePanel(
+                parent, name, color, anchorMin, anchorMax, blocksRaycasts);
+            ApplyRoundedAppearance(panel);
+            return panel;
+        }
+
         private Button CreateButton(Transform parent, string label, Vector2 anchorMin,
             Vector2 anchorMax, Action action, Color background, Color foreground, int fontSize)
         {
             GameObject buttonObject = CreatePanel(parent, label + "Button", background,
                 anchorMin, anchorMax, true);
+            ApplyRoundedAppearance(buttonObject);
             Image graphic = buttonObject.GetComponent<Image>();
             graphic.raycastTarget = true;
             Button button = buttonObject.AddComponent<Button>();
@@ -645,9 +685,115 @@ namespace Urp.ArDemo
             button.interactable = action != null;
             button.navigation = new Navigation { mode = Navigation.Mode.None };
             if (action != null) button.onClick.AddListener(() => action());
+            ColorBlock colors = button.colors;
+            colors.normalColor = Color.white;
+            colors.highlightedColor = new Color(0.97f, 1f, 0.99f, 1f);
+            colors.pressedColor = new Color(0.86f, 0.94f, 0.92f, 1f);
+            colors.selectedColor = colors.highlightedColor;
+            colors.disabledColor = new Color(0.8f, 0.82f, 0.82f, 0.5f);
+            colors.colorMultiplier = 1f;
+            button.colors = colors;
             CreateText(buttonObject.transform, label, fontSize, foreground,
                 Vector2.zero, Vector2.one, TextAnchor.MiddleCenter);
             return button;
+        }
+
+        private static void ApplyRoundedAppearance(GameObject target)
+        {
+            Image image = target != null ? target.GetComponent<Image>() : null;
+            if (image == null) return;
+            image.sprite = GetRoundedSprite();
+            image.type = Image.Type.Sliced;
+        }
+
+        private static void AddSoftShadow(GameObject target, Color color, Vector2 distance)
+        {
+            if (target == null || target.GetComponent<Graphic>() == null) return;
+            Shadow shadow = target.AddComponent<Shadow>();
+            shadow.effectColor = color;
+            shadow.effectDistance = distance;
+            shadow.useGraphicAlpha = true;
+        }
+
+        private static Sprite GetRoundedSprite()
+        {
+            if (roundedSprite != null) return roundedSprite;
+
+            const int size = 64;
+            const float radius = 15f;
+            Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
+            {
+                name = "Runtime Rounded UI",
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp,
+                hideFlags = HideFlags.HideAndDontSave
+            };
+            Color32[] pixels = new Color32[size * size];
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    float cornerX = Mathf.Min(x + 0.5f, size - x - 0.5f);
+                    float cornerY = Mathf.Min(y + 0.5f, size - y - 0.5f);
+                    float dx = Mathf.Max(0f, radius - cornerX);
+                    float dy = Mathf.Max(0f, radius - cornerY);
+                    float distance = Mathf.Sqrt(dx * dx + dy * dy);
+                    byte alpha = (byte)Mathf.RoundToInt(
+                        255f * Mathf.Clamp01(radius + 0.75f - distance));
+                    pixels[y * size + x] = new Color32(255, 255, 255, alpha);
+                }
+            }
+            texture.SetPixels32(pixels);
+            texture.Apply(false, true);
+            roundedSprite = Sprite.Create(
+                texture,
+                new Rect(0f, 0f, size, size),
+                new Vector2(0.5f, 0.5f),
+                100f,
+                0,
+                SpriteMeshType.FullRect,
+                new Vector4(16f, 16f, 16f, 16f));
+            roundedSprite.name = "Runtime Rounded UI Sprite";
+            roundedSprite.hideFlags = HideFlags.HideAndDontSave;
+            return roundedSprite;
+        }
+
+        private void RefreshTrackingStatusAppearance()
+        {
+            if (trackingStatus == null
+                || trackingStatusBackground == null
+                || trackingStatus.text == lastTrackingStatusValue)
+            {
+                return;
+            }
+
+            lastTrackingStatusValue = trackingStatus.text;
+            Color background = new Color32(24, 50, 67, 225);
+            Color dot = new Color32(132, 164, 177, 255);
+            if (trackingStatus.text == "跟踪中")
+            {
+                background = new Color32(23, 91, 78, 225);
+                dot = new Color32(102, 225, 179, 255);
+            }
+            else if (trackingStatus.text == "已恢复跟踪")
+            {
+                background = new Color32(25, 92, 128, 225);
+                dot = new Color32(117, 211, 244, 255);
+            }
+            else if (trackingStatus.text.Contains("丢失"))
+            {
+                background = new Color32(126, 57, 48, 230);
+                dot = new Color32(255, 170, 147, 255);
+            }
+            else if (trackingStatus.text.Contains("稳定")
+                     || trackingStatus.text.Contains("调整")
+                     || trackingStatus.text.Contains("完整"))
+            {
+                background = new Color32(124, 89, 37, 230);
+                dot = new Color32(255, 205, 105, 255);
+            }
+            trackingStatusBackground.color = background;
+            if (trackingStatusDot != null) trackingStatusDot.color = dot;
         }
 
         private static void SetSelected(Button button, bool selected)

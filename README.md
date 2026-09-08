@@ -1,4 +1,4 @@
-# Bottle repair AR v39
+# Bottle repair AR v53
 
 Unity 2022.3.62f2 Android project for rigid A-to-B-to-C restoration:
 
@@ -8,14 +8,15 @@ Unity 2022.3.62f2 Android project for rigid A-to-B-to-C restoration:
 
 The app keeps the v33 device-proven, 4,100-record ORB database
 made only from real open-bottle photographs. Robust multi-point PnP recovers B's full 6DoF pose and
-applies it directly to `TrackedBottleRoot`; C only inherits that pose. Before
-registration, B+C is shown in the centre. Once stable, B+C immediately moves
-to and continuously follows the accepted A-to-B pose while still visible.
-Start is then a transform-invariant presentation gate: every B renderer is disabled
-for both colour and depth, while C remains visible with HSV plus AR-light
-appearance correction. B is never allowed to self-occlude C.
+applies it directly to `TrackedBottleRoot`; C only inherits that pose. During
+acquisition, both B and C stay hidden and the UI shows a concise Chinese status.
+Once the PnP pose and coordinate chain are stable, repair presentation starts
+automatically: B leaves the normal colour pass but remains available to the
+explicit depth-only pass, while C stays visible with HSV plus AR-light appearance
+correction. There is no manual Start or virtual-bottle alignment step.
 
-v39 preserves the v38 portrait coordinate fix: native PnP already returns the pose
+v53 preserves the verified portrait coordinate chain and v52 continuous accepted-pose
+fusion: native PnP returns the pose
 in the rotated, display-oriented camera frame, so the final Unity conversion no
 longer applies a second inverse image rotation. The importer alignment is
 derived from Blender-authored B landmarks and the actual FBX hierarchy; the
@@ -27,7 +28,7 @@ two mathematical round trips gate Ready after three consecutive passing frames.
 The old WorldToScreenPoint value is retained as DisplayDiag WARN only; it never
 blocks stable B+C preview, registration, or Start eligibility by itself.
 
-Development Android builds provide searchable `[URP_CAP_DIAG]` snapshots of
+Diagnostic logs provide searchable `[URP_CAP_DIAG]` snapshots of
 the real ARCamera projection/frustum, rigid matrices, cap camera-space bounds,
 culling, renderer/material state, and AR environment-depth state. The Editor
 pixel-difference check is a synthetic rendering smoke test, not device proof.
@@ -38,5 +39,6 @@ Validation entry points:
 - `Urp.ArDemo.Editor.UrpArValidation.RunPlayModeSmokeFromCommandLine`
 - `Urp.ArDemo.Editor.UrpArProjectSetup.BuildAndroidFromCommandLine`
 
-The Android artifact is `Builds/BottleRepairAR_v39.apk`. Offline and editor
+The release Android artifact is `Builds/BottleRepairAR_v53.apk` (version 4.7.0,
+ARM64). Offline and editor
 checks do not replace physical-device front/oblique/top acceptance testing.

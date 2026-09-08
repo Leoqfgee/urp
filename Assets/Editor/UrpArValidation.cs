@@ -382,12 +382,12 @@ namespace Urp.ArDemo.Editor
             string appController = File.ReadAllText(AppControllerPath);
             string buildIdentity = File.ReadAllText(BuildIdentityPath);
             Require(
-                appController.Contains("v52")
+                appController.Contains("AR 实景修复")
                 && buildIdentity.Contains(
-                    "orb-tracking-v52-continuous-accepted-pose-fusion")
+                    "orb-tracking-v53-auto-repair-production-ui")
                 && buildIdentity.Contains(
                     "coconut-v44-real-trimmed-sim3-production-b"),
-                "Visible application/build identity does not report v52 with continuous accepted-pose fusion and the frozen v50 rigid B/C/main-depth baseline.");
+                "Visible application/build identity does not report the v53 automatic-repair production UI with the frozen rigid B/C/main-depth baseline.");
             string[] prohibitedControllerTokens =
             {
                 "displayMatrix",
@@ -437,7 +437,7 @@ namespace Urp.ArDemo.Editor
                 && !controller.Contains("maximumWorldRotationCorrectionDegreesPerSecond")
                 && controller.Contains("trackingState = TrackingState.Repair")
                 && controller.Contains("renderer.enabled = enabled"),
-                "Production tracker does not implement visual pre-alignment, global acquisition, reliable guided PnP, hidden B, and stabilized C.");
+                "Production tracker does not implement hidden acquisition, global recognition, automatic repair presentation, depth-only B, and stabilized C.");
             Require(
                 !controller.Contains("ConfirmReferenceAlignment")
                 && !controller.Contains("ShowReferenceValidation")
@@ -460,7 +460,7 @@ namespace Urp.ArDemo.Editor
                 && !repairPresentation.Contains("ApplyMaterial")
                 && !repairPresentation.Contains("ApplyTrackedRootPose")
                 && !repairPresentation.Contains("RestoreProfileCoordinateAlignment"),
-                "Start presentation must only hide B and retain C.");
+                "Automatic repair presentation must only hide B colour and retain C.");
             string capDiagnostic = File.ReadAllText(CapDiagnosticPath);
             Require(
                 capDiagnostic.Contains("[URP_CAP_DIAG]")
@@ -510,8 +510,9 @@ namespace Urp.ArDemo.Editor
             Require(
                 !ui.Contains("查看 B 覆盖")
                 && !ui.Contains("显示修复 C")
-                && ui.Contains("\"开始\", \"重置\", \"文字介绍\", \"返回\""),
-                "Tracking page must contain only Start, Reset, Information and Back.");
+                && !ui.Contains("3D配准调试")
+                && ui.Contains("\"重新识别\", \"文物介绍\", \"退出跟踪\""),
+                "Tracking page must expose only production reset, information and exit controls.");
 
             string[] prohibitedSetupTokens =
             {
@@ -654,9 +655,11 @@ namespace Urp.ArDemo.Editor
                 Vector3.Distance(body.position, cap.position) < 0.0001f,
                 "Imported B and C no longer share the Blender mouth origin.");
             Require(
-                AnyEnabled(body.GetComponentsInChildren<Renderer>(true))
-                && AnyEnabled(cap.GetComponentsInChildren<Renderer>(true)),
-                "Entering tracking must show the Blender-aligned B+C pair.");
+                body.GetComponentsInChildren<Renderer>(true).All(renderer =>
+                    renderer != null && !renderer.enabled && renderer.forceRenderingOff)
+                && cap.GetComponentsInChildren<Renderer>(true).All(renderer =>
+                    renderer != null && !renderer.enabled && renderer.forceRenderingOff),
+                "Entering tracking must keep B+C hidden during automatic acquisition.");
             Require(
                 AllUseMaterial(
                     body.GetComponentsInChildren<Renderer>(true),
@@ -664,7 +667,7 @@ namespace Urp.ArDemo.Editor
                 && AllUseMaterial(
                     cap.GetComponentsInChildren<Renderer>(true),
                     profile.repairMaterial),
-                "Pre-alignment must use opaque textured B and the clean white C material.");
+                "Hidden acquisition assets must retain B and C materials for automatic repair activation.");
             Matrix4x4 capLocalBefore = pair.worldToLocalMatrix * cap.localToWorldMatrix;
 
             Vector3 measuredPosition = new Vector3(0.08f, -0.03f, 0.62f);
@@ -711,7 +714,7 @@ namespace Urp.ArDemo.Editor
             Require(
                 controller.IsRigidRegistrationEstablished
                 && controller.CanStartRepair
-                && controller.State == OrbImageTrackingController.TrackingState.ReadyForRepair
+                && controller.State == OrbImageTrackingController.TrackingState.Repair
                 && Vector3.Distance(rootObject.transform.position, measuredPosition) < 0.0001f
                 && Quaternion.Angle(rootObject.transform.rotation, measuredRotation) < 0.1f
                 && Vector3.Distance(
@@ -720,11 +723,11 @@ namespace Urp.ArDemo.Editor
                 && Quaternion.Angle(
                     alignmentObject.transform.localRotation,
                     GetPrivateField<Quaternion>(controller, "derivedAlignmentRotation")) < 0.1f,
-                "PreStartStablePoseIsActuallyApplied failed: B+C did not receive the stable PnP Pose.");
+                "Automatic repair activation failed: B+C did not receive the stable PnP Pose.");
             Require(
                 AnyEnabled(body.GetComponentsInChildren<Renderer>(true))
                 && AnyEnabled(cap.GetComponentsInChildren<Renderer>(true)),
-                "Stable pre-Start registration must keep both B and C visible.");
+                "Automatic repair must keep depth-only B live and C visible.");
             object[] registeredPriorArguments = { 0, null };
             Require(
                 (bool)buildPrior.Invoke(controller, registeredPriorArguments),
@@ -789,8 +792,8 @@ namespace Urp.ArDemo.Editor
                     trackedPositionBeforeUpdate,
                     rootObject.transform.position) > 0.000001f
                 && controller.State
-                    == OrbImageTrackingController.TrackingState.ReadyForRepair,
-                "New reliable pre-Start PnP poses must continue moving the whole B+C root.");
+                    == OrbImageTrackingController.TrackingState.Repair,
+                "New reliable PnP poses must continue moving the automatic B+C repair root.");
 
             Matrix4x4 rootBeforeStart = rootObject.transform.localToWorldMatrix;
             Matrix4x4 pairBeforeStart = pair.localToWorldMatrix;
@@ -799,7 +802,7 @@ namespace Urp.ArDemo.Editor
             controller.StartRecognition();
             Require(
                 controller.State == OrbImageTrackingController.TrackingState.Repair,
-                "Start did not enter Repair from ReadyForRepair.");
+                "Legacy Start call changed the automatic Repair state.");
             RequireStartMatrixUnchanged(
                 "TrackedBottleRoot",
                 rootBeforeStart,
@@ -838,7 +841,7 @@ namespace Urp.ArDemo.Editor
                 AllUseMaterial(
                     cap.GetComponentsInChildren<Renderer>(true),
                     profile.repairMaterial),
-                "Start must retain the clean C material.");
+                "Automatic repair must retain the clean C material.");
             Require(body.gameObject.activeSelf && cap.gameObject.activeSelf,
                 "Hiding B Renderers disabled the B or C GameObject.");
             Matrix4x4 capLocalAfter = pair.worldToLocalMatrix * cap.localToWorldMatrix;

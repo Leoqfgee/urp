@@ -111,14 +111,13 @@ namespace Urp.ArDemo.Tests.Editor
         }
 
         [Test]
-        public void DevelopmentDiagnosticsAreNotProductionUi()
+        public void TrackingStatusIsProductionUiAndDiagnosticsAreHidden()
         {
             string app = File.ReadAllText("Assets/Scripts/UrpAppController.cs");
-            StringAssert.Contains("if (Debug.isDebugBuild || Application.isEditor)", app);
-            StringAssert.Contains("3D配准调试", app);
-            StringAssert.Contains(
-                "trackingStatus = Debug.isDebugBuild || Application.isEditor",
-                app);
+            StringAssert.Contains("请将目标物体放入画面", app);
+            StringAssert.Contains("CreateStatusBar", app);
+            StringAssert.DoesNotContain("3D配准调试", app);
+            StringAssert.DoesNotContain("trackingStatus = Debug.isDebugBuild", app);
         }
 
         [Test]

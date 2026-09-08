@@ -164,6 +164,10 @@ namespace Urp.ArDemo
         private string runtimeDatabaseSha256 = "NONE";
         private string runtimeDatabaseShaPrefix = "UNKNOWN";
         private bool lastPosePriorWasReliable;
+        private bool hadAutomaticRepairSinceReset;
+        private bool trackingLossShown;
+        private bool showingRecoveredStatus;
+        private float recoveredStatusUntil = float.NegativeInfinity;
 
         private struct CameraFrameSample
         {
@@ -231,6 +235,15 @@ namespace Urp.ArDemo
 
         private void Update()
         {
+            if (showingRecoveredStatus
+                && Time.unscaledTime >= recoveredStatusUntil)
+            {
+                showingRecoveredStatus = false;
+                if (registrationEstablished && repairRequested)
+                {
+                    UpdateStatus("跟踪中");
+                }
+            }
             if (modeEnabled
                 && emitRepairRegistrationDiagnostics
                 && (Debug.isDebugBuild || Application.isEditor)
@@ -488,6 +501,9 @@ namespace Urp.ArDemo
             recognitionRunning = false;
             repairRequested = false;
             hasEverRegisteredSinceReset = false;
+            hadAutomaticRepairSinceReset = false;
+            trackingLossShown = false;
+            showingRecoveredStatus = false;
             ResetRegistration();
 
             if (!enabled)
@@ -518,9 +534,7 @@ namespace Urp.ArDemo
             PlacePreAlignmentPose();
             recognitionRunning = true;
             nextProcessTime = 0f;
-            UpdateStatus(
-                "已在画面中央正面显示 Blender 对齐的 B+C，识别已经开始。"
-                + "移动手机让 B 与真实残缺瓶 A 大致重合；识别稳定后点击“开始”。");
+            UpdateStatus("请将目标物体放入画面");
         }
 
         public void StartRecognition()
@@ -535,13 +549,9 @@ namespace Urp.ArDemo
 
             if (!CanStartRepair)
             {
-                ShowPreAlignmentPair();
-                UpdateStatus(
-                    "A 与 B 尚未完成稳定对齐，请保持瓶子在画面中。"
-                    + "只有 B+C 已应用可靠 PnP 位姿并正在跟踪时才可开始。");
+                UpdateStatus("正在识别目标…");
                 string diagnostic = BuildStartGateDiagnostic();
                 Debug.LogWarning($"[URP_START_GATE_DIAG] {diagnostic}");
-                UpdateStatus("START BLOCKED:\n" + diagnostic);
                 return;
             }
 
@@ -563,8 +573,7 @@ namespace Urp.ArDemo
             capVisibilityDiagnostic?.LogSnapshot("start-after");
             appearanceConsistency?.LogAppearanceSnapshot("start-after");
             UpdateStatus(
-                "已隐藏参考瓶 B；瓶盖 C 保持 Start 前完全相同的三维位姿。"
-                + "ORB/PnP 将继续驱动整个 B+C 刚性根节点。");
+                "跟踪中");
         }
 
         public void ResetTracking()
@@ -573,14 +582,15 @@ namespace Urp.ArDemo
             recognitionRunning = modeEnabled;
             repairRequested = false;
             hasEverRegisteredSinceReset = false;
+            hadAutomaticRepairSinceReset = false;
+            trackingLossShown = false;
+            showingRecoveredStatus = false;
             ResetRegistration();
             if (modeEnabled)
             {
                 PlacePreAlignmentPose();
                 nextProcessTime = 0f;
-                UpdateStatus(
-                    "已重置。B+C 已回到画面中央的正面初始姿态，识别正在运行。"
-                    + "移动手机让 B 粗略覆盖 A，识别稳定后点击“开始”。");
+                UpdateStatus("请将目标物体放入画面");
             }
             else
             {
@@ -617,8 +627,12 @@ namespace Urp.ArDemo
             smoothedRootPosition = trackedObjectPoseRoot.position;
             smoothedRootRotation = trackedObjectPoseRoot.rotation;
             hasSmoothedPose = true;
-            ShowPreAlignmentPair();
-            UpdateStatus(BuildPreAlignmentFrontStatus(cameraTransform));
+            // The coarse pose is an internal first-acquisition safety reference.
+            // It must never be presented as a virtual bottle the user has to align.
+            SetReferenceHierarchyVisible(false);
+            SetRepairHierarchyVisible(false);
+            PaperOcclusionRegistry.Disable(this);
+            Debug.Log("[URP_PREALIGN_DIAG] " + BuildPreAlignmentFrontStatus(cameraTransform));
         }
 
         private string BuildPreAlignmentFrontStatus(Transform cameraTransform)
@@ -985,13 +999,17 @@ namespace Urp.ArDemo
 
         private void ShowPresentationForCurrentState()
         {
-            if (repairRequested && hasEverRegisteredSinceReset)
+            if (repairRequested
+                && registrationEstablished
+                && hasVerifiedReadyPoseSinceReset)
             {
                 ShowRepairPresentation();
             }
             else
             {
-                ShowPreAlignmentPair();
+                SetReferenceHierarchyVisible(false);
+                SetRepairHierarchyVisible(false);
+                PaperOcclusionRegistry.Disable(this);
             }
         }
 
@@ -1036,7 +1054,10 @@ namespace Urp.ArDemo
                         out string captureMotionClass))
                 {
                     HandleTrackingLoss();
-                    UpdateStatus("CAMERA_SYNC_UNAVAILABLE: CPU image has no timestamp-matched AR camera pose.");
+                    UpdateStatusAfterRejectedFrame(false, default);
+                    Debug.LogWarning(
+                        "[URP_TRACKING_DIAG] CAMERA_SYNC_UNAVAILABLE: "
+                        + "CPU image has no timestamp-matched AR camera pose.");
                     return;
                 }
                 Texture2D texture = ConvertCpuImage(image);
@@ -1082,9 +1103,12 @@ namespace Urp.ArDemo
                         ? TrackingState.Candidate
                         : TrackingState.Searching;
                     HandleTrackingLoss();
-                    UpdateStatus(hasResult
-                        ? BuildAcquisitionDiagnostics(best) + qualityReason
-                        : "尚未在真实瓶身 A 中找到足够稳定的 B 自然特征。");
+                    UpdateStatusAfterRejectedFrame(hasResult, best);
+                    Debug.Log(
+                        "[URP_TRACKING_DIAG] "
+                        + (hasResult
+                            ? BuildAcquisitionDiagnostics(best) + qualityReason
+                            : "No stable target features found."));
                     return;
                 }
 
@@ -1098,15 +1122,26 @@ namespace Urp.ArDemo
                         out Quaternion targetRotation))
                 {
                     HandleTrackingLoss();
-                    UpdateStatus("已找到自然特征，但三维姿态坐标转换无效。");
+                    if (hasEverRegisteredSinceReset && !registrationEstablished)
+                    {
+                        trackingLossShown = true;
+                        UpdateStatus("目标丢失，请重新对准");
+                    }
+                    else
+                    {
+                        UpdateStatus("请缓慢调整距离或角度");
+                    }
+                    Debug.LogWarning(
+                        "[URP_TRACKING_DIAG] Feature match found, but pose conversion failed.");
                     return;
                 }
                 if (bestTracker == null
                     || !bestTracker.TryGetLastInliers(out NativeInlierSet inliers))
                 {
                     HandleTrackingLoss();
-                    UpdateStatus(
-                        "PnP 数学解有效，但没有取得用于 Unity 一致性验证的内点。");
+                    UpdateStatusAfterRejectedFrame(true, best);
+                    Debug.LogWarning(
+                        "[URP_TRACKING_DIAG] PnP valid, but Unity consistency inliers unavailable.");
                     return;
                 }
                 bool hardConsistencyPassed = UnityPoseConsistencyGate.TryEvaluate(
@@ -1154,12 +1189,15 @@ namespace Urp.ArDemo
                         consistency,
                         out string poseApplicationReason))
                 {
-                    UpdateStatus(BuildPoseStatus(
-                        best,
-                        consistency,
-                        hardConsistencyPassed,
-                        consistencyReason,
-                        poseApplicationReason));
+                    UpdateStatusAfterRejectedFrame(true, best);
+                    Debug.Log(
+                        "[URP_TRACKING_DIAG] "
+                        + BuildPoseStatus(
+                            best,
+                            consistency,
+                            hardConsistencyPassed,
+                            consistencyReason,
+                            poseApplicationReason));
                     return;
                 }
                 poseCoordinateDiagnostic?.UpdateFusion(
@@ -1171,26 +1209,19 @@ namespace Urp.ArDemo
                     lastPoseFusionRotationAlpha);
 
                 if (repairRequested)
-                {
-                    UpdateStatus(BuildPoseStatus(
-                        best,
-                        consistency,
-                        hardConsistencyPassed,
-                        consistencyReason,
-                        "Repair：B hidden / C retained；刚性根节点继续跟踪。"));
-                }
+                    UpdateSuccessfulTrackingStatus();
                 else
-                {
-                    string stateMessage = CanStartRepair
-                        ? "B+C 已应用稳定 PnP Pose；数学坐标链连续验证通过，可点击开始。"
-                        : "稳定 PnP Pose 已应用到 B+C，但数学坐标链仍在连续验证。";
-                    UpdateStatus(BuildPoseStatus(
+                    UpdateStatus("正在识别目标…");
+                Debug.Log(
+                    "[URP_TRACKING_DIAG] "
+                    + BuildPoseStatus(
                         best,
                         consistency,
                         hardConsistencyPassed,
                         consistencyReason,
-                        stateMessage));
-                }
+                        repairRequested
+                            ? "Automatic repair presentation active."
+                            : "Stable pose applied; verifying coordinate chain."));
             }
             finally
             {
@@ -1359,7 +1390,8 @@ namespace Urp.ArDemo
                     return false;
                 }
 
-                ShowPreAlignmentPair();
+                SetReferenceHierarchyVisible(false);
+                SetRepairHierarchyVisible(false);
                 trackingState = TrackingState.PoseValidating;
                 ObserveMathematicalConsistency(consistency);
                 if (!TryAccumulateStableRegistration(
@@ -1436,6 +1468,7 @@ namespace Urp.ArDemo
             lastValidPoseTime = Time.unscaledTime;
             lastReliablePnpTime = Time.unscaledTime;
             TryEstablishVerifiedReadyLatch();
+            ActivateAutomaticRepairIfReady();
             trackingState = repairRequested
                 ? TrackingState.Repair
                 : hasVerifiedReadyPoseSinceReset
@@ -1738,6 +1771,7 @@ namespace Urp.ArDemo
             lastValidPoseTime = Time.unscaledTime;
             lastReliablePnpTime = Time.unscaledTime;
             TryEstablishVerifiedReadyLatch();
+            ActivateAutomaticRepairIfReady();
             trackingState = TrackingState.StablePoseApplied;
             ShowPresentationForCurrentState();
             capVisibilityDiagnostic?.LogSnapshot("registration-established");
@@ -1836,6 +1870,20 @@ namespace Urp.ArDemo
             hasVerifiedReadyPoseSinceReset = true;
             lastVerifiedReadyPoseTime = Time.unscaledTime;
             readyForRepair = true;
+        }
+
+        private void ActivateAutomaticRepairIfReady()
+        {
+            if (repairRequested || !CanStartRepair)
+            {
+                return;
+            }
+
+            repairRequested = true;
+            poseCoordinateDiagnostic?.HideAllDebugLines();
+            Debug.Log(
+                "[URP_AUTO_REPAIR] Stable verified pose acquired; "
+                + "reference B moved to depth-only and repair C shown automatically.");
         }
 
         private string BuildStartGateDiagnostic()
@@ -2562,14 +2610,76 @@ namespace Urp.ArDemo
                 + $"Up {modelRegistrationEvidence.up_axis_error_deg:F2}deg PASS";
         }
 
+        private void UpdateStatusAfterRejectedFrame(
+            bool hasResult,
+            NativeOrbResult pose)
+        {
+            if (hasEverRegisteredSinceReset && !registrationEstablished)
+            {
+                trackingLossShown = true;
+                showingRecoveredStatus = false;
+                UpdateStatus("目标丢失，请重新对准");
+                return;
+            }
+
+            if (hasEverRegisteredSinceReset)
+            {
+                UpdateStatus("请保持相机稳定");
+                return;
+            }
+
+            if (!hasResult || pose.uniqueMatches < 4)
+            {
+                UpdateStatus("请将目标物体放入画面");
+                return;
+            }
+
+            if (pose.coverageX < minimumCoverageX
+                || pose.coverageY < minimumCoverageY
+                || pose.occupiedGridCells < 4)
+            {
+                UpdateStatus("请保持目标物体完整可见");
+                return;
+            }
+
+            if (pose.poseValid != 0
+                && (!float.IsFinite(pose.reprojectionError)
+                    || pose.reprojectionError > maximumReprojectionErrorPixels
+                    || !float.IsFinite(pose.reprojectionMax)
+                    || pose.reprojectionMax > maximumReprojectionMaxPixels))
+            {
+                UpdateStatus("请缓慢调整距离或角度");
+                return;
+            }
+
+            UpdateStatus(pose.uniqueMatches < minGoodMatches
+                ? "正在识别目标…"
+                : "请保持相机稳定");
+        }
+
+        private void UpdateSuccessfulTrackingStatus()
+        {
+            if (hadAutomaticRepairSinceReset && trackingLossShown)
+            {
+                trackingLossShown = false;
+                showingRecoveredStatus = true;
+                recoveredStatusUntil = Time.unscaledTime + 1f;
+                UpdateStatus("已恢复跟踪");
+            }
+            else if (!showingRecoveredStatus
+                     || Time.unscaledTime >= recoveredStatusUntil)
+            {
+                showingRecoveredStatus = false;
+                UpdateStatus("跟踪中");
+            }
+            hadAutomaticRepairSinceReset = true;
+        }
+
         private void UpdateStatus(string message)
         {
             if (statusText != null)
             {
-                statusText.text = message
-                    + (poseCoordinateDiagnostic != null
-                        ? poseCoordinateDiagnostic.CompactSummary
-                        : string.Empty);
+                statusText.text = message;
             }
         }
 
