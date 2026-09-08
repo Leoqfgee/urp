@@ -114,10 +114,14 @@ namespace Urp.ArDemo.Tests.Editor
         public void TrackingStatusIsProductionUiAndDiagnosticsAreHidden()
         {
             string app = File.ReadAllText("Assets/Scripts/UrpAppController.cs");
+            string tracker = File.ReadAllText("Assets/Scripts/OrbImageTrackingController.cs");
             StringAssert.Contains("请将目标物体放入画面", app);
             StringAssert.Contains("CreateStatusBar", app);
             StringAssert.DoesNotContain("3D配准调试", app);
             StringAssert.DoesNotContain("trackingStatus = Debug.isDebugBuild", app);
+            StringAssert.DoesNotContain("请保持相机稳定", app);
+            StringAssert.DoesNotContain("请保持相机稳定", tracker);
+            StringAssert.Contains("new Rect(1f, 1f, -1f, -1f)", app);
         }
 
         [Test]

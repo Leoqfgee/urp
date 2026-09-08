@@ -272,7 +272,10 @@ namespace Urp.ArDemo
                 SetAnchors(rect, new Vector2(0.05f, 0.12f), new Vector2(0.40f, 0.88f));
                 RawImage image = preview.AddComponent<RawImage>();
                 image.texture = profile.thumbnail;
-                image.uvRect = new Rect(0f, 0f, 1f, 1f);
+                // The reconstruction thumbnail is stored camera-upside-down.
+                // Flip both UV axes (a 180-degree rotation) only in this card;
+                // never rotate the tracking texture, model, or PnP frame.
+                image.uvRect = new Rect(1f, 1f, -1f, -1f);
                 image.raycastTarget = false;
             }
 
@@ -785,8 +788,7 @@ namespace Urp.ArDemo
                 background = new Color32(126, 57, 48, 230);
                 dot = new Color32(255, 170, 147, 255);
             }
-            else if (trackingStatus.text.Contains("稳定")
-                     || trackingStatus.text.Contains("调整")
+            else if (trackingStatus.text.Contains("调整")
                      || trackingStatus.text.Contains("完整"))
             {
                 background = new Color32(124, 89, 37, 230);

@@ -288,6 +288,43 @@ namespace Urp.ArDemo.Tests
         }
 
         [Test]
+        public void RejectedFramesUseConservativeUserStatus()
+        {
+            GameObject statusObject = new GameObject("Tracking Status Test");
+            UnityEngine.UI.Text status = statusObject.AddComponent<UnityEngine.UI.Text>();
+            controller.BindStatusText(status);
+            MethodInfo updateStatus = typeof(OrbImageTrackingController).GetMethod(
+                "UpdateStatusAfterRejectedFrame",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(updateStatus, Is.Not.Null);
+
+            updateStatus.Invoke(controller, new object[]
+            {
+                false,
+                default(Urp.ArDemo.Native.NativeOrbResult)
+            });
+            Assert.That(status.text, Is.EqualTo("请将目标物体放入画面"));
+
+            SetPrivateField("hasEverRegisteredSinceReset", true);
+            SetPrivateField("registrationEstablished", true);
+            updateStatus.Invoke(controller, new object[]
+            {
+                false,
+                default(Urp.ArDemo.Native.NativeOrbResult)
+            });
+            Assert.That(status.text, Is.EqualTo("目标丢失，请重新对准"));
+
+            updateStatus.Invoke(controller, new object[]
+            {
+                true,
+                new Urp.ArDemo.Native.NativeOrbResult { uniqueMatches = 6 }
+            });
+            Assert.That(status.text, Is.EqualTo("正在识别目标…"));
+            StringAssert.DoesNotContain("请保持相机稳定", status.text);
+            UnityEngine.Object.DestroyImmediate(statusObject);
+        }
+
+        [Test]
         public void FailedPoseChainKeepsAcquisitionVisualsHidden()
         {
             Vector3 stablePosition = new Vector3(0.06f, -0.02f, 0.61f);

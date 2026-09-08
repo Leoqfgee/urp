@@ -902,9 +902,6 @@ namespace Urp.ArDemo
                 ShowPreAlignmentPair();
             LogRepairRegistrationDiagnostic(
                 registrationDebugMode ? "debug-enabled" : "debug-disabled");
-            UpdateStatus(registrationDebugMode
-                ? "RegistrationDebugMode: B 半透明、C 正常三维渲染；几何轴线已启用。"
-                : "RegistrationDebugMode 已关闭。屏幕诊断线保持隐藏。");
         }
 
         private Material GetRegistrationDebugMaterial()
@@ -2624,13 +2621,51 @@ namespace Urp.ArDemo
 
             if (hasEverRegisteredSinceReset)
             {
-                UpdateStatus("请保持相机稳定");
+                if (!hasResult || pose.uniqueMatches < 4)
+                {
+                    trackingLossShown = true;
+                    showingRecoveredStatus = false;
+                    UpdateStatus("目标丢失，请重新对准");
+                    return;
+                }
+
+                if (pose.uniqueMatches < minGoodMatches)
+                {
+                    UpdateStatus("正在识别目标…");
+                    return;
+                }
+
+                if (pose.coverageX < minimumCoverageX
+                    || pose.coverageY < minimumCoverageY
+                    || pose.occupiedGridCells < 4)
+                {
+                    UpdateStatus("请保持目标物体完整可见");
+                    return;
+                }
+
+                if (pose.poseValid != 0
+                    && (!float.IsFinite(pose.reprojectionError)
+                        || pose.reprojectionError > maximumReprojectionErrorPixels
+                        || !float.IsFinite(pose.reprojectionMax)
+                        || pose.reprojectionMax > maximumReprojectionMaxPixels))
+                {
+                    UpdateStatus("请缓慢调整距离或角度");
+                    return;
+                }
+
+                UpdateStatus("正在识别目标…");
                 return;
             }
 
             if (!hasResult || pose.uniqueMatches < 4)
             {
                 UpdateStatus("请将目标物体放入画面");
+                return;
+            }
+
+            if (pose.uniqueMatches < minGoodMatches)
+            {
+                UpdateStatus("正在识别目标…");
                 return;
             }
 
@@ -2652,9 +2687,7 @@ namespace Urp.ArDemo
                 return;
             }
 
-            UpdateStatus(pose.uniqueMatches < minGoodMatches
-                ? "正在识别目标…"
-                : "请保持相机稳定");
+            UpdateStatus("正在识别目标…");
         }
 
         private void UpdateSuccessfulTrackingStatus()
