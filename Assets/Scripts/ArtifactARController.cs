@@ -23,9 +23,14 @@ namespace Urp.ArDemo
         [SerializeField] private ARAnchorManager anchorManager;
 
         private readonly List<ARRaycastHit> hits = new List<ARRaycastHit>();
+        private const float MinimumPlaneArea = .05f;
+        private const float MinimumBoundaryArea = .03f;
+        private const float FallbackBoundaryMargin = .06f;
         private GameObject modelRoot;
         private Transform modelVisual;
         private ARAnchor anchor;
+        private Camera arCamera;
+        private Material planeHintMaterial;
         private Text status;
         private Button replaceButton;
         private Button informationButton;
@@ -37,6 +42,9 @@ namespace Urp.ArDemo
         private bool hadPlane;
         private bool loadFailed;
         private float lastPinchDistance;
+        private float nextPlaneCheck;
+        private float missFeedbackUntil;
+        private int lastValidPlaneCount = -1;
         private Coroutine placedMessage;
         private RectTransform headerRect;
         private RectTransform headerBackRect;
@@ -54,6 +62,10 @@ namespace Urp.ArDemo
         private void Start()
         {
             planeManager.requestedDetectionMode = PlaneDetectionMode.Horizontal;
+            arCamera = Camera.main;
+            planeHintMaterial = Resources.Load<Material>("Materials/ArtifactPlaneHint");
+            if (arCamera == null) Debug.LogError("[ArtifactAR][ERROR] AR camera unavailable");
+            if (planeHintMaterial == null) Debug.LogError("[ArtifactAR][ERROR] plane hint material unavailable");
             BuildUi();
             status.text = "请缓慢移动手机，扫描周围环境";
             StartCoroutine(RefreshStaticText());
@@ -100,7 +112,7 @@ namespace Urp.ArDemo
             Debug.Log("[ArtifactAR] model bounds=" + bounds);
             baseHeight = bounds.size.y;
             displayedHeight = Mathf.Clamp(artifact.defaultHeight, 0.12f, 0.40f);
-            modelVisual.localPosition = new Vector3(0f, -bounds.min.y, 0f);
+            modelVisual.localPosition = new Vector3(-bounds.center.x, -bounds.min.y, -bounds.center.z);
             modelRoot.transform.localScale = Vector3.one * (displayedHeight / baseHeight);
             Debug.Log("[ArtifactAR] model scale=" + modelRoot.transform.localScale.x + " height=" + displayedHeight);
             modelRoot.SetActive(false);
@@ -145,19 +157,10 @@ namespace Urp.ArDemo
                 if (informationPanel.activeSelf) informationPanel.SetActive(false);
                 else BackToMenu();
             }
-            if (!placed)
+            if (!placed && Time.time >= nextPlaneCheck)
             {
-                bool planeFound = false;
-                foreach (ARPlane plane in planeManager.trackables)
-                    if (plane.trackingState == TrackingState.Tracking && plane.alignment == PlaneAlignment.HorizontalUp
-                        && plane.subsumedBy == null && plane.boundary.IsCreated && plane.boundary.Length >= 3)
-                    { planeFound = true; break; }
-                if (planeFound != hadPlane || (planeFound && modelReady && status.text != "点击平面放置文物"))
-                {
-                    hadPlane = planeFound;
-                    if (!loadFailed) status.text = planeFound && modelReady
-                        ? "点击平面放置文物" : "请缓慢移动手机，扫描周围环境";
-                }
+                nextPlaneCheck = Time.time + .25f;
+                UpdatePlaneState();
             }
             var activeTouches = EnhancedTouch.activeTouches;
             EnhancedTouch? first = null, second = null;
@@ -179,22 +182,7 @@ namespace Urp.ArDemo
                 {
                     if (OverUi(primary.screenPosition)) { Debug.Log("[ArtifactAR] touch blocked by UI"); return; }
                     if (!modelReady) { Debug.LogError("[ArtifactAR][ERROR] touch before prefab ready"); return; }
-                    if (!raycastManager.Raycast(primary.screenPosition, hits, TrackableType.PlaneWithinPolygon)
-                        || hits.Count == 0)
-                    { Debug.Log("[ArtifactAR] raycast miss"); return; }
-                    bool valid = false;
-                    foreach (ARRaycastHit hit in hits)
-                    {
-                        ARPlane plane = planeManager.GetPlane(hit.trackableId);
-                        if (plane == null || plane.alignment != PlaneAlignment.HorizontalUp
-                            || plane.trackingState != TrackingState.Tracking || plane.subsumedBy != null
-                            || !plane.boundary.IsCreated || plane.boundary.Length < 3) continue;
-                        Debug.Log("[ArtifactAR] raycast hit position=" + hit.pose.position + " id=" + hit.trackableId);
-                        Place(plane, hit.pose);
-                        valid = true;
-                        break;
-                    }
-                    if (!valid) Debug.Log("[ArtifactAR] raycast miss (no tracked horizontal plane)");
+                    TryPlaceAt(primary.screenPosition);
                 }
                 return;
             }
@@ -218,6 +206,158 @@ namespace Urp.ArDemo
                     modelRoot.transform.Rotate(Vector3.up, -delta * 0.25f, Space.Self);
                 }
             }
+        }
+
+        private void UpdatePlaneState()
+        {
+            int validCount = 0;
+            bool raycastReady = false;
+            foreach (ARPlane plane in planeManager.trackables)
+            {
+                bool valid = IsEligiblePlane(plane);
+                ARPlaneMeshVisualizer visualizer = EnsurePlaneVisualizer(plane);
+                if (visualizer != null && visualizer.enabled != valid) visualizer.enabled = valid;
+                if (!valid) continue;
+                validCount++;
+                if (!raycastReady && CanRaycastVisiblePart(plane)) raycastReady = true;
+            }
+            if (validCount != lastValidPlaneCount)
+            {
+                Debug.Log("[ArtifactAR] valid plane count=" + validCount);
+                lastValidPlaneCount = validCount;
+            }
+            if (raycastReady && !hadPlane) LogPlaneSnapshot();
+            hadPlane = raycastReady;
+            if (!loadFailed && Time.time >= missFeedbackUntil)
+                status.text = raycastReady && modelReady
+                    ? "点击高亮区域放置文物" : "请缓慢移动手机，扫描周围环境";
+        }
+
+        private bool IsEligiblePlane(ARPlane plane)
+        {
+            if (plane == null || plane.trackingState != TrackingState.Tracking
+                || plane.alignment != PlaneAlignment.HorizontalUp || plane.subsumedBy != null
+                || !plane.boundary.IsCreated || plane.boundary.Length < 3) return false;
+            if (plane.size.x * plane.size.y < MinimumPlaneArea
+                || ArtifactPlaneGeometry.Area(plane.boundary) < MinimumBoundaryArea) return false;
+            return PlaneInView(plane);
+        }
+
+        private bool PlaneInView(ARPlane plane)
+        {
+            if (arCamera == null) return false;
+            float left = float.PositiveInfinity, right = float.NegativeInfinity;
+            float bottom = float.PositiveInfinity, top = float.NegativeInfinity;
+            int inFront = 0;
+            foreach (Vector2 vertex in plane.boundary)
+            {
+                Vector3 world = plane.transform.TransformPoint(new Vector3(vertex.x, 0f, vertex.y));
+                Vector3 viewport = arCamera.WorldToViewportPoint(world);
+                if (viewport.z <= .02f) continue;
+                inFront++;
+                left = Mathf.Min(left, viewport.x); right = Mathf.Max(right, viewport.x);
+                bottom = Mathf.Min(bottom, viewport.y); top = Mathf.Max(top, viewport.y);
+            }
+            if (inFront < 3) return false;
+            float visibleWidth = Mathf.Min(right, 1f) - Mathf.Max(left, 0f);
+            float visibleHeight = Mathf.Min(top, 1f) - Mathf.Max(bottom, 0f);
+            return visibleWidth > 0f && visibleHeight > 0f
+                && visibleWidth * visibleHeight >= .002f;
+        }
+
+        private bool CanRaycastVisiblePart(ARPlane plane)
+        {
+            Vector2 center = Vector2.zero;
+            foreach (Vector2 vertex in plane.boundary) center += vertex;
+            center /= plane.boundary.Length;
+            for (int index = -1; index < plane.boundary.Length; index += Mathf.Max(1, plane.boundary.Length / 6))
+            {
+                Vector2 sample = index < 0 ? center : Vector2.Lerp(center, plane.boundary[index], .5f);
+                Vector3 world = plane.transform.TransformPoint(new Vector3(sample.x, 0f, sample.y));
+                Vector3 screen = arCamera.WorldToScreenPoint(world);
+                if (screen.z <= 0f || screen.x < 0f || screen.x >= Screen.width
+                    || screen.y < 0f || screen.y >= Screen.height) continue;
+                if (!raycastManager.Raycast(new Vector2(screen.x, screen.y), hits,
+                        TrackableType.PlaneWithinPolygon)) continue;
+                foreach (ARRaycastHit hit in hits)
+                    if (hit.trackableId == plane.trackableId) return true;
+            }
+            return false;
+        }
+
+        private ARPlaneMeshVisualizer EnsurePlaneVisualizer(ARPlane plane)
+        {
+            ARPlaneMeshVisualizer visualizer = plane.GetComponent<ARPlaneMeshVisualizer>();
+            if (visualizer != null || planeHintMaterial == null) return visualizer;
+            if (plane.GetComponent<MeshFilter>() == null) plane.gameObject.AddComponent<MeshFilter>();
+            MeshRenderer renderer = plane.GetComponent<MeshRenderer>();
+            if (renderer == null) renderer = plane.gameObject.AddComponent<MeshRenderer>();
+            renderer.sharedMaterial = planeHintMaterial;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+            visualizer = plane.gameObject.AddComponent<ARPlaneMeshVisualizer>();
+            visualizer.trackingStateVisibilityThreshold = TrackingState.Tracking;
+            visualizer.enabled = false;
+            return visualizer;
+        }
+
+        private void LogPlaneSnapshot()
+        {
+            foreach (ARPlane plane in planeManager.trackables)
+                Debug.Log("[ArtifactAR] plane id=" + plane.trackableId
+                    + " alignment=" + plane.alignment
+                    + " trackingState=" + plane.trackingState
+                    + " size=" + plane.size
+                    + " center=" + plane.center
+                    + " boundaryCount=" + (plane.boundary.IsCreated ? plane.boundary.Length : 0)
+                    + " boundaryArea=" + ArtifactPlaneGeometry.Area(plane.boundary));
+        }
+
+        private void TryPlaceAt(Vector2 screenPosition)
+        {
+            if (TryRaycastValidPlane(screenPosition, TrackableType.PlaneWithinPolygon, false,
+                    out ARPlane polygonPlane, out Pose polygonPose))
+            {
+                Debug.Log("[ArtifactAR] polygon raycast hit id=" + polygonPlane.trackableId
+                    + " position=" + polygonPose.position);
+                Place(polygonPlane, polygonPose);
+                return;
+            }
+            Debug.Log("[ArtifactAR] polygon raycast miss");
+            if (TryRaycastValidPlane(screenPosition, TrackableType.PlaneWithinBounds, true,
+                    out ARPlane boundsPlane, out Pose boundsPose))
+            {
+                Debug.Log("[ArtifactAR] fallback plane hit id=" + boundsPlane.trackableId
+                    + " position=" + boundsPose.position);
+                Place(boundsPlane, boundsPose);
+                return;
+            }
+            Debug.Log("[ArtifactAR] no valid plane at touch position=" + screenPosition);
+            status.text = "未检测到可放置位置，请点击高亮平面";
+            missFeedbackUntil = Time.time + 1f;
+        }
+
+        private bool TryRaycastValidPlane(Vector2 screenPosition, TrackableType type,
+            bool requireNearBoundary, out ARPlane acceptedPlane, out Pose acceptedPose)
+        {
+            acceptedPlane = null;
+            acceptedPose = default;
+            if (!raycastManager.Raycast(screenPosition, hits, type)) return false;
+            foreach (ARRaycastHit hit in hits)
+            {
+                ARPlane plane = planeManager.GetPlane(hit.trackableId);
+                if (!IsEligiblePlane(plane)) continue;
+                if (requireNearBoundary)
+                {
+                    Vector3 local = plane.transform.InverseTransformPoint(hit.pose.position);
+                    if (!ArtifactPlaneGeometry.WithinOrNearBoundary(plane.boundary,
+                            new Vector2(local.x, local.z), FallbackBoundaryMargin)) continue;
+                }
+                acceptedPlane = plane;
+                acceptedPose = hit.pose;
+                return true;
+            }
+            return false;
         }
 
         private static bool OverUi(Vector2 screenPosition)
@@ -249,10 +389,27 @@ namespace Urp.ArDemo
             modelRoot.SetActive(true);
             foreach (Renderer renderer in modelRoot.GetComponentsInChildren<Renderer>(true))
             { renderer.enabled = true; renderer.gameObject.layer = 0; }
+            float lowestY = float.PositiveInfinity;
+            foreach (Renderer renderer in modelRoot.GetComponentsInChildren<Renderer>(true))
+                if (renderer.enabled && renderer.gameObject.activeInHierarchy)
+                    lowestY = Mathf.Min(lowestY, renderer.bounds.min.y);
+            if (float.IsInfinity(lowestY))
+            {
+                FailPlacement("placed model has no visible renderer");
+                Destroy(anchor.gameObject);
+                anchor = null;
+                return;
+            }
+            modelVisual.position += Vector3.up * (anchor.transform.position.y - lowestY);
+            Debug.Log("[ArtifactAR] ground correction=" + (anchor.transform.position.y - lowestY)
+                + " root=" + modelRoot.transform.position + " anchor=" + anchor.transform.position);
             placed = true;
             status.text = "文物已放置";
-            // This scene has no plane mesh prefab. Keep tracking planes so an
-            // anchor attached to a plane continues receiving subsystem updates.
+            foreach (ARPlane trackedPlane in planeManager.trackables)
+            {
+                ARPlaneMeshVisualizer visualizer = trackedPlane.GetComponent<ARPlaneMeshVisualizer>();
+                if (visualizer != null) visualizer.enabled = false;
+            }
             Debug.Log("[ArtifactAR] placement complete");
             if (placedMessage != null) StopCoroutine(placedMessage);
             placedMessage = StartCoroutine(HidePlacedMessage());
@@ -260,7 +417,7 @@ namespace Urp.ArDemo
 
         private IEnumerator HidePlacedMessage()
         {
-            yield return new WaitForSeconds(1.3f);
+            yield return new WaitForSeconds(1f);
             if (placed && status != null) status.transform.parent.gameObject.SetActive(false);
             placedMessage = null;
         }
@@ -283,9 +440,12 @@ namespace Urp.ArDemo
             placed = false;
             hadPlane = false;
             lastPinchDistance = 0f;
+            missFeedbackUntil = 0f;
+            lastValidPlaneCount = -1;
             planeManager.enabled = true;
             status.text = "请缓慢移动手机，扫描周围环境";
             PrepareModel();
+            UpdatePlaneState();
             Debug.Log("[ArtifactAR] placement reset");
         }
 
@@ -299,6 +459,7 @@ namespace Urp.ArDemo
         private void FailPlacement(string message)
         {
             status.text = "放置失败，请重新扫描平面";
+            missFeedbackUntil = Time.time + 1f;
             Debug.LogError("[ArtifactAR][ERROR] " + message);
         }
 
@@ -355,9 +516,9 @@ namespace Urp.ArDemo
             headerGlyphRect = Label(header.transform, "‹",
                 new Vector2(.015f, .30f), new Vector2(.15f, 1f), 48, Ink).rectTransform;
             LayoutHeader();
-            GameObject statusBar = Panel(safe.transform, "StatusBar", new Color32(24,50,67,225),
-                new Vector2(.12f,.855f), new Vector2(.88f,.895f));
-            status = Label(statusBar.transform, "", new Vector2(.12f,0f), new Vector2(.96f,1f), 22, Color.white);
+            GameObject statusBar = Panel(safe.transform, "StatusBar", new Color32(24,50,67,198),
+                new Vector2(.14f,.895f), new Vector2(.86f,.923f));
+            status = Label(statusBar.transform, "", new Vector2(.12f,0f), new Vector2(.98f,1f), 21, Color.white);
             status.alignment = TextAnchor.MiddleLeft;
             Panel(statusBar.transform, "StatusDot", new Color32(216,184,113,255),
                 new Vector2(.055f,.34f), new Vector2(.10f,.66f));

@@ -63,7 +63,7 @@ namespace Urp.ArDemo.Editor
                     if (candidate.name == "Artifact AR UI") canvas = candidate;
                 if (canvas == null) throw new InvalidOperationException("Artifact AR canvas missing");
                 ValidateInputAndButtons(canvas);
-                Capture(canvas, "F:/Au/buildlogs/artifact_ar_ui_v61.png");
+                Capture(canvas, "F:/Au/buildlogs/artifact_ar_ui_v62.png");
                 Debug.Log("ARTIFACT_AR_UI_CAPTURE_OK");
                 EditorApplication.ExitPlaymode();
             }
@@ -104,7 +104,7 @@ namespace Urp.ArDemo.Editor
                 throw new InvalidOperationException("Information panel initial state invalid");
             info.onClick.Invoke();
             if (!panel.activeSelf) throw new InvalidOperationException("Information button did not open panel");
-            Capture(canvas, "F:/Au/buildlogs/artifact_ar_info_v61.png");
+            Capture(canvas, "F:/Au/buildlogs/artifact_ar_info_v62.png");
             close.onClick.Invoke();
             if (panel.activeSelf) throw new InvalidOperationException("Close button did not close panel");
             reset.onClick.Invoke();

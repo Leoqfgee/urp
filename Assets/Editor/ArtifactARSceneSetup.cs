@@ -18,6 +18,35 @@ namespace Urp.ArDemo.Editor
     {
         private const string ScenePath = "Assets/Scenes/ArtifactARScene.unity";
         private const string InfoPath = "Assets/Models/Artifacts/ShengDing/ShengDingInfo.asset";
+        private const string PlaneHintMaterialPath = "Assets/Resources/Materials/ArtifactPlaneHint.mat";
+
+        [MenuItem("URP AR/Create Artifact Plane Hint Material")]
+        public static void CreatePlaneHintMaterialFromCommandLine()
+        {
+            System.IO.Directory.CreateDirectory("Assets/Resources/Materials");
+            Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
+            if (shader == null) throw new System.InvalidOperationException("URP Unlit shader unavailable");
+            Material material = AssetDatabase.LoadAssetAtPath<Material>(PlaneHintMaterialPath);
+            if (material == null)
+            {
+                material = new Material(shader);
+                AssetDatabase.CreateAsset(material, PlaneHintMaterialPath);
+            }
+            material.shader = shader;
+            material.SetColor("_BaseColor", new Color(.79f, .68f, .43f, .20f));
+            material.SetFloat("_Surface", 1f);
+            material.SetFloat("_Blend", 0f);
+            material.SetFloat("_SrcBlend", 5f);
+            material.SetFloat("_DstBlend", 10f);
+            material.SetFloat("_ZWrite", 0f);
+            material.SetFloat("_Cull", 0f);
+            material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            material.SetOverrideTag("RenderType", "Transparent");
+            material.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+            EditorUtility.SetDirty(material);
+            AssetDatabase.SaveAssets();
+            Debug.Log("ARTIFACT_PLANE_MATERIAL_READY " + PlaneHintMaterialPath);
+        }
 
         [MenuItem("URP AR/Setup Artifact AR Scene")]
         public static void CreateFromCommandLine()
