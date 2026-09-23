@@ -7,5 +7,6 @@ namespace Urp.ArDemo
     public sealed class RestorationObjectCatalog : ScriptableObject
     {
         public RestorationObjectProfile[] objects = Array.Empty<RestorationObjectProfile>();
+        public ArtifactInfo[] artifacts = Array.Empty<ArtifactInfo>();
     }
 }

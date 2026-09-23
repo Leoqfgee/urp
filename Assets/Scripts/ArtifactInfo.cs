@@ -12,5 +12,11 @@ namespace Urp.ArDemo
         [TextArea(3, 6)] public string description;
         public string streamingAssetsModelPath;
         public float defaultHeight = 0.22f;
+        public Texture2D thumbnail;
+        public bool supportsModelViewer;
+        public bool supportsArtifactAR;
+        public bool supportsOverlayAR;
+        public RestorationObjectProfile overlayProfile;
+        public GameObject importedViewerPrefab;
     }
 }

@@ -19,6 +19,7 @@ namespace Urp.ArDemo
             Home,
             ArDisplayMenu,
             Selection,
+            ArtifactAR,
             Resource,
             Introduction,
             RepairExplanation,
@@ -56,12 +57,19 @@ namespace Urp.ArDemo
         private Page informationReturnPage = Page.Resource;
         private Page selectionDestination = Page.Resource;
         private RestorationObjectProfile selectedProfile;
+        private ArtifactInfo selectedArtifact;
+        private GameObject selectionCards;
+        private GameObject resourceRepairSegment;
+        private Button resourceRepairExplanationButton;
+        private Button resourceResetButton;
+        private Button resourceIntroductionButton;
         private Button damagedButton;
         private Button completeButton;
         private Button arBeforeButton;
         private Button arAfterButton;
         private Coroutine arActivationRoutine;
         public static bool ReturnToArDisplayMenu;
+        public static bool ReturnToArtifactSelection;
 
         private static readonly Color Ink = new Color32(24, 50, 67, 255);
         private static readonly Color Muted = new Color32(100, 116, 126, 255);
@@ -76,12 +84,13 @@ namespace Urp.ArDemo
         private void Awake()
         {
             BuildInterface();
-            selectedProfile = catalog != null && catalog.objects.Length > 0
-                ? catalog.objects[0]
-                : null;
+            selectedProfile = catalog != null && catalog.objects.Length > 0 ? catalog.objects[0] : null;
             bool openArMenu = ReturnToArDisplayMenu;
             ReturnToArDisplayMenu = false;
-            ShowPage(openArMenu ? Page.ArDisplayMenu : Page.Home);
+            bool openArtifactSelection = ReturnToArtifactSelection;
+            ReturnToArtifactSelection = false;
+            if (openArtifactSelection) OpenSelection(Page.ArtifactAR);
+            else ShowPage(openArMenu ? Page.ArDisplayMenu : Page.Home);
         }
 
         private void Update()
@@ -97,7 +106,7 @@ namespace Urp.ArDemo
             {
                 case Page.Resource:
                 case Page.Tracking:
-                    ShowPage(currentPage == Page.Tracking ? Page.ArDisplayMenu : Page.Selection);
+                    ShowPage(Page.Selection);
                     break;
                 case Page.Introduction:
                     ShowPage(informationReturnPage);
@@ -106,6 +115,8 @@ namespace Urp.ArDemo
                     ShowPage(Page.Resource);
                     break;
                 case Page.Selection:
+                    ShowPage(selectionDestination == Page.Resource ? Page.Home : Page.ArDisplayMenu);
+                    break;
                 case Page.ArDisplayMenu:
                     ShowPage(Page.Home);
                     break;
@@ -195,31 +206,26 @@ namespace Urp.ArDemo
             CreateHeader(page.transform, "AR实景展示", () => ShowPage(Page.Home));
             Button artifact = CreateButton(page.transform, "文物实景展示",
                 new Vector2(0.055f, 0.57f), new Vector2(0.945f, 0.68f),
-                () => SceneManager.LoadScene("ArtifactARScene"), Color.clear, Ink, 42);
+                () => OpenSelection(Page.ArtifactAR), Color.clear, Ink, 42);
             ApplyGeneratedSkin(artifact.gameObject, "UI/button_home_ivory_v58");
             CreateText(page.transform, "将数字文物放置于现实空间中进行展示", 26, Muted,
                 new Vector2(0.07f, 0.515f), new Vector2(0.93f, 0.565f), TextAnchor.MiddleCenter);
             Button overlay = CreateButton(page.transform, "虚实叠加展示",
                 new Vector2(0.055f, 0.35f), new Vector2(0.945f, 0.46f),
-                OpenExistingTracking, Color.clear, Color.white, 42);
+                () => OpenSelection(Page.Tracking), Color.clear, Color.white, 42);
             ApplyGeneratedSkin(overlay.gameObject, "UI/button_home_jade_v58");
             CreateText(page.transform, "识别实体目标并进行三维虚实叠加", 26, Muted,
                 new Vector2(0.07f, 0.295f), new Vector2(0.93f, 0.345f), TextAnchor.MiddleCenter);
             return page;
         }
 
-        private void OpenExistingTracking()
-        {
-            if (selectedProfile != null) SelectAndOpen(selectedProfile, Page.Tracking);
-            else OpenSelection(Page.Tracking);
-        }
-
         private GameObject BuildSelectionPage()
         {
             GameObject page = CreatePage("ObjectSelectionPageContent");
-            CreateHeader(page.transform, "文物选择", () => ShowPage(Page.Home));
+            CreateHeader(page.transform, "文物选择", () => ShowPage(
+                selectionDestination == Page.Resource ? Page.Home : Page.ArDisplayMenu));
 
-            int count = catalog == null ? 0 : catalog.objects.Length;
+            int count = catalog == null ? 0 : catalog.artifacts.Length;
             Vector2 viewportMin = count == 1
                 ? new Vector2(0.06f, 0.61f)
                 : new Vector2(0.06f, 0.035f);
@@ -230,6 +236,7 @@ namespace Urp.ArDemo
                 viewportMin, viewportMax, false);
             viewport.AddComponent<RectMask2D>();
             GameObject content = new GameObject("ObjectCardContent");
+            selectionCards = content;
             content.transform.SetParent(viewport.transform, false);
             RectTransform contentRect = content.AddComponent<RectTransform>();
             contentRect.anchorMin = new Vector2(0f, 1f);
@@ -251,11 +258,11 @@ namespace Urp.ArDemo
 
             if (catalog != null && count > 0)
             {
-                foreach (RestorationObjectProfile profile in catalog.objects)
+                foreach (ArtifactInfo artifact in catalog.artifacts)
                 {
-                    if (profile != null)
+                    if (artifact != null)
                     {
-                        BuildObjectCard(content.transform, profile);
+                        BuildObjectCard(content.transform, artifact);
                     }
                 }
             }
@@ -281,9 +288,9 @@ namespace Urp.ArDemo
             return page;
         }
 
-        private void BuildObjectCard(Transform parent, RestorationObjectProfile profile)
+        private void BuildObjectCard(Transform parent, ArtifactInfo artifact)
         {
-            GameObject card = CreatePanel(parent, profile.objectId + " Card", Card,
+            GameObject card = CreatePanel(parent, artifact.id + " Card", Card,
                 Vector2.zero, Vector2.one, true);
             ApplyRoundedAppearance(card);
             AddSoftShadow(card, new Color32(22, 49, 65, 24), new Vector2(0f, -8f));
@@ -298,22 +305,23 @@ namespace Urp.ArDemo
             element.minHeight = 300f;
             element.flexibleHeight = 0f;
 
-            if (profile.thumbnail != null)
+            if (artifact.thumbnail != null)
             {
                 GameObject preview = new GameObject("Thumbnail");
                 preview.transform.SetParent(card.transform, false);
                 RectTransform rect = preview.AddComponent<RectTransform>();
                 SetAnchors(rect, new Vector2(0.05f, 0.12f), new Vector2(0.40f, 0.88f));
                 RawImage image = preview.AddComponent<RawImage>();
-                image.texture = profile.thumbnail;
+                image.texture = artifact.thumbnail;
                 // The reconstruction thumbnail is stored camera-upside-down.
                 // Flip both UV axes (a 180-degree rotation) only in this card;
                 // never rotate the tracking texture, model, or PnP frame.
-                image.uvRect = new Rect(1f, 1f, -1f, -1f);
+                image.uvRect = artifact.overlayProfile != null
+                    ? new Rect(1f, 1f, -1f, -1f) : new Rect(0f, 0f, 1f, 1f);
                 image.raycastTarget = false;
             }
 
-            CreateText(card.transform, profile.displayName, 38, Ink,
+            CreateText(card.transform, artifact.displayName, 38, Ink,
                 new Vector2(0.44f, 0.18f), new Vector2(0.84f, 0.82f), TextAnchor.MiddleLeft);
             CreateText(card.transform, "›", 54, Accent,
                 new Vector2(0.84f, 0.18f), new Vector2(0.96f, 0.82f), TextAnchor.MiddleCenter);
@@ -322,9 +330,9 @@ namespace Urp.ArDemo
             // raycast target.  Text and thumbnails never participate in raycasts.
             Button tapTarget = CreateButton(card.transform, string.Empty,
                 Vector2.zero, Vector2.one,
-                () => SelectAndOpen(profile, selectionDestination),
+                () => SelectArtifact(artifact),
                 new Color(1f, 1f, 1f, 0.001f), Color.clear, 1);
-            tapTarget.gameObject.name = profile.objectId + " Card Tap Target";
+            tapTarget.gameObject.name = artifact.id + " Card Tap Target";
             tapTarget.transition = Selectable.Transition.ColorTint;
             ColorBlock colors = tapTarget.colors;
             colors.normalColor = new Color(1f, 1f, 1f, 0.001f);
@@ -369,6 +377,7 @@ namespace Urp.ArDemo
             GameObject segment = CreateRoundedPanel(page.transform, "ModelStateSegment",
                 Color.clear, new Vector2(0.18f, 0.125f), new Vector2(0.82f, 0.205f), true);
             ApplyGeneratedSkin(segment, "UI/button_segment_v56");
+            resourceRepairSegment = segment;
             damagedButton = CreateButton(segment.transform, "修复前",
                 new Vector2(0.075f, 0.22f), new Vector2(0.485f, 0.78f),
                 ShowDamagedResource, Color.clear, Ink, 29);
@@ -382,23 +391,26 @@ namespace Urp.ArDemo
                 modelViewer != null ? modelViewer.ResetView : (Action)null, Color.clear, Ink, 28);
             ApplyGeneratedSkin(resetViewButton.gameObject, "UI/button_action_card_v58");
             ConfigureActionButton(resetViewButton, 0);
+            resourceResetButton = resetViewButton;
             Button introductionButton = CreateButton(page.transform, "文物介绍",
                 new Vector2(0.3475f, 0.018f), new Vector2(0.6525f, 0.115f),
                 ShowInformation, Color.clear, Ink, 28);
             ApplyGeneratedSkin(introductionButton.gameObject, "UI/button_action_card_v58");
             ConfigureActionButton(introductionButton, 1);
+            resourceIntroductionButton = introductionButton;
             Button explanationButton = CreateButton(page.transform, "修复说明",
                 new Vector2(0.67f, 0.018f), new Vector2(0.975f, 0.115f),
                 ShowRepairExplanation, Color.clear, Ink, 28);
             ApplyGeneratedSkin(explanationButton.gameObject, "UI/button_action_card_v58");
             ConfigureActionButton(explanationButton, 2);
+            resourceRepairExplanationButton = explanationButton;
             return page;
         }
 
         private GameObject BuildTrackingPage()
         {
             GameObject page = CreatePage("TrackingPageContent");
-            CreateHeader(page.transform, "虚实叠加展示", () => ShowPage(Page.ArDisplayMenu));
+            CreateHeader(page.transform, "虚实叠加展示", () => ShowPage(Page.Selection));
             trackingStatus = CreateStatusBar(page.transform, "请将目标置于画面中央", 0.84f);
 
             GameObject segment = CreateRoundedPanel(page.transform, "ARRepairStateSegment",
@@ -424,7 +436,7 @@ namespace Urp.ArDemo
             {
                 repairController != null ? repairController.ResetRecognition : (Action)null,
                 ShowInformation,
-                () => ShowPage(Page.ArDisplayMenu)
+                () => ShowPage(Page.Selection)
             };
             for (int i = 0; i < labels.Length; i++)
             {
@@ -539,8 +551,47 @@ namespace Urp.ArDemo
 
         private void OpenSelection(Page destination)
         {
-            selectionDestination = destination == Page.Tracking ? Page.Tracking : Page.Resource;
+            selectionDestination = destination;
+            if (selectionCards != null && catalog != null)
+            {
+                int index = 0;
+                foreach (ArtifactInfo artifact in catalog.artifacts)
+                {
+                    if (artifact != null && index < selectionCards.transform.childCount)
+                    {
+                        bool visible = destination == Page.Resource ? artifact.supportsModelViewer
+                            : destination == Page.ArtifactAR ? artifact.supportsArtifactAR
+                            : artifact.supportsOverlayAR;
+                        selectionCards.transform.GetChild(index++).gameObject.SetActive(visible);
+                    }
+                }
+            }
             ShowPage(Page.Selection);
+        }
+
+        private void SelectArtifact(ArtifactInfo artifact)
+        {
+            selectedArtifact = artifact;
+            if (selectionDestination == Page.ArtifactAR)
+            {
+                if (!artifact.supportsArtifactAR) return;
+                SceneManager.LoadScene("ArtifactARScene");
+            }
+            else if (selectionDestination == Page.Tracking)
+            {
+                if (artifact.supportsOverlayAR && artifact.overlayProfile != null)
+                    SelectAndOpen(artifact.overlayProfile, Page.Tracking);
+            }
+            else if (artifact.supportsModelViewer)
+            {
+                if (artifact.overlayProfile != null) SelectAndOpen(artifact.overlayProfile, Page.Resource);
+                else
+                {
+                    selectedProfile = null;
+                    ShowPage(Page.Resource);
+                    modelViewer?.SetArtifact(artifact);
+                }
+            }
         }
 
         private void ShowPage(Page page)
@@ -565,7 +616,20 @@ namespace Urp.ArDemo
             }
             if (resource)
             {
-                ShowDamagedResource();
+                bool hasRepair = selectedArtifact == null || selectedArtifact.overlayProfile != null;
+                resourceRepairSegment?.SetActive(hasRepair);
+                if (resourceRepairExplanationButton != null)
+                    resourceRepairExplanationButton.gameObject.SetActive(hasRepair);
+                if (resourceResetButton != null && resourceIntroductionButton != null)
+                {
+                    SetAnchors(resourceResetButton.GetComponent<RectTransform>(),
+                        hasRepair ? new Vector2(.025f,.018f) : new Vector2(.15f,.018f),
+                        hasRepair ? new Vector2(.33f,.115f) : new Vector2(.48f,.115f));
+                    SetAnchors(resourceIntroductionButton.GetComponent<RectTransform>(),
+                        hasRepair ? new Vector2(.3475f,.018f) : new Vector2(.52f,.018f),
+                        hasRepair ? new Vector2(.6525f,.115f) : new Vector2(.85f,.115f));
+                }
+                if (hasRepair) ShowDamagedResource();
             }
             if (page == Page.Introduction)
             {
@@ -666,7 +730,7 @@ namespace Urp.ArDemo
 
         private void ShowInformation()
         {
-            if (selectedProfile == null) return;
+            if (selectedProfile == null && selectedArtifact == null) return;
             informationReturnPage = currentPage == Page.Tracking ? Page.Tracking : Page.Resource;
             ShowPage(Page.Introduction);
         }
@@ -679,6 +743,16 @@ namespace Urp.ArDemo
 
         private void RefreshIntroductionPage()
         {
+            if (selectedArtifact != null && selectedArtifact.overlayProfile == null)
+            {
+                introductionName.text = selectedArtifact.displayName;
+                introductionBody.text = selectedArtifact.period + " · " + selectedArtifact.category
+                    + "\n\n" + selectedArtifact.description;
+                introductionImage.texture = selectedArtifact.thumbnail;
+                introductionImage.uvRect = new Rect(0f, 0f, 1f, 1f);
+                FitRawImage(introductionImage);
+                return;
+            }
             if (selectedProfile == null) return;
             introductionName.text = selectedProfile.displayName;
             introductionBody.text = selectedProfile.viewerDescription;
@@ -714,7 +788,7 @@ namespace Urp.ArDemo
         private void CreateHeader(Transform parent, string title, Action backAction)
         {
             GameObject header = CreatePanel(parent, "Header", new Color32(249, 248, 244, 252),
-                new Vector2(0f, 0.925f), new Vector2(1f, 1f), true);
+                new Vector2(0f, 0.94f), new Vector2(1f, 1.02f), true);
             CreateButton(header.transform, "‹", new Vector2(0.01f, 0f), new Vector2(0.14f, 1f),
                 backAction, new Color(1f, 1f, 1f, 0.001f), Ink, 50);
             CreateText(header.transform, title, 36, Ink,

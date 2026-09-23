@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.InputSystem.EnhancedTouch;
 using UnityEngine.UI;
+using System;
 using EnhancedTouch = UnityEngine.InputSystem.EnhancedTouch.Touch;
 
 namespace Urp.ArDemo
@@ -30,6 +31,8 @@ namespace Urp.ArDemo
         private float previousPinchDistance;
         private Vector2Int lastTextureSize;
         private bool enhancedTouchEnabled;
+        private int artifactLoadVersion;
+        private Light artifactPreviewLight;
 
         public Camera ViewerCamera => viewerCamera;
         public RawImage ViewportImage => viewportImage;
@@ -49,6 +52,8 @@ namespace Urp.ArDemo
 
         public void SetProfile(RestorationObjectProfile value)
         {
+            artifactLoadVersion++;
+            if (artifactPreviewLight != null) artifactPreviewLight.enabled = false;
             if (ReferenceEquals(profile, value) && damagedInstance != null)
             {
                 ShowDamagedModel();
@@ -57,6 +62,67 @@ namespace Urp.ArDemo
             profile = value;
             BuildProfileModels();
             ShowDamagedModel();
+        }
+
+        public async void SetArtifact(ArtifactInfo artifact)
+        {
+            int version = ++artifactLoadVersion;
+            EnsureArtifactPreviewLight();
+            profile = null;
+            BuildProfileModels();
+            activeState = null;
+            actualModel = null;
+            UpdateStatus("正在加载" + artifact.displayName);
+            GameObject pivot = null;
+            try
+            {
+                GLTFast.GltfImport import = null;
+                if (artifact.importedViewerPrefab == null)
+                    import = await ArtifactModelLoader.Load(artifact.streamingAssetsModelPath);
+                if (this == null || version != artifactLoadVersion) return;
+                pivot = new GameObject(artifact.displayName + " Viewer Pivot");
+                pivot.transform.SetParent(modelViewRoot, false);
+                var visual = new GameObject("ShengDing_Model");
+                visual.transform.SetParent(pivot.transform, false);
+                if (artifact.importedViewerPrefab != null)
+                    Instantiate(artifact.importedViewerPrefab, visual.transform);
+                else if (!await import.InstantiateMainSceneAsync(visual.transform))
+                    throw new InvalidOperationException("GLB instantiate failed");
+                if (this == null || version != artifactLoadVersion) { Destroy(pivot); return; }
+                SetLayerRecursively(pivot, viewerCamera.gameObject.layer);
+                Bounds bounds = CalculateBounds(visual);
+                if (bounds.size.y <= 0f) throw new InvalidOperationException("No GLB renderers");
+                visual.transform.position += pivot.transform.position - bounds.center;
+                damagedInstance = pivot;
+                damagedState = new ModelViewState(pivot.transform);
+                completeInstance = null;
+                completeState = null;
+                SetActiveState(damagedState, damagedInstance, null);
+                UpdateStatus(artifact.displayName);
+            }
+            catch (Exception exception)
+            {
+                if (pivot != null) Destroy(pivot);
+                Debug.LogError("[ArtifactViewer][ERROR] " + exception);
+                UpdateStatus("文物模型加载失败");
+            }
+        }
+
+        private void EnsureArtifactPreviewLight()
+        {
+            if (viewerCamera == null) return;
+            if (artifactPreviewLight == null)
+            {
+                var lightObject = new GameObject("ShengDing Viewer Light");
+                lightObject.transform.SetParent(viewerCamera.transform, false);
+                lightObject.transform.localRotation = Quaternion.Euler(15f, -15f, 0f);
+                artifactPreviewLight = lightObject.AddComponent<Light>();
+                artifactPreviewLight.type = LightType.Directional;
+                artifactPreviewLight.intensity = 2.0f;
+                artifactPreviewLight.shadows = LightShadows.None;
+                artifactPreviewLight.cullingMask = 1 << viewerCamera.gameObject.layer;
+            }
+            artifactPreviewLight.enabled = true;
         }
 
         public void SetViewerEnabled(bool enabled)

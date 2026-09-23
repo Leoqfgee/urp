@@ -42,7 +42,7 @@ namespace Urp.ArDemo.Editor
             "Assets/Materials/PaperLinearEyeDepth.mat";
         private const string PaperCompositeMaterialPath =
             "Assets/Materials/PaperDepthComposite.mat";
-        private const string AndroidApkPath = "Builds/BottleRepairAR_v59.apk";
+        private const string AndroidApkPath = "Builds/BottleRepairAR_v60.apk";
         private const string BottleReferenceOrbPath =
             "Assets/OrbModels/bottle_reference_b.bytes";
         private const string BottleCalibrationPath =
@@ -53,6 +53,42 @@ namespace Urp.ArDemo.Editor
             "Assets/Objects/CoconutBottle/Profiles/CoconutBottleRepairProfile.asset";
         private const string CatalogPath =
             "Assets/Objects/RestorationObjectCatalog.asset";
+        private const string BottleInfoPath = "Assets/Objects/CoconutBottle/BottleInfo.asset";
+        private const string ShengDingInfoPath = "Assets/Models/Artifacts/ShengDing/ShengDingInfo.asset";
+
+        public static void UpdateArtifactCatalogFromCommandLine()
+        {
+            RestorationObjectProfile bottle = AssetDatabase.LoadAssetAtPath<RestorationObjectProfile>(BottleProfilePath);
+            RestorationObjectCatalog catalog = AssetDatabase.LoadAssetAtPath<RestorationObjectCatalog>(CatalogPath);
+            ArtifactInfo ding = AssetDatabase.LoadAssetAtPath<ArtifactInfo>(ShengDingInfoPath);
+            if (bottle == null || catalog == null || ding == null)
+                throw new InvalidOperationException("Existing artifact catalog resources missing.");
+            ArtifactInfo bottleInfo = AssetDatabase.LoadAssetAtPath<ArtifactInfo>(BottleInfoPath);
+            if (bottleInfo == null)
+            {
+                bottleInfo = ScriptableObject.CreateInstance<ArtifactInfo>();
+                AssetDatabase.CreateAsset(bottleInfo, BottleInfoPath);
+            }
+            bottleInfo.id = bottle.objectId;
+            bottleInfo.displayName = bottle.displayName;
+            bottleInfo.description = bottle.viewerDescription;
+            bottleInfo.thumbnail = bottle.thumbnail;
+            bottleInfo.supportsModelViewer = true;
+            bottleInfo.supportsArtifactAR = false;
+            bottleInfo.supportsOverlayAR = true;
+            bottleInfo.overlayProfile = bottle;
+            ding.thumbnail = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Resources/UI/shengding_thumbnail.png");
+            ding.supportsModelViewer = true;
+            ding.supportsArtifactAR = true;
+            ding.supportsOverlayAR = false;
+            ding.overlayProfile = null;
+            catalog.artifacts = new[] { bottleInfo, ding };
+            EditorUtility.SetDirty(bottleInfo);
+            EditorUtility.SetDirty(ding);
+            EditorUtility.SetDirty(catalog);
+            AssetDatabase.SaveAssets();
+            Debug.Log("ARTIFACT_CATALOG_READY count=" + catalog.artifacts.Length);
+        }
 
         [MenuItem("URP AR/Setup Prototype Scene")]
         public static void SetupPrototypeScene()
@@ -64,6 +100,7 @@ namespace Urp.ArDemo.Editor
             AssetDatabase.Refresh();
             ConfigureImportedAssets();
             RestorationObjectCatalog catalog = CreateProfiles();
+            UpdateArtifactCatalogFromCommandLine();
             CreatePrototypeScene(catalog);
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
@@ -73,6 +110,7 @@ namespace Urp.ArDemo.Editor
 
         public static void BuildAndroidFromCommandLine()
         {
+            ConfigureAndroidProject();
             BuildIdentityData identity = BuildIdentityGenerator.Generate();
             if (!File.Exists(ScenePath))
             {
@@ -183,14 +221,14 @@ namespace Urp.ArDemo.Editor
 
         private static void ConfigureAndroidProject()
         {
-            PlayerSettings.productName = "文化遗址数字修复与AR呈现 v59";
+            PlayerSettings.productName = "文化遗址数字修复与AR呈现 v60";
             PlayerSettings.companyName = "qfgeeee";
-            PlayerSettings.bundleVersion = "4.13.0";
+            PlayerSettings.bundleVersion = "4.14.0";
             PlayerSettings.SetApplicationIdentifier(
                 BuildTargetGroup.Android, "com.qfgeeee.paper52objecttrackingar");
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
-            PlayerSettings.Android.bundleVersionCode = 530;
+            PlayerSettings.Android.bundleVersionCode = 540;
             PlayerSettings.SetScriptingBackend(
                 BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;

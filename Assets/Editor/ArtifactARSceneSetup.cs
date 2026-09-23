@@ -36,6 +36,10 @@ namespace Urp.ArDemo.Editor
             info.description = "青铜升鼎是中国古代用于盛放食物的重要青铜礼器之一。\n器物两侧设有立耳，下部以多足承托，整体造型庄重厚重。\n其器形与装饰体现了先秦时期青铜铸造工艺和礼制文化的发展。";
             info.streamingAssetsModelPath = "Models/Artifacts/ShengDing/ShengDing.glb";
             info.defaultHeight = 0.22f;
+            info.thumbnail = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Resources/UI/shengding_thumbnail.png");
+            info.supportsModelViewer = true;
+            info.supportsArtifactAR = true;
+            info.supportsOverlayAR = false;
             EditorUtility.SetDirty(info);
 
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);

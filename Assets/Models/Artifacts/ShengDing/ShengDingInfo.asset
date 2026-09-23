@@ -19,3 +19,9 @@ MonoBehaviour:
   description: "\u9752\u94DC\u5347\u9F0E\u662F\u4E2D\u56FD\u53E4\u4EE3\u7528\u4E8E\u76DB\u653E\u98DF\u7269\u7684\u91CD\u8981\u9752\u94DC\u793C\u5668\u4E4B\u4E00\u3002\n\u5668\u7269\u4E24\u4FA7\u8BBE\u6709\u7ACB\u8033\uFF0C\u4E0B\u90E8\u4EE5\u591A\u8DB3\u627F\u6258\uFF0C\u6574\u4F53\u9020\u578B\u5E84\u91CD\u539A\u91CD\u3002\n\u5176\u5668\u5F62\u4E0E\u88C5\u9970\u4F53\u73B0\u4E86\u5148\u79E6\u65F6\u671F\u9752\u94DC\u94F8\u9020\u5DE5\u827A\u548C\u793C\u5236\u6587\u5316\u7684\u53D1\u5C55\u3002"
   streamingAssetsModelPath: Models/Artifacts/ShengDing/ShengDing.glb
   defaultHeight: 0.22
+  thumbnail: {fileID: 2800000, guid: 6f51623400ff71f458f5256639f1c173, type: 3}
+  supportsModelViewer: 1
+  supportsArtifactAR: 1
+  supportsOverlayAR: 0
+  overlayProfile: {fileID: 0}
+  importedViewerPrefab: {fileID: 1241252463091560117, guid: 68ad2bab4c6f6e146be1cd3ba119c14a, type: 3}
