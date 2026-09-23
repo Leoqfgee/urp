@@ -5,6 +5,8 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
+using UnityEngine.InputSystem.UI;
 
 namespace Urp.ArDemo.Editor
 {
@@ -60,7 +62,8 @@ namespace Urp.ArDemo.Editor
                 foreach (Canvas candidate in UnityEngine.Object.FindObjectsOfType<Canvas>(true))
                     if (candidate.name == "Artifact AR UI") canvas = candidate;
                 if (canvas == null) throw new InvalidOperationException("Artifact AR canvas missing");
-                Capture(canvas, "F:/Au/buildlogs/artifact_ar_ui_v60.png");
+                ValidateInputAndButtons(canvas);
+                Capture(canvas, "F:/Au/buildlogs/artifact_ar_ui_v61.png");
                 Debug.Log("ARTIFACT_AR_UI_CAPTURE_OK");
                 EditorApplication.ExitPlaymode();
             }
@@ -70,6 +73,42 @@ namespace Urp.ArDemo.Editor
                 SessionState.SetBool(Key, false);
                 EditorApplication.Exit(1);
             }
+        }
+
+        private static void ValidateInputAndButtons(Canvas canvas)
+        {
+            if (EventSystem.current == null ||
+                !(EventSystem.current.currentInputModule is InputSystemUIInputModule))
+                throw new InvalidOperationException("Artifact AR requires InputSystemUIInputModule");
+            Button reset = null, info = null, close = null;
+            foreach (string name in new[] { "‹ Button", "重新放置 Button", "文物介绍 Button", "关闭 Button" })
+            {
+                Button found = null;
+                foreach (Button button in canvas.GetComponentsInChildren<Button>(true))
+                    if (button.name == name) found = button;
+                if (found == null || !found.interactable ||
+                    !found.GetComponent<Image>().raycastTarget)
+                    throw new InvalidOperationException("Artifact AR button cannot receive input: " + name);
+                if (name == "重新放置 Button") reset = found;
+                if (name == "文物介绍 Button") info = found;
+                if (name == "关闭 Button") close = found;
+            }
+            foreach (Graphic graphic in canvas.GetComponentsInChildren<Graphic>(true))
+                if (graphic.raycastTarget && graphic.GetComponent<Button>() == null)
+                    throw new InvalidOperationException("Decorative UI intercepts AR input: " + graphic.name);
+            Debug.Log("ARTIFACT_AR_UI_INPUT_VALID");
+            GameObject panel = null;
+            foreach (Transform child in canvas.GetComponentsInChildren<Transform>(true))
+                if (child.name == "Artifact Information") panel = child.gameObject;
+            if (panel == null || panel.activeSelf)
+                throw new InvalidOperationException("Information panel initial state invalid");
+            info.onClick.Invoke();
+            if (!panel.activeSelf) throw new InvalidOperationException("Information button did not open panel");
+            Capture(canvas, "F:/Au/buildlogs/artifact_ar_info_v61.png");
+            close.onClick.Invoke();
+            if (panel.activeSelf) throw new InvalidOperationException("Close button did not close panel");
+            reset.onClick.Invoke();
+            Debug.Log("ARTIFACT_AR_UI_ACTIONS_VALID");
         }
 
         private static void Capture(Canvas canvas, string path)

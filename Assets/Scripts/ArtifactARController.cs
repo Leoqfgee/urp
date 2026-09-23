@@ -1,15 +1,15 @@
 using System;
 using System.Collections.Generic;
 using System.Collections;
-using GLTFast;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
-using UnityEngine.InputSystem.Controls;
+using UnityEngine.InputSystem.EnhancedTouch;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using UnityEngine.XR.ARFoundation;
 using UnityEngine.XR.ARSubsystems;
+using EnhancedTouch = UnityEngine.InputSystem.EnhancedTouch.Touch;
 
 namespace Urp.ArDemo
 {
@@ -23,7 +23,6 @@ namespace Urp.ArDemo
         [SerializeField] private ARAnchorManager anchorManager;
 
         private readonly List<ARRaycastHit> hits = new List<ARRaycastHit>();
-        private GltfImport importer;
         private GameObject modelRoot;
         private Transform modelVisual;
         private ARAnchor anchor;
@@ -38,22 +37,40 @@ namespace Urp.ArDemo
         private bool hadPlane;
         private bool loadFailed;
         private float lastPinchDistance;
+        private Coroutine placedMessage;
+        private RectTransform headerRect;
+        private RectTransform headerBackRect;
+        private RectTransform headerTitleRect;
+        private RectTransform headerGlyphRect;
+        private RectTransform headerDividerRect;
+        private Rect lastHeaderSafeArea;
+        private Vector2Int lastHeaderScreenSize;
         private static readonly Color Ink = new Color32(24, 50, 67, 255);
         private static readonly Color Surface = new Color32(249, 248, 244, 245);
 
-        private async void Start()
+        private void OnEnable() => EnhancedTouchSupport.Enable();
+        private void OnDisable() => EnhancedTouchSupport.Disable();
+
+        private void Start()
         {
             planeManager.requestedDetectionMode = PlaneDetectionMode.Horizontal;
             BuildUi();
             status.text = "请缓慢移动手机，扫描周围环境";
             StartCoroutine(RefreshStaticText());
-            if (artifact == null || string.IsNullOrEmpty(artifact.streamingAssetsModelPath))
+            if (artifact == null || artifact.importedViewerPrefab == null)
             {
                 status.text = "文物资源未配置";
-                Debug.LogError("ArtifactARScene has no ArtifactInfo model path.");
+                Debug.LogError("[ArtifactAR][ERROR] imported prefab missing from ArtifactInfo");
                 return;
             }
-            Debug.Log("[ArtifactAR] loading glb " + artifact.streamingAssetsModelPath);
+            PrepareModel();
+        }
+
+        private void PrepareModel()
+        {
+            modelReady = false;
+            loadFailed = false;
+            Debug.Log("[ArtifactAR] loading imported prefab " + artifact.importedViewerPrefab.name);
             modelRoot = new GameObject("ShengDing_AR_Root");
             GameObject visual = new GameObject("ShengDing_Model");
             modelVisual = visual.transform;
@@ -61,19 +78,7 @@ namespace Urp.ArDemo
             bool instantiated;
             try
             {
-                if (artifact.importedViewerPrefab != null)
-                {
-                    Instantiate(artifact.importedViewerPrefab, modelVisual);
-                    instantiated = true;
-                    Debug.Log("[ArtifactAR] glb load success (project imported prefab)");
-                }
-                else
-                {
-                    importer = await ArtifactModelLoader.Load(artifact.streamingAssetsModelPath);
-                    if (this == null) return;
-                    Debug.Log("[ArtifactAR] glb load success (runtime)");
-                    instantiated = await importer.InstantiateMainSceneAsync(modelVisual);
-                }
+                instantiated = Instantiate(artifact.importedViewerPrefab, modelVisual) != null;
             }
             catch (Exception exception) { Fail("GLB instantiate failed", exception); return; }
             if (this == null) return;
@@ -83,7 +88,8 @@ namespace Urp.ArDemo
             }
             Renderer[] renderers = modelVisual.GetComponentsInChildren<Renderer>(true);
             if (renderers.Length == 0) { Fail("GLB instantiate failed: zero renderers"); return; }
-            Debug.Log("[ArtifactAR] instantiate success renderers=" + renderers.Length);
+            Debug.Log("[ArtifactAR] prefab instantiated");
+            Debug.Log("[ArtifactAR] renderer count=" + renderers.Length);
             Bounds bounds = VisibleBoundsInModelSpace();
             if (bounds.size.y <= 0.00001f)
             {
@@ -91,12 +97,12 @@ namespace Urp.ArDemo
                 Debug.LogError("[ArtifactAR][ERROR] invalid renderer bounds");
                 return;
             }
-            Debug.Log("[ArtifactAR] bounds=" + bounds);
+            Debug.Log("[ArtifactAR] model bounds=" + bounds);
             baseHeight = bounds.size.y;
             displayedHeight = Mathf.Clamp(artifact.defaultHeight, 0.12f, 0.40f);
             modelVisual.localPosition = new Vector3(0f, -bounds.min.y, 0f);
             modelRoot.transform.localScale = Vector3.one * (displayedHeight / baseHeight);
-            Debug.Log("[ArtifactAR] final scale=" + modelRoot.transform.localScale.x + " height=" + displayedHeight);
+            Debug.Log("[ArtifactAR] model scale=" + modelRoot.transform.localScale.x + " height=" + displayedHeight);
             modelRoot.SetActive(false);
             modelReady = true;
         }
@@ -131,6 +137,9 @@ namespace Urp.ArDemo
 
         private void Update()
         {
+            if (headerRect != null && (lastHeaderSafeArea != Screen.safeArea
+                || lastHeaderScreenSize.x != Screen.width || lastHeaderScreenSize.y != Screen.height))
+                LayoutHeader();
             if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
             {
                 if (informationPanel.activeSelf) informationPanel.SetActive(false);
@@ -140,7 +149,8 @@ namespace Urp.ArDemo
             {
                 bool planeFound = false;
                 foreach (ARPlane plane in planeManager.trackables)
-                    if (plane.trackingState == TrackingState.Tracking && plane.alignment == PlaneAlignment.HorizontalUp)
+                    if (plane.trackingState == TrackingState.Tracking && plane.alignment == PlaneAlignment.HorizontalUp
+                        && plane.subsumedBy == null && plane.boundary.IsCreated && plane.boundary.Length >= 3)
                     { planeFound = true; break; }
                 if (planeFound != hadPlane || (planeFound && modelReady && status.text != "点击平面放置文物"))
                 {
@@ -149,38 +159,49 @@ namespace Urp.ArDemo
                         ? "点击平面放置文物" : "请缓慢移动手机，扫描周围环境";
                 }
             }
-            if (informationPanel.activeSelf || Touchscreen.current == null) return;
-            Touchscreen screen = Touchscreen.current;
-            TouchControl first = null, second = null;
-            foreach (TouchControl touch in screen.touches)
+            var activeTouches = EnhancedTouch.activeTouches;
+            EnhancedTouch? first = null, second = null;
+            foreach (EnhancedTouch touch in activeTouches)
             {
-                if (!touch.press.isPressed) continue;
+                if (touch.phase == UnityEngine.InputSystem.TouchPhase.Ended
+                    || touch.phase == UnityEngine.InputSystem.TouchPhase.Canceled) continue;
                 if (first == null) first = touch;
                 else { second = touch; break; }
             }
             if (first == null) { lastPinchDistance = 0f; return; }
+            EnhancedTouch primary = first.Value;
+            if (primary.phase == UnityEngine.InputSystem.TouchPhase.Began)
+                Debug.Log("[ArtifactAR] touch received position=" + primary.screenPosition);
+            if (informationPanel.activeSelf) return;
             if (!placed)
             {
-                if (first.press.wasPressedThisFrame)
+                if (primary.phase == UnityEngine.InputSystem.TouchPhase.Began)
                 {
-                    Debug.Log("[ArtifactAR] touch received position=" + first.position.ReadValue());
-                    if (OverUi(first)) { Debug.Log("[ArtifactAR] touch blocked by UI"); return; }
-                    if (!modelReady) { Debug.LogError("[ArtifactAR][ERROR] touch before GLB ready"); return; }
-                    if (!raycastManager.Raycast(first.position.ReadValue(), hits, TrackableType.PlaneWithinPolygon))
-                    { Debug.LogError("[ArtifactAR][ERROR] raycast no plane hit"); return; }
-                    Debug.Log("[ArtifactAR] raycast hit count=" + hits.Count + " id=" + hits[0].trackableId);
-                    ARPlane plane = planeManager.GetPlane(hits[0].trackableId);
-                    if (plane == null || plane.alignment != PlaneAlignment.HorizontalUp
-                        || plane.trackingState != TrackingState.Tracking || plane.subsumedBy != null)
-                    { Debug.LogError("[ArtifactAR][ERROR] raycast plane invalid"); return; }
-                    Place(plane, hits[0].pose);
+                    if (OverUi(primary.screenPosition)) { Debug.Log("[ArtifactAR] touch blocked by UI"); return; }
+                    if (!modelReady) { Debug.LogError("[ArtifactAR][ERROR] touch before prefab ready"); return; }
+                    if (!raycastManager.Raycast(primary.screenPosition, hits, TrackableType.PlaneWithinPolygon)
+                        || hits.Count == 0)
+                    { Debug.Log("[ArtifactAR] raycast miss"); return; }
+                    bool valid = false;
+                    foreach (ARRaycastHit hit in hits)
+                    {
+                        ARPlane plane = planeManager.GetPlane(hit.trackableId);
+                        if (plane == null || plane.alignment != PlaneAlignment.HorizontalUp
+                            || plane.trackingState != TrackingState.Tracking || plane.subsumedBy != null
+                            || !plane.boundary.IsCreated || plane.boundary.Length < 3) continue;
+                        Debug.Log("[ArtifactAR] raycast hit position=" + hit.pose.position + " id=" + hit.trackableId);
+                        Place(plane, hit.pose);
+                        valid = true;
+                        break;
+                    }
+                    if (!valid) Debug.Log("[ArtifactAR] raycast miss (no tracked horizontal plane)");
                 }
                 return;
             }
             if (second != null)
             {
-                float distance = Vector2.Distance(first.position.ReadValue(), second.position.ReadValue());
-                if (lastPinchDistance > 0f && !OverUi(first) && !OverUi(second))
+                float distance = Vector2.Distance(primary.screenPosition, second.Value.screenPosition);
+                if (lastPinchDistance > 0f && !OverUi(primary.screenPosition) && !OverUi(second.Value.screenPosition))
                 {
                     float next = Mathf.Clamp(displayedHeight * distance / lastPinchDistance, 0.12f, 0.40f);
                     displayedHeight = next;
@@ -191,20 +212,20 @@ namespace Urp.ArDemo
             else
             {
                 lastPinchDistance = 0f;
-                if (!OverUi(first) && !first.press.wasPressedThisFrame)
+                if (!OverUi(primary.screenPosition) && primary.phase == UnityEngine.InputSystem.TouchPhase.Moved)
                 {
-                    float delta = first.delta.ReadValue().x;
+                    float delta = primary.delta.x;
                     modelRoot.transform.Rotate(Vector3.up, -delta * 0.25f, Space.Self);
                 }
             }
         }
 
-        private static bool OverUi(TouchControl touch)
+        private static bool OverUi(Vector2 screenPosition)
         {
             if (EventSystem.current == null) return false;
             var pointer = new PointerEventData(EventSystem.current)
             {
-                position = touch.position.ReadValue()
+                position = screenPosition
             };
             var results = new List<RaycastResult>();
             EventSystem.current.RaycastAll(pointer, results);
@@ -230,32 +251,41 @@ namespace Urp.ArDemo
             { renderer.enabled = true; renderer.gameObject.layer = 0; }
             placed = true;
             status.text = "文物已放置";
-            replaceButton.interactable = true;
-            informationButton.interactable = true;
-            planeManager.enabled = false;
+            // This scene has no plane mesh prefab. Keep tracking planes so an
+            // anchor attached to a plane continues receiving subsystem updates.
             Debug.Log("[ArtifactAR] placement complete");
+            if (placedMessage != null) StopCoroutine(placedMessage);
+            placedMessage = StartCoroutine(HidePlacedMessage());
+        }
+
+        private IEnumerator HidePlacedMessage()
+        {
+            yield return new WaitForSeconds(1.3f);
+            if (placed && status != null) status.transform.parent.gameObject.SetActive(false);
+            placedMessage = null;
         }
 
         private void Replace()
         {
+            Debug.Log("[ArtifactAR] reset button clicked");
+            if (placedMessage != null) { StopCoroutine(placedMessage); placedMessage = null; }
+            status.transform.parent.gameObject.SetActive(true);
+            if (modelRoot == null) return;
             if (anchor != null)
             {
-                modelRoot.transform.SetParent(null, true);
-                if (!anchorManager.RemoveAnchor(anchor))
-                    Debug.LogError("[ArtifactAR][ERROR] anchor removal failed");
+                modelRoot.SetActive(false);
+                Destroy(anchor.gameObject);
                 anchor = null;
             }
-            modelRoot.SetActive(false);
-            modelRoot.transform.localRotation = Quaternion.identity;
-            displayedHeight = Mathf.Clamp(artifact.defaultHeight, 0.12f, 0.40f);
-            modelRoot.transform.localScale = Vector3.one * (displayedHeight / baseHeight);
+            else Destroy(modelRoot);
+            modelRoot = null;
+            modelVisual = null;
             placed = false;
             hadPlane = false;
             lastPinchDistance = 0f;
-            replaceButton.interactable = false;
-            informationButton.interactable = false;
             planeManager.enabled = true;
             status.text = "请缓慢移动手机，扫描周围环境";
+            PrepareModel();
             Debug.Log("[ArtifactAR] placement reset");
         }
 
@@ -274,8 +304,21 @@ namespace Urp.ArDemo
 
         private void BackToMenu()
         {
+            Debug.Log("[ArtifactAR] back button clicked");
             UrpAppController.ReturnToArtifactSelection = true;
             SceneManager.LoadScene("UrpARPrototype");
+        }
+
+        private void ShowInformation()
+        {
+            Debug.Log("[ArtifactAR] info button clicked");
+            informationPanel.SetActive(true);
+        }
+
+        private void CloseInformation()
+        {
+            Debug.Log("[ArtifactAR] info close button clicked");
+            informationPanel.SetActive(false);
         }
 
         private void BuildUi()
@@ -294,34 +337,44 @@ namespace Urp.ArDemo
             safeRect.anchorMin = Vector2.zero; safeRect.anchorMax = Vector2.one;
             safeRect.offsetMin = safeRect.offsetMax = Vector2.zero;
             safe.AddComponent<SafeAreaFitter>();
-            GameObject header = Panel(safe.transform, "Header", Surface, new Vector2(0, .94f), new Vector2(1f,1.02f));
-            Button back = Button(header.transform, "‹", new Vector2(.015f,.04f), new Vector2(.15f,.96f), BackToMenu);
+            // Fill the inset above Screen.safeArea with the same header artwork.
+            // Position all controls within the safe portion of that header.
+            GameObject header = Panel(canvasObject.transform, "Header", Surface,
+                new Vector2(0f, .92f), Vector2.one);
+            headerRect = header.GetComponent<RectTransform>();
+            Button back = Button(header.transform, "‹", new Vector2(.015f, 0f),
+                new Vector2(.15f, 1f), BackToMenu);
+            headerBackRect = back.GetComponent<RectTransform>();
             back.GetComponent<Image>().color = new Color(1f, 1f, 1f, .001f);
             back.GetComponentInChildren<Text>().enabled = false;
             Skin(header.transform, "CloudDivider", "UI/ornament_cloud_divider_v57",
-                new Vector2(.24f, 0f), new Vector2(.76f,.30f), new Rect(0f,.35f,1f,.30f));
+                new Vector2(.24f, 0f), new Vector2(.76f, .30f), new Rect(0f,.35f,1f,.30f));
+            headerDividerRect = header.transform.Find("CloudDivider")?.GetComponent<RectTransform>();
+            headerTitleRect = Label(header.transform, "文物实景展示",
+                new Vector2(.2f, .30f), new Vector2(.8f, 1f), 34, Ink).rectTransform;
+            headerGlyphRect = Label(header.transform, "‹",
+                new Vector2(.015f, .30f), new Vector2(.15f, 1f), 48, Ink).rectTransform;
+            LayoutHeader();
             GameObject statusBar = Panel(safe.transform, "StatusBar", new Color32(24,50,67,225),
-                new Vector2(.12f,.84f), new Vector2(.88f,.90f));
-            status = Label(statusBar.transform, "", new Vector2(.12f,0f), new Vector2(.96f,1f), 23, Color.white);
+                new Vector2(.12f,.855f), new Vector2(.88f,.895f));
+            status = Label(statusBar.transform, "", new Vector2(.12f,0f), new Vector2(.96f,1f), 22, Color.white);
             status.alignment = TextAnchor.MiddleLeft;
             Panel(statusBar.transform, "StatusDot", new Color32(216,184,113,255),
                 new Vector2(.055f,.34f), new Vector2(.10f,.66f));
             GameObject toolbar = Panel(safe.transform, "ArtifactToolbar", Color.clear,
-                new Vector2(.02f,.005f), new Vector2(.98f,.105f));
+                new Vector2(.035f,.01f), new Vector2(.965f,.082f));
             Skin(toolbar.transform, "InkGoldToolbar", "UI/button_ar_toolbar_v56", Vector2.zero, Vector2.one,
                 new Rect(0,0,1,1));
             replaceButton = Button(toolbar.transform, "重新放置", new Vector2(.035f,.14f), new Vector2(.49f,.86f), Replace);
-            informationButton = Button(toolbar.transform, "文物介绍", new Vector2(.51f,.14f), new Vector2(.965f,.86f), () => informationPanel.SetActive(true));
+            informationButton = Button(toolbar.transform, "文物介绍", new Vector2(.51f,.14f), new Vector2(.965f,.86f), ShowInformation);
             StyleToolbarButton(replaceButton, 0);
             StyleToolbarButton(informationButton, 1);
             replaceButton.GetComponentInChildren<Text>().enabled = false;
             informationButton.GetComponentInChildren<Text>().enabled = false;
-            Label(toolbar.transform, "重新放置", new Vector2(.045f,.20f), new Vector2(.49f,.80f), 29, Ink);
-            Label(toolbar.transform, "文物介绍", new Vector2(.51f,.20f), new Vector2(.955f,.80f), 29, Ink);
-            replaceButton.interactable = false;
-            informationButton.interactable = false;
+            Label(toolbar.transform, "重新放置", new Vector2(.045f,.20f), new Vector2(.49f,.80f), 26, Ink);
+            Label(toolbar.transform, "文物介绍", new Vector2(.51f,.20f), new Vector2(.955f,.80f), 26, Ink);
             informationPanel = Panel(safe.transform, "Artifact Information", new Color32(249,248,244,250),
-                new Vector2(.07f,.30f), new Vector2(.93f,.72f));
+                new Vector2(.07f,.35f), new Vector2(.93f,.67f));
             Skin(informationPanel.transform, "PanelOrnament", "UI/ornament_cloud_divider_v57",
                 new Vector2(.18f,.89f), new Vector2(.82f,.98f), new Rect(0f,.35f,1f,.30f));
             Label(informationPanel.transform, artifact != null ? artifact.displayName : "青铜升鼎",
@@ -329,16 +382,36 @@ namespace Urp.ArDemo
             Label(informationPanel.transform, artifact != null ? artifact.period + " · " + artifact.category : "",
                 new Vector2(.06f,.67f), new Vector2(.94f,.78f), 28, Ink);
             Text body = Label(informationPanel.transform, artifact != null ? artifact.description : "",
-                new Vector2(.06f,.19f), new Vector2(.94f,.65f), 28, Ink);
+                new Vector2(.06f,.23f), new Vector2(.94f,.65f), 27, Ink);
             body.alignment = TextAnchor.UpperLeft;
             Button close = Button(informationPanel.transform, "关闭", new Vector2(.3f,.04f), new Vector2(.7f,.16f),
-                () => informationPanel.SetActive(false));
+                CloseInformation);
             close.GetComponent<Image>().color = new Color(1f, 1f, 1f, .001f);
             Skin(close.transform, "IvoryButton", "UI/button_home_ivory_v58", Vector2.zero, Vector2.one,
                 new Rect(0,0,1,1));
             informationPanel.SetActive(false);
-            Label(safe.transform, "文物实景展示", new Vector2(.2f,.948f), new Vector2(.8f,1.015f), 36, Ink);
-            Label(safe.transform, "‹", new Vector2(.015f,.948f), new Vector2(.15f,1.015f), 52, Ink);
+        }
+
+        private void LayoutHeader()
+        {
+            lastHeaderSafeArea = Screen.safeArea;
+            lastHeaderScreenSize = new Vector2Int(Screen.width, Screen.height);
+            float topInset = Mathf.Clamp01((Screen.height - Screen.safeArea.yMax) / Mathf.Max(1f, Screen.height));
+            float headerHeight = topInset + .062f;
+            float safePart = .062f / headerHeight;
+            SetAnchors(headerRect, new Vector2(0f, 1f - headerHeight), Vector2.one);
+            SetAnchors(headerBackRect, new Vector2(.015f, 0f), new Vector2(.15f, safePart));
+            SetAnchors(headerTitleRect, new Vector2(.2f, safePart * .30f), new Vector2(.8f, safePart));
+            SetAnchors(headerGlyphRect, new Vector2(.015f, safePart * .30f), new Vector2(.15f, safePart));
+            if (headerDividerRect != null)
+                SetAnchors(headerDividerRect, new Vector2(.24f, 0f), new Vector2(.76f, safePart * .30f));
+        }
+
+        private static void SetAnchors(RectTransform rect, Vector2 min, Vector2 max)
+        {
+            rect.anchorMin = min;
+            rect.anchorMax = max;
+            rect.offsetMin = rect.offsetMax = Vector2.zero;
         }
 
         private static GameObject Panel(Transform parent, string name, Color color, Vector2 min, Vector2 max)
