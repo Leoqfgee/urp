@@ -1,4 +1,4 @@
-# Bottle repair AR v53
+# Cultural heritage restoration and AR v59
 
 Unity 2022.3.62f2 Android project for rigid A-to-B-to-C restoration:
 
@@ -15,7 +15,7 @@ automatically: B leaves the normal colour pass but remains available to the
 explicit depth-only pass, while C stays visible with HSV plus AR-light appearance
 correction. There is no manual Start or virtual-bottle alignment step.
 
-v53 preserves the verified portrait coordinate chain and v52 continuous accepted-pose
+v58 preserves the verified portrait coordinate chain and v52 continuous accepted-pose
 fusion: native PnP returns the pose
 in the rotated, display-oriented camera frame, so the final Unity conversion no
 longer applies a second inverse image rotation. The importer alignment is
@@ -39,6 +39,10 @@ Validation entry points:
 - `Urp.ArDemo.Editor.UrpArValidation.RunPlayModeSmokeFromCommandLine`
 - `Urp.ArDemo.Editor.UrpArProjectSetup.BuildAndroidFromCommandLine`
 
-The release Android artifact is `Builds/BottleRepairAR_v53.apk` (version 4.7.0,
+v59 adds an AR display menu and a separate horizontal-plane artifact-placement scene.
+The bundled test model is `Assets/StreamingAssets/Models/Artifacts/ShengDing/ShengDing.glb`,
+loaded with glTFast. The original v58 ORB tracking scene and resource viewer remain available.
+
+The release Android artifact is `Builds/BottleRepairAR_v59.apk` (version 4.13.0,
 ARM64). Offline and editor
 checks do not replace physical-device front/oblique/top acceptance testing.

@@ -41,7 +41,7 @@ namespace Urp.ArDemo.Generated
     public static class BuildIdentity
     {
         public const string TrackingBuildVersion =
-            "orb-tracking-v53-auto-repair-production-ui";
+            "orb-tracking-v58-clean-icon-ui";
         public const string CalibrationVersion =
             "coconut-v44-real-trimmed-sim3-production-b";
         public const string OrbDatabaseVersion =

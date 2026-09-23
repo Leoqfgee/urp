@@ -1,0 +1,21 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4d0b2ccbebf381a4b9bff737448649f5, type: 3}
+  m_Name: ShengDingInfo
+  m_EditorClassIdentifier: 
+  id: shengding
+  displayName: "\u9752\u94DC\u5347\u9F0E"
+  period: "\u6625\u79CB\u65F6\u671F"
+  category: "\u9752\u94DC\u793C\u5668"
+  description: "\u9752\u94DC\u5347\u9F0E\u662F\u4E2D\u56FD\u53E4\u4EE3\u7528\u4E8E\u76DB\u653E\u98DF\u7269\u7684\u91CD\u8981\u9752\u94DC\u793C\u5668\u4E4B\u4E00\u3002\n\u5668\u7269\u4E24\u4FA7\u8BBE\u6709\u7ACB\u8033\uFF0C\u4E0B\u90E8\u4EE5\u591A\u8DB3\u627F\u6258\uFF0C\u6574\u4F53\u9020\u578B\u5E84\u91CD\u539A\u91CD\u3002\n\u5176\u5668\u5F62\u4E0E\u88C5\u9970\u4F53\u73B0\u4E86\u5148\u79E6\u65F6\u671F\u9752\u94DC\u94F8\u9020\u5DE5\u827A\u548C\u793C\u5236\u6587\u5316\u7684\u53D1\u5C55\u3002"
+  streamingAssetsModelPath: Models/Artifacts/ShengDing/ShengDing.glb
+  defaultHeight: 0.22

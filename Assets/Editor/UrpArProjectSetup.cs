@@ -29,6 +29,8 @@ namespace Urp.ArDemo.Editor
             + "bottle_full_aligned_v2.fbx";
         private const string BottleThumbnailPath =
             "Assets/Textures/Targets/bottle_full_aligned_v2.png";
+        private const string BottleIntroductionImagePath =
+            "Assets/Docs/QA/v43/front.png";
         private const string BottleAlbedoPath =
             "Assets/Models/CleanBottleReconstruction/BottleFullAlignedV2/"
             + "Textures/bottle_full_clean_v2_albedo.png";
@@ -40,7 +42,7 @@ namespace Urp.ArDemo.Editor
             "Assets/Materials/PaperLinearEyeDepth.mat";
         private const string PaperCompositeMaterialPath =
             "Assets/Materials/PaperDepthComposite.mat";
-        private const string AndroidApkPath = "Builds/BottleRepairAR_v53.apk";
+        private const string AndroidApkPath = "Builds/BottleRepairAR_v59.apk";
         private const string BottleReferenceOrbPath =
             "Assets/OrbModels/bottle_reference_b.bytes";
         private const string BottleCalibrationPath =
@@ -82,7 +84,7 @@ namespace Urp.ArDemo.Editor
             Directory.CreateDirectory("Builds");
             BuildReport report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
             {
-                scenes = new[] { ScenePath },
+                scenes = new[] { ScenePath, "Assets/Scenes/ArtifactARScene.unity" },
                 locationPathName = AndroidApkPath,
                 target = BuildTarget.Android,
                 targetGroup = BuildTargetGroup.Android,
@@ -96,6 +98,7 @@ namespace Urp.ArDemo.Editor
             BuildIdentityGenerator.VerifyNativePluginInApk(AndroidApkPath);
             Debug.Log($"[BuildIdentity] APK SHA256: {BuildIdentityGenerator.Sha256(AndroidApkPath)}");
             DeleteBurstDebugArtifacts();
+            DeleteSupersededBuildArtifacts();
         }
 
         private static void DeleteSupersededBuildArtifacts()
@@ -130,11 +133,6 @@ namespace Urp.ArDemo.Editor
                     Debug.Log($"Deleting superseded build diagnostics: {fullPath}");
                     Directory.Delete(fullPath, true);
                 }
-            }
-            if (File.Exists(targetApk))
-            {
-                Debug.Log($"Deleting previous target APK: {targetApk}");
-                File.Delete(targetApk);
             }
         }
 
@@ -185,14 +183,14 @@ namespace Urp.ArDemo.Editor
 
         private static void ConfigureAndroidProject()
         {
-            PlayerSettings.productName = "瓶盖AR修复 v53";
+            PlayerSettings.productName = "文化遗址数字修复与AR呈现 v59";
             PlayerSettings.companyName = "qfgeeee";
-            PlayerSettings.bundleVersion = "4.7.0";
+            PlayerSettings.bundleVersion = "4.13.0";
             PlayerSettings.SetApplicationIdentifier(
                 BuildTargetGroup.Android, "com.qfgeeee.paper52objecttrackingar");
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
-            PlayerSettings.Android.bundleVersionCode = 470;
+            PlayerSettings.Android.bundleVersionCode = 530;
             PlayerSettings.SetScriptingBackend(
                 BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
@@ -415,14 +413,13 @@ namespace Urp.ArDemo.Editor
             RestorationObjectProfile bottle = LoadOrCreate<RestorationObjectProfile>(
                 BottleProfilePath);
             bottle.objectId = "bottle_orb_v42_proven_observations";
-            bottle.displayName = "新重建无盖饮料瓶与瓶盖";
+            bottle.displayName = "无盖饮料瓶";
             bottle.shortDescription =
-                "Blender 中刚性对齐的无盖瓶身 B 与干净白色瓶盖 C。";
+                "该对象是一只缺少瓶盖的饮料瓶。项目通过多视角图像建立瓶身三维模型，"
+                + "并在原有瓶口位置完成瓶盖的数字补全。";
             bottle.viewerDescription =
-                "DamagedBottleB 是保留真实纹理的无盖瓶身；"
-                + "BottleCapC 是 39mm x 10mm 的干净瓶盖。"
-                + "两者在 Blender 中以共同瓶口坐标系对齐，"
-                + "并作为 BottleRepairRoot 下的固定同级子对象保存。";
+                "该对象是一只缺少瓶盖的饮料瓶。项目使用实际拍摄图像重建瓶身，"
+                + "保留瓶体外形和表面纹理，再依据瓶口尺寸补全瓶盖。";
             bottle.trackingDescription =
                 "进入页面后 B+C 以正面初始位姿显示在画面中央，"
                 + "同时使用真实无盖瓶照片的 ORB 特征识别 A→B 六自由度位姿。"
@@ -434,6 +431,10 @@ namespace Urp.ArDemo.Editor
             bottle.missingPartName = "瓶盖 C";
             bottle.thumbnail =
                 AssetDatabase.LoadAssetAtPath<Texture2D>(BottleThumbnailPath);
+            bottle.introductionImage =
+                AssetDatabase.LoadAssetAtPath<Texture2D>(BottleIntroductionImagePath);
+            bottle.repairBeforeImage = bottle.thumbnail;
+            bottle.repairAfterImage = bottle.introductionImage;
             bottle.damagedViewerPrefab = bottlePair;
             bottle.completeViewerPrefab = bottlePair;
             bottle.trackingReferencePrefab = bottlePair;
@@ -635,8 +636,11 @@ namespace Urp.ArDemo.Editor
 
             CreateEventSystem();
             EditorSceneManager.SaveScene(scene, ScenePath);
-            EditorBuildSettings.scenes =
-                new[] { new EditorBuildSettingsScene(ScenePath, true) };
+            EditorBuildSettings.scenes = new[]
+            {
+                new EditorBuildSettingsScene(ScenePath, true),
+                new EditorBuildSettingsScene("Assets/Scenes/ArtifactARScene.unity", true)
+            };
         }
 
         private static ModelViewerController CreateModelViewer(Camera arCamera)

@@ -116,6 +116,7 @@ namespace Urp.ArDemo
         private bool modeEnabled;
         private bool recognitionRunning;
         private bool repairRequested;
+        private bool repairPresentationEnabled = true;
         private bool hasEverRegisteredSinceReset;
         private bool registrationEstablished;
         private bool stablePnpPoseAvailable;
@@ -281,6 +282,7 @@ namespace Urp.ArDemo
         {
             if (!modeEnabled
                 || !repairRequested
+                || !repairPresentationEnabled
                 || !hasEverRegisteredSinceReset)
             {
                 return;
@@ -843,6 +845,12 @@ namespace Urp.ArDemo
             SetRenderersEnabled(repairRenderers, visible);
         }
 
+        public void SetRepairPresentationEnabled(bool enabled)
+        {
+            repairPresentationEnabled = enabled;
+            ShowPresentationForCurrentState();
+        }
+
         public void SetReferenceHierarchyVisible(bool visible)
         {
             SetRenderersEnabled(referenceRenderers, visible);
@@ -850,7 +858,7 @@ namespace Urp.ArDemo
 
         public void ShowRepairPresentation()
         {
-            if (activeProfile == null)
+            if (activeProfile == null || !repairPresentationEnabled)
             {
                 SetReferenceHierarchyVisible(false);
                 SetRepairHierarchyVisible(false);
@@ -997,6 +1005,7 @@ namespace Urp.ArDemo
         private void ShowPresentationForCurrentState()
         {
             if (repairRequested
+                && repairPresentationEnabled
                 && registrationEstablished
                 && hasVerifiedReadyPoseSinceReset)
             {

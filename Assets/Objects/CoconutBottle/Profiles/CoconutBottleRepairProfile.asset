@@ -13,13 +13,9 @@ MonoBehaviour:
   m_Name: CoconutBottleRepairProfile
   m_EditorClassIdentifier:
   objectId: bottle_orb_v42_proven_observations
-  displayName: "\u65B0\u91CD\u5EFA\u65E0\u76D6\u996E\u6599\u74F6\u4E0E\u74F6\u76D6"
-  shortDescription: "Blender \u4E2D\u521A\u6027\u5BF9\u9F50\u7684\u65E0\u76D6\u74F6\u8EAB
-    B \u4E0E\u5E72\u51C0\u767D\u8272\u74F6\u76D6 C\u3002"
-  viewerDescription: "DamagedBottleB \u662F\u4FDD\u7559\u771F\u5B9E\u7EB9\u7406\u7684\u65E0\u76D6\u74F6\u8EAB\uFF1BBottleCapC
-    \u662F 39mm x 10mm \u7684\u5E72\u51C0\u74F6\u76D6\u3002\u4E24\u8005\u5728 Blender
-    \u4E2D\u4EE5\u5171\u540C\u74F6\u53E3\u5750\u6807\u7CFB\u5BF9\u9F50\uFF0C\u5E76\u4F5C\u4E3A
-    BottleRepairRoot \u4E0B\u7684\u56FA\u5B9A\u540C\u7EA7\u5B50\u5BF9\u8C61\u4FDD\u5B58\u3002"
+  displayName: "\u65E0\u76D6\u996E\u6599\u74F6"
+  shortDescription: "\u8BE5\u5BF9\u8C61\u662F\u4E00\u53EA\u7F3A\u5C11\u74F6\u76D6\u7684\u996E\u6599\u74F6\u3002\u9879\u76EE\u901A\u8FC7\u591A\u89C6\u89D2\u56FE\u50CF\u5EFA\u7ACB\u74F6\u8EAB\u4E09\u7EF4\u6A21\u578B\uFF0C\u5E76\u5728\u539F\u6709\u74F6\u53E3\u4F4D\u7F6E\u5B8C\u6210\u74F6\u76D6\u7684\u6570\u5B57\u8865\u5168\u3002"
+  viewerDescription: "\u8BE5\u5BF9\u8C61\u662F\u4E00\u53EA\u7F3A\u5C11\u74F6\u76D6\u7684\u996E\u6599\u74F6\u3002\u9879\u76EE\u4F7F\u7528\u5B9E\u9645\u62CD\u6444\u56FE\u50CF\u91CD\u5EFA\u74F6\u8EAB\uFF0C\u4FDD\u7559\u74F6\u4F53\u5916\u5F62\u548C\u8868\u9762\u7EB9\u7406\uFF0C\u518D\u4F9D\u636E\u74F6\u53E3\u5C3A\u5BF8\u8865\u5168\u74F6\u76D6\u3002"
   trackingDescription: "\u8FDB\u5165\u9875\u9762\u540E B+C \u4EE5\u6B63\u9762\u521D\u59CB\u4F4D\u59FF\u663E\u793A\u5728\u753B\u9762\u4E2D\u592E\uFF0C\u540C\u65F6\u4F7F\u7528\u771F\u5B9E\u65E0\u76D6\u74F6\u7167\u7247\u7684
     ORB \u7279\u5F81\u8BC6\u522B A\u2192B \u516D\u81EA\u7531\u5EA6\u4F4D\u59FF\u3002\u70B9\u51FB\u5F00\u59CB\u540E\uFF0C\u5728\u59FF\u6001\u7A33\u5B9A\u65F6\u5173\u95ED
     B \u7684 Renderer\uFF0C\u4F46\u4FDD\u7559 B \u7684\u8DDF\u8E2A\u4F4D\u59FF\u548C
@@ -30,6 +26,9 @@ MonoBehaviour:
     AR \u5149\u7167\u4F30\u8BA1\u5E73\u6ED1\u6821\u6B63\u3002"
   missingPartName: "\u74F6\u76D6 C"
   thumbnail: {fileID: 2800000, guid: 70a83d4f40433854ba58459b45fe6eb6, type: 3}
+  introductionImage: {fileID: 2800000, guid: ce7e715a9420c9a4ebf947cdcdbae9a9, type: 3}
+  repairBeforeImage: {fileID: 2800000, guid: 70a83d4f40433854ba58459b45fe6eb6, type: 3}
+  repairAfterImage: {fileID: 2800000, guid: ce7e715a9420c9a4ebf947cdcdbae9a9, type: 3}
   damagedViewerPrefab: {fileID: 919132149155446097, guid: 927dfa0ba1fe2304a841089a0e61e2c6, type: 3}
   completeViewerPrefab: {fileID: 919132149155446097, guid: 927dfa0ba1fe2304a841089a0e61e2c6, type: 3}
   viewerMaterial: {fileID: 2100000, guid: e497a3cc2235ddb4a969ad53bb1da4df, type: 2}

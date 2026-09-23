@@ -46,6 +46,12 @@ namespace Urp.ArDemo
         [TextArea] public string trackingDescription;
         public string missingPartName;
         public Texture2D thumbnail;
+        [Tooltip("Project-owned image of the real reconstructed object used on the introduction page.")]
+        public Texture2D introductionImage;
+        [Tooltip("Project-owned image showing the existing damaged reconstruction.")]
+        public Texture2D repairBeforeImage;
+        [Tooltip("Project-owned image showing the existing repaired reconstruction.")]
+        public Texture2D repairAfterImage;
 
         [Header("Viewer assets")]
         public GameObject damagedViewerPrefab;

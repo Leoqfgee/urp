@@ -444,6 +444,7 @@ namespace Urp.ArDemo
             foreach (Renderer renderer in completion.GetComponentsInChildren<Renderer>(true))
             {
                 renderer.enabled = visible;
+                renderer.forceRenderingOff = !visible;
             }
         }
 

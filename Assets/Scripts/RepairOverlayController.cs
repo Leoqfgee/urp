@@ -35,6 +35,19 @@ namespace Urp.ArDemo
             orbTracker.ResetTracking();
         }
 
+        public void SetRepairVisible(bool visible)
+        {
+            if (orbTracker == null)
+            {
+                UpdateStatus("识别模块未加载。");
+                return;
+            }
+
+            // This changes presentation only. The tracked rigid root, PnP pose,
+            // B/C local transforms and occlusion calibration are untouched.
+            orbTracker.SetRepairPresentationEnabled(visible);
+        }
+
         public void ToggleRegistrationDebugMode()
         {
             if (orbTracker == null)

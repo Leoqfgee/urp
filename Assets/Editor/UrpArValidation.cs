@@ -130,6 +130,7 @@ namespace Urp.ArDemo.Editor
                     UnityEngine.Object.FindObjectsOfType<RepairOverlayController>(true).Length
                     == 1,
                     "Play Mode must contain exactly one repair UI bridge.");
+                ValidateProductionUiHierarchy();
                 ValidateNoMissingComponents();
                 EditorApplication.ExitPlaymode();
             }
@@ -139,6 +140,65 @@ namespace Urp.ArDemo.Editor
                 SessionState.SetBool(PlayModeSessionKey, false);
                 EditorApplication.Exit(1);
             }
+        }
+
+        private static void ValidateProductionUiHierarchy()
+        {
+            GameObject[] sceneObjects = Resources.FindObjectsOfTypeAll<GameObject>()
+                .Where(value => value.scene.IsValid())
+                .ToArray();
+            string[] requiredPages =
+            {
+                "HomePageContent",
+                "ARDisplayMenuPageContent",
+                "ObjectSelectionPageContent",
+                "ResourcePageContent",
+                "IntroductionPageContent",
+                "RepairExplanationPageContent",
+                "TrackingPageContent"
+            };
+            foreach (string pageName in requiredPages)
+            {
+                Require(sceneObjects.Any(value => value.name == pageName),
+                    $"Runtime UI page was not created: {pageName}");
+            }
+
+            string[] requiredButtonLabels =
+            {
+                "三维资源查看", "AR实景展示", "文物实景展示", "虚实叠加展示", "修复前", "修复后",
+                "重置视角", "文物介绍", "修复说明",
+                "重新识别", "退出 AR"
+            };
+            Button[] buttons = Resources.FindObjectsOfTypeAll<Button>()
+                .Where(value => value.gameObject.scene.IsValid())
+                .ToArray();
+            foreach (string label in requiredButtonLabels)
+            {
+                Button button = buttons.FirstOrDefault(value =>
+                    value.GetComponentInChildren<Text>(true)?.text == label);
+                Require(button != null && button.interactable,
+                    $"Required UI button is missing or not clickable: {label}");
+            }
+
+            Text[] visibleLabels = Resources.FindObjectsOfTypeAll<Text>()
+                .Where(value => value.gameObject.scene.IsValid()
+                    && !string.IsNullOrWhiteSpace(value.text))
+                .ToArray();
+            Require(visibleLabels.All(value => value.fontSize >= 21),
+                "Production UI contains visible text smaller than 21 reference pixels.");
+
+            RectTransform[] rects = Resources.FindObjectsOfTypeAll<RectTransform>()
+                .Where(value => value.gameObject.scene.IsValid()
+                    && value.GetComponentInParent<Canvas>(true) != null)
+                .ToArray();
+            Require(rects.All(value => value.anchorMin.x >= 0f
+                && value.anchorMin.y >= 0f
+                && value.anchorMax.x <= 1f
+                && value.anchorMax.y <= 1f
+                && value.anchorMin.x <= value.anchorMax.x
+                && value.anchorMin.y <= value.anchorMax.y),
+                "A production UI element uses out-of-range anchors and may break on tall screens.");
+            Debug.Log("URP_UI_HIERARCHY_OK");
         }
 
         private static void ValidatePoseConversion()
@@ -382,12 +442,12 @@ namespace Urp.ArDemo.Editor
             string appController = File.ReadAllText(AppControllerPath);
             string buildIdentity = File.ReadAllText(BuildIdentityPath);
             Require(
-                appController.Contains("AR 实景修复")
+                appController.Contains("虚实叠加展示")
                 && buildIdentity.Contains(
-                    "orb-tracking-v53-auto-repair-production-ui")
+                    "orb-tracking-v58-clean-icon-ui")
                 && buildIdentity.Contains(
                     "coconut-v44-real-trimmed-sim3-production-b"),
-                "Visible application/build identity does not report the v53 automatic-repair production UI with the frozen rigid B/C/main-depth baseline.");
+                "Visible application/build identity does not report the retained rigid B/C/main-depth baseline.");
             string[] prohibitedControllerTokens =
             {
                 "displayMatrix",
@@ -511,7 +571,10 @@ namespace Urp.ArDemo.Editor
                 !ui.Contains("查看 B 覆盖")
                 && !ui.Contains("显示修复 C")
                 && !ui.Contains("3D配准调试")
-                && ui.Contains("\"重新识别\", \"文物介绍\", \"退出跟踪\""),
+                && ui.Contains("\"重新识别\", \"文物介绍\", \"退出 AR\"")
+                && ui.Contains("\"修复前\"")
+                && ui.Contains("\"修复后\"")
+                && ui.Contains("SetRepairVisible(visible)"),
                 "Tracking page must expose only production reset, information and exit controls.");
 
             string[] prohibitedSetupTokens =

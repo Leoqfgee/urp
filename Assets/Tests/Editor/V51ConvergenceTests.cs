@@ -115,7 +115,7 @@ namespace Urp.ArDemo.Tests.Editor
         {
             string app = File.ReadAllText("Assets/Scripts/UrpAppController.cs");
             string tracker = File.ReadAllText("Assets/Scripts/OrbImageTrackingController.cs");
-            StringAssert.Contains("请将目标物体放入画面", app);
+            StringAssert.Contains("请将目标置于画面中央", app);
             StringAssert.Contains("CreateStatusBar", app);
             StringAssert.DoesNotContain("3D配准调试", app);
             StringAssert.DoesNotContain("trackingStatus = Debug.isDebugBuild", app);
