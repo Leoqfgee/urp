@@ -30,7 +30,6 @@ namespace Urp.ArDemo
         private ARAnchor anchor;
         private Camera arCamera;
         private GameObject placementIndicator;
-        private Pose placementPose;
         private bool hasPlacementPose;
         private Text status;
         private Button replaceButton;
@@ -41,6 +40,17 @@ namespace Urp.ArDemo
         private bool modelReady;
         private bool placed;
         private bool loadFailed;
+        private bool anchorTrackingUsable;
+        private bool anchorRemovedNotified;
+        private bool lastAnchorPending;
+        private TrackingState lastAnchorTrackingState;
+        private ARSessionState lastSessionState;
+        private Vector3 previousAnchorPosition;
+        private Quaternion previousAnchorRotation;
+        private float anchorCreateTime;
+        private float lastAnchorJumpLogTime;
+        private float groundOffsetMeters;
+        private ArtifactMeshGeometry.Measurement modelGeometry;
         private float lastPinchDistance;
         private float missFeedbackUntil;
         private Coroutine placedMessage;
@@ -60,6 +70,7 @@ namespace Urp.ArDemo
         private void Start()
         {
             planeManager.requestedDetectionMode = PlaneDetectionMode.Horizontal;
+            anchorManager.anchorsChanged += OnAnchorsChanged;
             arCamera = Camera.main;
             if (arCamera == null) Debug.LogError("[ArtifactAR][ERROR] AR camera unavailable");
             BuildPlacementIndicator();
@@ -76,6 +87,24 @@ namespace Urp.ArDemo
             PrepareModel();
         }
 
+        private void OnDestroy()
+        {
+            if (anchorManager != null) anchorManager.anchorsChanged -= OnAnchorsChanged;
+        }
+
+        private void OnAnchorsChanged(ARAnchorsChangedEventArgs changes)
+        {
+            foreach (ARAnchor removed in changes.removed)
+            {
+                if (removed != anchor || anchorRemovedNotified) continue;
+                anchorRemovedNotified = true;
+                anchorTrackingUsable = false;
+                status.transform.parent.gameObject.SetActive(true);
+                status.text = "空间定位丢失，请重新放置";
+                Debug.LogError($"[ArtifactAR][ANCHOR_REMOVED] id={removed.trackableId}; waiting for user re-placement");
+            }
+        }
+
         private void PrepareModel()
         {
             modelReady = false;
@@ -90,29 +119,67 @@ namespace Urp.ArDemo
             {
                 instantiated = Instantiate(artifact.importedViewerPrefab, modelVisual) != null;
             }
-            catch (Exception exception) { Fail("GLB instantiate failed", exception); return; }
+            catch (Exception exception)
+            {
+                Fail("GLB instantiate failed", exception);
+                Destroy(modelRoot);
+                modelRoot = null;
+                return;
+            }
             if (this == null) return;
             if (!instantiated)
             {
-                Fail("GLB instantiate failed"); return;
-            }
-            Renderer[] renderers = modelVisual.GetComponentsInChildren<Renderer>(true);
-            if (renderers.Length == 0) { Fail("GLB instantiate failed: zero renderers"); return; }
-            Debug.Log("[ArtifactAR] prefab instantiated");
-            Debug.Log("[ArtifactAR] renderer count=" + renderers.Length);
-            Bounds bounds = VisibleBoundsInModelSpace();
-            if (bounds.size.y <= 0.00001f)
-            {
-                status.text = "文物模型尺寸无效";
-                Debug.LogError("[ArtifactAR][ERROR] invalid renderer bounds");
+                Fail("GLB instantiate failed");
+                Destroy(modelRoot);
+                modelRoot = null;
                 return;
             }
-            Debug.Log("[ArtifactAR] model bounds=" + bounds);
-            baseHeight = bounds.size.y;
-            displayedHeight = Mathf.Clamp(artifact.defaultHeight, 0.12f, 0.40f);
-            modelVisual.localPosition = new Vector3(-bounds.center.x, -bounds.min.y, -bounds.center.z);
-            modelRoot.transform.localScale = Vector3.one * (displayedHeight / baseHeight);
-            Debug.Log("[ArtifactAR] model scale=" + modelRoot.transform.localScale.x + " height=" + displayedHeight);
+            if (!ArtifactMeshGeometry.TryMeasure(modelVisual, out var unscaled))
+            {
+                Fail("imported mesh has no readable, visible vertices");
+                Destroy(modelRoot);
+                modelRoot = null;
+                return;
+            }
+            baseHeight = unscaled.bounds.size.y;
+            displayedHeight = artifact.defaultHeight;
+            if (displayedHeight <= 0f)
+            {
+                Fail("invalid requested height");
+                Destroy(modelRoot);
+                modelRoot = null;
+                return;
+            }
+            // Keep the imported prefab's axis-conversion child untouched. Center it in X/Z,
+            // then scale uniformly and measure the transformed vertices again for the feet.
+            modelVisual.localPosition = new Vector3(-unscaled.bounds.center.x, 0f, -unscaled.bounds.center.z);
+            float scale = displayedHeight / baseHeight;
+            modelRoot.transform.localScale = Vector3.one * scale;
+            if (!ArtifactMeshGeometry.TryMeasure(modelRoot.transform, out var scaled))
+            {
+                Fail("scaled mesh measurement failed");
+                Destroy(modelRoot);
+                modelRoot = null;
+                return;
+            }
+            float groundCorrectionLocal = -scaled.bounds.min.y;
+            modelVisual.localPosition += Vector3.up * groundCorrectionLocal;
+            groundOffsetMeters = groundCorrectionLocal * scale;
+            if (!ArtifactMeshGeometry.TryMeasure(modelRoot.transform, out modelGeometry)
+                || Mathf.Abs(modelGeometry.bounds.min.y * scale) > .001f)
+            {
+                Fail("mesh foot alignment failed");
+                Destroy(modelRoot);
+                modelRoot = null;
+                return;
+            }
+            Debug.Log($"[ArtifactAR][GEOMETRY] vertices={modelGeometry.vertexCount} "
+                + $"supportVertices={modelGeometry.supportVertexCount} baseHeight={baseHeight:F5}m "
+                + $"scale={scale:F6} finalHeight={modelGeometry.bounds.size.y * scale:F5}m "
+                + $"groundOffset={groundOffsetMeters:F5}m localBottom={modelGeometry.bounds.min.y:F6}m "
+                + $"lowestVertex={modelGeometry.lowestPoint}");
+            if (modelGeometry.supportVertexCount < 3)
+                Debug.LogWarning("[ArtifactAR][GEOMETRY] very few lowest vertices; inspect the feet mesh");
             modelRoot.SetActive(false);
             modelReady = true;
         }
@@ -122,27 +189,6 @@ namespace Urp.ArDemo
             yield return null;
             if (status != null && status.canvas != null)
                 foreach (Text label in status.canvas.GetComponentsInChildren<Text>(true)) label.SetAllDirty();
-        }
-
-        private Bounds VisibleBoundsInModelSpace()
-        {
-            bool any = false;
-            Bounds result = default;
-            foreach (Renderer renderer in modelVisual.GetComponentsInChildren<Renderer>(true))
-            {
-                if (!renderer.enabled || !renderer.gameObject.activeInHierarchy) continue;
-                Bounds world = renderer.bounds;
-                for (int x = -1; x <= 1; x += 2)
-                for (int y = -1; y <= 1; y += 2)
-                for (int z = -1; z <= 1; z += 2)
-                {
-                    Vector3 corner = world.center + Vector3.Scale(world.extents, new Vector3(x, y, z));
-                    Vector3 local = modelVisual.InverseTransformPoint(corner);
-                    if (!any) { result = new Bounds(local, Vector3.zero); any = true; }
-                    else result.Encapsulate(local);
-                }
-            }
-            return result;
         }
 
         private void Update()
@@ -155,7 +201,10 @@ namespace Urp.ArDemo
                 if (informationPanel.activeSelf) informationPanel.SetActive(false);
                 else BackToMenu();
             }
-            if (!placed) UpdatePlacementIndicator();
+            if (anchorRemovedNotified && !placed)
+                ResetPlacement("放置失败，请重新选择", true);
+            else if (anchor != null || placed) UpdateAnchorState();
+            else UpdatePlacementIndicator();
             var activeTouches = EnhancedTouch.activeTouches;
             EnhancedTouch? first = null, second = null;
             foreach (EnhancedTouch touch in activeTouches)
@@ -176,7 +225,7 @@ namespace Urp.ArDemo
                 {
                     if (OverUi(primary.screenPosition)) { Debug.Log("[ArtifactAR] touch blocked by UI"); return; }
                     if (!modelReady) { Debug.LogError("[ArtifactAR][ERROR] touch before prefab ready"); return; }
-                    TryPlaceAt();
+                    if (anchor == null) TryPlaceAt(primary.screenPosition);
                 }
                 return;
             }
@@ -251,6 +300,7 @@ namespace Urp.ArDemo
                 return;
             }
             Vector2 screenCenter = new Vector2(Screen.width * .5f, Screen.height * .5f);
+            Pose previewPose = default;
             if (raycastManager.Raycast(screenCenter, hits, TrackableType.PlaneWithinPolygon))
             {
                 foreach (ARRaycastHit hit in hits)
@@ -258,14 +308,14 @@ namespace Urp.ArDemo
                     ARPlane plane = planeManager.GetPlane(hit.trackableId);
                     if (plane == null || plane.trackingState != TrackingState.Tracking
                         || plane.alignment != PlaneAlignment.HorizontalUp || plane.subsumedBy != null) continue;
-                    placementPose = hit.pose;
+                    previewPose = hit.pose;
                     hasPlacementPose = true;
                     break;
                 }
             }
             if (hasPlacementPose)
             {
-                Vector3 target = placementPose.position + Vector3.up * .003f;
+                Vector3 target = previewPose.position + Vector3.up * .003f;
                 if (!placementIndicator.activeSelf) placementIndicator.transform.position = target;
                 else placementIndicator.transform.position = Vector3.Lerp(
                     placementIndicator.transform.position, target,
@@ -275,7 +325,7 @@ namespace Urp.ArDemo
             }
             else placementIndicator.SetActive(false);
             if (Time.time >= missFeedbackUntil)
-                status.text = hasPlacementPose ? "点击标记位置放置文物" : "请缓慢移动手机，扫描可放置平面";
+                status.text = hasPlacementPose ? "点击平面放置文物" : "请缓慢移动手机，扫描可放置平面";
         }
 
         private void HidePlaneVisuals()
@@ -290,10 +340,32 @@ namespace Urp.ArDemo
                 foreach (Renderer renderer in pointCloud.GetComponentsInChildren<Renderer>(true)) renderer.enabled = false;
         }
 
-        private void TryPlaceAt()
+        private void TryPlaceAt(Vector2 touchPosition)
         {
-            if (hasPlacementPose) Place(placementPose);
-            else status.text = "请缓慢移动手机，扫描可放置平面";
+            if (!raycastManager.Raycast(touchPosition, hits, TrackableType.PlaneWithinPolygon))
+            {
+                ReportPlacementMiss(touchPosition, "raycast miss");
+                return;
+            }
+            foreach (ARRaycastHit hit in hits)
+            {
+                ARPlane plane = planeManager.GetPlane(hit.trackableId);
+                if (plane == null || plane.alignment != PlaneAlignment.HorizontalUp
+                    || plane.trackingState != TrackingState.Tracking || plane.subsumedBy != null)
+                    continue;
+                Debug.Log($"[ArtifactAR][TAP] screen={touchPosition} hit={hit.pose.position} "
+                    + $"plane={hit.trackableId} session={ARSession.state}");
+                Place(hit.pose);
+                return;
+            }
+            ReportPlacementMiss(touchPosition, "no tracked HorizontalUp plane");
+        }
+
+        private void ReportPlacementMiss(Vector2 touchPosition, string reason)
+        {
+            status.text = "未检测到可放置位置，请重新选择";
+            missFeedbackUntil = Time.time + 1.5f;
+            Debug.Log($"[ArtifactAR][TAP_MISS] screen={touchPosition} reason={reason}");
         }
 
         private static bool OverUi(Vector2 screenPosition)
@@ -310,20 +382,26 @@ namespace Urp.ArDemo
 
         private void Place(Pose pose)
         {
-            if (anchorManager == null || !anchorManager.enabled)
+            if (anchorManager == null || !anchorManager.enabled || modelRoot == null || !modelReady)
             {
-                FailPlacement("anchor manager unavailable");
+                FailPlacement("anchor manager or prepared model unavailable");
                 return;
             }
-            // AR Foundation 5.1.6 registers a standalone world anchor when ARAnchor is added.
-            // Keep only the raycast position; plane rotation refinements must not tilt the model.
+            var origin = anchorManager.GetComponent<Unity.XR.CoreUtils.XROrigin>();
+            if (origin == null || origin.TrackablesParent == null
+                || origin.transform.lossyScale != Vector3.one
+                || origin.TrackablesParent.lossyScale != Vector3.one)
+            {
+                FailPlacement("XR Origin/Trackables coordinate frame invalid");
+                return;
+            }
+            // The anchor remains upright; user yaw belongs to the artifact root.
             Vector3 forward = Vector3.ProjectOnPlane(arCamera.transform.forward, Vector3.up);
             Quaternion yaw = forward.sqrMagnitude > .0001f
                 ? Quaternion.LookRotation(forward.normalized, Vector3.up) : Quaternion.identity;
             GameObject anchorObject = new GameObject("ShengDing_Independent_ARAnchor");
-            var origin = anchorManager.GetComponent<Unity.XR.CoreUtils.XROrigin>();
-            if (origin != null) anchorObject.transform.SetParent(origin.TrackablesParent, true);
-            anchorObject.transform.SetPositionAndRotation(pose.position, yaw);
+            anchorObject.transform.SetParent(origin.TrackablesParent, false);
+            anchorObject.transform.SetPositionAndRotation(pose.position, Quaternion.identity);
             try { anchor = anchorObject.AddComponent<ARAnchor>(); }
             catch (Exception exception)
             {
@@ -331,62 +409,151 @@ namespace Urp.ArDemo
                 FailPlacement("anchor exception: " + exception);
                 return;
             }
-            if (anchor == null || anchor.trackableId == TrackableId.invalidId)
+            if (anchor == null)
             {
                 Destroy(anchorObject);
-                anchor = null;
-                FailPlacement("world anchor registration failed");
+                FailPlacement("ARAnchor component creation failed");
                 return;
             }
-            Debug.Log("[ArtifactAR] anchor created id=" + anchor.trackableId);
             modelRoot.transform.SetParent(anchor.transform, false);
             modelRoot.transform.localPosition = Vector3.zero;
-            modelRoot.transform.localRotation = Quaternion.identity;
-            modelRoot.SetActive(true);
-            foreach (Renderer renderer in modelRoot.GetComponentsInChildren<Renderer>(true))
-            { renderer.enabled = true; renderer.gameObject.layer = 0; }
-            // The one-time bounds calculation in PrepareModel already grounds the visual.
-            placed = true;
-            status.text = "文物已放置";
+            modelRoot.transform.localRotation = yaw;
+            modelRoot.SetActive(false);
+            anchorCreateTime = Time.time;
+            lastAnchorPending = anchor.pending;
+            lastAnchorTrackingState = anchor.trackingState;
+            lastSessionState = ARSession.state;
+            previousAnchorPosition = anchor.transform.position;
+            previousAnchorRotation = anchor.transform.rotation;
+            anchorTrackingUsable = false;
+            anchorRemovedNotified = false;
+            status.text = "请缓慢移动手机，恢复空间定位";
             placementIndicator.SetActive(false);
             hasPlacementPose = false;
             HidePlaneVisuals();
-            Debug.Log("[ArtifactAR] placement complete");
-            if (placedMessage != null) StopCoroutine(placedMessage);
-            placedMessage = StartCoroutine(HidePlacedMessage());
+            Debug.Log($"[ArtifactAR][ANCHOR_CREATED] id={anchor.trackableId} pending={anchor.pending} "
+                + $"tracking={anchor.trackingState} session={ARSession.state} initialPose={pose.position} "
+                + $"anchorPose={anchor.transform.position}/{anchor.transform.rotation.eulerAngles} "
+                + $"cameraPose={arCamera.transform.position}/{arCamera.transform.rotation.eulerAngles} "
+                + $"originScale={origin.transform.lossyScale} trackablesScale={origin.TrackablesParent.lossyScale} "
+                + $"rootLocal={modelRoot.transform.localPosition}/{modelRoot.transform.localRotation.eulerAngles}/"
+                + $"{modelRoot.transform.localScale} geometry={modelGeometry.bounds} "
+                + $"bottomDelta={modelGeometry.bounds.min.y * modelRoot.transform.localScale.y:F6}m");
+            UpdateAnchorState();
+        }
+
+        private void UpdateAnchorState()
+        {
+            if (anchor == null)
+            {
+                if (placed && !anchorRemovedNotified)
+                {
+                    status.transform.parent.gameObject.SetActive(true);
+                    status.text = "空间定位丢失，请重新放置";
+                    anchorRemovedNotified = true;
+                    Debug.LogError("[ArtifactAR][ANCHOR_REMOVED] tracked anchor no longer exists");
+                }
+                return;
+            }
+            if (!placed && anchor.trackableId == TrackableId.invalidId
+                && Time.time - anchorCreateTime > 8f)
+            {
+                Debug.LogError("[ArtifactAR][ANCHOR_FAILED] registration timed out with invalid trackableId");
+                ResetPlacement("放置失败，请重新选择", true);
+                return;
+            }
+            if (anchor.pending != lastAnchorPending || anchor.trackingState != lastAnchorTrackingState
+                || ARSession.state != lastSessionState)
+            {
+                Debug.Log($"[ArtifactAR][TRACKING] id={anchor.trackableId} pending={anchor.pending} "
+                    + $"anchor={anchor.trackingState} session={ARSession.state} pose={anchor.transform.position}");
+                lastAnchorPending = anchor.pending;
+                lastAnchorTrackingState = anchor.trackingState;
+                lastSessionState = ARSession.state;
+            }
+            bool usable = !anchor.pending && anchor.trackableId != TrackableId.invalidId
+                && anchor.trackingState == TrackingState.Tracking
+                && ARSession.state == ARSessionState.SessionTracking;
+            if (usable && anchorTrackingUsable)
+            {
+                float jump = Vector3.Distance(previousAnchorPosition, anchor.transform.position);
+                float angle = Quaternion.Angle(previousAnchorRotation, anchor.transform.rotation);
+                if ((jump > .08f || angle > 12f) && Time.time - lastAnchorJumpLogTime > 2f)
+                {
+                    Debug.LogWarning($"[ArtifactAR][ANCHOR_REFINEMENT] positionDelta={jump:F3}m "
+                        + $"rotationDelta={angle:F1}deg; application did not overwrite the anchor");
+                    lastAnchorJumpLogTime = Time.time;
+                }
+            }
+            previousAnchorPosition = anchor.transform.position;
+            previousAnchorRotation = anchor.transform.rotation;
+            if (usable != anchorTrackingUsable || (usable && !placed))
+            {
+                anchorTrackingUsable = usable;
+                status.transform.parent.gameObject.SetActive(true);
+                if (usable)
+                {
+                    if (modelRoot == null) { Debug.LogError("[ArtifactAR][ERROR] model lost before anchor tracking"); return; }
+                    modelRoot.SetActive(true);
+                    placed = true;
+                    status.text = "文物已放置";
+                    Debug.Log($"[ArtifactAR][PLACED] id={anchor.trackableId} "
+                        + $"worldHeight={modelGeometry.bounds.size.y * modelRoot.transform.localScale.y:F5}m "
+                        + $"bottomDelta={modelGeometry.bounds.min.y * modelRoot.transform.localScale.y:F6}m");
+                    if (placedMessage != null) StopCoroutine(placedMessage);
+                    placedMessage = StartCoroutine(HidePlacedMessage());
+                }
+                else
+                {
+                    if (placedMessage != null) { StopCoroutine(placedMessage); placedMessage = null; }
+                    status.text = "请缓慢移动手机，恢复空间定位";
+                }
+            }
         }
 
         private IEnumerator HidePlacedMessage()
         {
             yield return new WaitForSeconds(1f);
-            if (placed && status != null) status.transform.parent.gameObject.SetActive(false);
+            if (placed && anchorTrackingUsable && status != null)
+                status.transform.parent.gameObject.SetActive(false);
             placedMessage = null;
         }
 
         private void Replace()
         {
-            Debug.Log("[ArtifactAR] reset button clicked");
+            Debug.Log($"[ArtifactAR][REPLACE] oldAnchor={(anchor != null ? anchor.trackableId.ToString() : "none")} "
+                + $"oldModel={(modelRoot != null ? modelRoot.name : "none")}");
+            ResetPlacement("请缓慢移动手机，扫描可放置平面", false);
+        }
+
+        private void ResetPlacement(string message, bool failed)
+        {
             if (placedMessage != null) { StopCoroutine(placedMessage); placedMessage = null; }
             status.transform.parent.gameObject.SetActive(true);
-            if (modelRoot == null) return;
-            if (anchor != null)
+            if (modelRoot != null)
             {
                 modelRoot.SetActive(false);
-                Destroy(anchor.gameObject);
-                anchor = null;
+                Destroy(modelRoot);
             }
-            else Destroy(modelRoot);
+            if (anchor != null)
+            {
+                Destroy(anchor.gameObject);
+            }
+            anchor = null;
             modelRoot = null;
             modelVisual = null;
             placed = false;
+            modelReady = false;
+            anchorTrackingUsable = false;
+            anchorRemovedNotified = false;
             hasPlacementPose = false;
             lastPinchDistance = 0f;
-            missFeedbackUntil = 0f;
+            missFeedbackUntil = failed ? Time.time + 1.5f : 0f;
             planeManager.enabled = true;
-            status.text = "请缓慢移动手机，扫描可放置平面";
             PrepareModel();
+            if (modelReady) status.text = message;
             UpdatePlacementIndicator();
-            Debug.Log("[ArtifactAR] placement reset");
+            Debug.Log("[ArtifactAR][RESET] old model and anchor removed; " + message);
         }
 
         private void Fail(string message, Exception exception = null)
