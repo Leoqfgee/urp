@@ -18,22 +18,22 @@ namespace Urp.ArDemo.Editor
     {
         private const string ScenePath = "Assets/Scenes/ArtifactARScene.unity";
         private const string InfoPath = "Assets/Models/Artifacts/ShengDing/ShengDingInfo.asset";
-        private const string PlaneHintMaterialPath = "Assets/Resources/Materials/ArtifactPlaneHint.mat";
+        private const string IndicatorMaterialPath = "Assets/Resources/Materials/ArtifactPlacementIndicator.mat";
 
-        [MenuItem("URP AR/Create Artifact Plane Hint Material")]
-        public static void CreatePlaneHintMaterialFromCommandLine()
+        [MenuItem("URP AR/Create Artifact Placement Indicator Material")]
+        public static void CreatePlacementIndicatorMaterialFromCommandLine()
         {
             System.IO.Directory.CreateDirectory("Assets/Resources/Materials");
             Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
             if (shader == null) throw new System.InvalidOperationException("URP Unlit shader unavailable");
-            Material material = AssetDatabase.LoadAssetAtPath<Material>(PlaneHintMaterialPath);
+            Material material = AssetDatabase.LoadAssetAtPath<Material>(IndicatorMaterialPath);
             if (material == null)
             {
                 material = new Material(shader);
-                AssetDatabase.CreateAsset(material, PlaneHintMaterialPath);
+                AssetDatabase.CreateAsset(material, IndicatorMaterialPath);
             }
             material.shader = shader;
-            material.SetColor("_BaseColor", new Color(.79f, .68f, .43f, .20f));
+            material.SetColor("_BaseColor", new Color(.82f, .71f, .49f, .72f));
             material.SetFloat("_Surface", 1f);
             material.SetFloat("_Blend", 0f);
             material.SetFloat("_SrcBlend", 5f);
@@ -45,12 +45,13 @@ namespace Urp.ArDemo.Editor
             material.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
             EditorUtility.SetDirty(material);
             AssetDatabase.SaveAssets();
-            Debug.Log("ARTIFACT_PLANE_MATERIAL_READY " + PlaneHintMaterialPath);
+            Debug.Log("ARTIFACT_PLACEMENT_MATERIAL_READY " + IndicatorMaterialPath);
         }
 
         [MenuItem("URP AR/Setup Artifact AR Scene")]
         public static void CreateFromCommandLine()
         {
+            CreatePlacementIndicatorMaterialFromCommandLine();
             System.IO.Directory.CreateDirectory("Assets/Models/Artifacts/ShengDing");
             ArtifactInfo info = AssetDatabase.LoadAssetAtPath<ArtifactInfo>(InfoPath);
             if (info == null)
