@@ -1,0 +1,29 @@
+{
+  "version": "bottle-v42-v41b-to-device-proven-v40-orb-frame",
+  "runtime_orb_database_sha256": "A046CD3386245B4A255A45088ECD9087366FF32A1352B2E20C3AC713253AC1EF",
+  "runtime_orb_records": 4100,
+  "source_geometry": "v41 same-reconstruction DamagedBottleB from F:\\Meshroom_work\\bottle_damaged",
+  "source_geometry_semantic_frame": "+X right, +Y base-to-mouth, +Z measured red-logo printed front",
+  "target_frame": "aeb5a36/v40 proven ORB object frame already used by BottleCapC",
+  "derivation": "Map v41 right/up/front to v40 authored-B -Z/+Y/+X at the shared measured mouth origin and physical scale, then compose aeb5a36 T_ORB_FROM_B.",
+  "T_V40_ORB_FROM_V41_B": [
+    0.992102548022601, 0.018853338881554, -0.041932210463208, 0.0,
+    -0.017493476907616, 0.992486228081339, 0.032346403027380, 0.0,
+    0.042517489660092, -0.031573139472411, 0.991754316547757, 0.0,
+    0.0, 0.0, 0.0, 1.0
+  ],
+  "uniform_scale": 0.9931672691214959,
+  "rotation_quaternion_xyzw": [-0.01609622, -0.02126613, -0.00915286, 0.99960237],
+  "mouth_origin_maps_to": [0.0, 0.0, 0.0],
+  "reference_neck_policy": "ReferenceNeckProxyB is a child of B and inherits the identical bridge",
+  "repair_c_policy": "BottleCapC is not moved independently; its inherited v40 geometry was already authored in the target v40 ORB frame",
+  "rigid_relationship_preserved": true,
+  "v41_measurements_retained": {
+    "mouth_center_error_mm": 0.09889888016660317,
+    "base_center_error_mm": 0.19839636953551915,
+    "same_reconstruction_surface_p95_mm": 4.127278005872207,
+    "up_axis_error_deg": 0.05780306488004274,
+    "front_axis_error_deg": 0.47388264334155283
+  },
+  "device_verified": false
+}

@@ -1,0 +1,7 @@
+newmtl tissue_lit
+Ka 0.08 0.08 0.08
+Kd 1.0 1.0 1.0
+Ks 0.02 0.02 0.02
+Ns 12
+illum 2
+map_Kd tissue_albedo.png

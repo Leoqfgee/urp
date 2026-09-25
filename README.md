@@ -1,0 +1,48 @@
+# Cultural heritage restoration and AR v59
+
+Unity 2022.3.62f2 Android project for rigid A-to-B-to-C restoration:
+
+- A: the real cap-missing bottle;
+- B: `DamagedBottleB` and its alignment-only `ReferenceNeckProxyB`;
+- C: `BottleCapC`, fixed beside B under `BottleRepairRoot`.
+
+The app keeps the v33 device-proven, 4,100-record ORB database
+made only from real open-bottle photographs. Robust multi-point PnP recovers B's full 6DoF pose and
+applies it directly to `TrackedBottleRoot`; C only inherits that pose. During
+acquisition, both B and C stay hidden and the UI shows a concise Chinese status.
+Once the PnP pose and coordinate chain are stable, repair presentation starts
+automatically: B leaves the normal colour pass but remains available to the
+explicit depth-only pass, while C stays visible with HSV plus AR-light appearance
+correction. There is no manual Start or virtual-bottle alignment step.
+
+v58 preserves the verified portrait coordinate chain and v52 continuous accepted-pose
+fusion: native PnP returns the pose
+in the rotated, display-oriented camera frame, so the final Unity conversion no
+longer applies a second inverse image rotation. The importer alignment is
+derived from Blender-authored B landmarks and the actual FBX hierarchy; the
+profile contains no hand-authored Euler correction.
+
+`UnityPoseConsistencyGate` now reports three independent native-image metrics:
+NativePnPRms, PoseChainRoundTripRms, and RenderedHierarchyRms. Only the latter
+two mathematical round trips gate Ready after three consecutive passing frames.
+The old WorldToScreenPoint value is retained as DisplayDiag WARN only; it never
+blocks stable B+C preview, registration, or Start eligibility by itself.
+
+Diagnostic logs provide searchable `[URP_CAP_DIAG]` snapshots of
+the real ARCamera projection/frustum, rigid matrices, cap camera-space bounds,
+culling, renderer/material state, and AR environment-depth state. The Editor
+pixel-difference check is a synthetic rendering smoke test, not device proof.
+
+Validation entry points:
+
+- `Urp.ArDemo.Editor.UrpArValidation.RunFromCommandLine`
+- `Urp.ArDemo.Editor.UrpArValidation.RunPlayModeSmokeFromCommandLine`
+- `Urp.ArDemo.Editor.UrpArProjectSetup.BuildAndroidFromCommandLine`
+
+v59 adds an AR display menu and a separate horizontal-plane artifact-placement scene.
+The bundled test model is `Assets/StreamingAssets/Models/Artifacts/ShengDing/ShengDing.glb`,
+loaded with glTFast. The original v58 ORB tracking scene and resource viewer remain available.
+
+The release Android artifact is `Builds/BottleRepairAR_v59.apk` (version 4.13.0,
+ARM64). Offline and editor
+checks do not replace physical-device front/oblique/top acceptance testing.

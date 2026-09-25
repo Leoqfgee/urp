@@ -1,0 +1,801 @@
+using System;
+using System.IO;
+using System.Linq;
+using UnityEditor;
+using UnityEditor.Build;
+using UnityEditor.Build.Reporting;
+using UnityEditor.SceneManagement;
+using UnityEditor.XR.Management;
+using UnityEditor.XR.Management.Metadata;
+using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
+using UnityEngine.SceneManagement;
+using UnityEngine.XR.ARFoundation;
+using UnityEngine.XR.ARSubsystems;
+using UnityEngine.XR.Management;
+using Urp.ArDemo.Calibration;
+using Urp.ArDemo.Generated;
+
+namespace Urp.ArDemo.Editor
+{
+    public static class UrpArProjectSetup
+    {
+        private const string ScenePath = "Assets/Scenes/UrpARPrototype.unity";
+        private const string FontPath = "Assets/Fonts/NotoSansSC-Regular.otf";
+        private const string BottleRegisteredPairPath =
+            "Assets/Models/CleanBottleReconstruction/BottleFullAlignedV2/"
+            + "bottle_full_aligned_v2.fbx";
+        private const string BottleThumbnailPath =
+            "Assets/Textures/Targets/bottle_full_aligned_v2.png";
+        private const string BottleIntroductionImagePath =
+            "Assets/Docs/QA/v43/front.png";
+        private const string BottleAlbedoPath =
+            "Assets/Models/CleanBottleReconstruction/BottleFullAlignedV2/"
+            + "Textures/bottle_full_clean_v2_albedo.png";
+        private const string BottleSurfaceMaterialPath =
+            "Assets/Materials/BottlePhotogrammetryLit.mat";
+        private const string BottleCapMaterialPath =
+            "Assets/Materials/CleanBottleCapLit.mat";
+        private const string PaperDepthMaterialPath =
+            "Assets/Materials/PaperLinearEyeDepth.mat";
+        private const string PaperCompositeMaterialPath =
+            "Assets/Materials/PaperDepthComposite.mat";
+        private const string AndroidApkPath = "Builds/BottleRepairAR_v64.apk";
+        private const string BottleReferenceOrbPath =
+            "Assets/OrbModels/bottle_reference_b.bytes";
+        private const string BottleCalibrationPath =
+            "Assets/Calibration/CoconutBottleRepairCalibration.asset";
+        private const string BottleRegistrationArtifactPath =
+            "Assets/Calibration/bottle_orb_to_b_registration_v44.json";
+        private const string BottleProfilePath =
+            "Assets/Objects/CoconutBottle/Profiles/CoconutBottleRepairProfile.asset";
+        private const string CatalogPath =
+            "Assets/Objects/RestorationObjectCatalog.asset";
+        private const string BottleInfoPath = "Assets/Objects/CoconutBottle/BottleInfo.asset";
+        private const string ShengDingInfoPath = "Assets/Models/Artifacts/ShengDing/ShengDingInfo.asset";
+
+        public static void UpdateArtifactCatalogFromCommandLine()
+        {
+            RestorationObjectProfile bottle = AssetDatabase.LoadAssetAtPath<RestorationObjectProfile>(BottleProfilePath);
+            RestorationObjectCatalog catalog = AssetDatabase.LoadAssetAtPath<RestorationObjectCatalog>(CatalogPath);
+            ArtifactInfo ding = AssetDatabase.LoadAssetAtPath<ArtifactInfo>(ShengDingInfoPath);
+            if (bottle == null || catalog == null || ding == null)
+                throw new InvalidOperationException("Existing artifact catalog resources missing.");
+            ArtifactInfo bottleInfo = AssetDatabase.LoadAssetAtPath<ArtifactInfo>(BottleInfoPath);
+            if (bottleInfo == null)
+            {
+                bottleInfo = ScriptableObject.CreateInstance<ArtifactInfo>();
+                AssetDatabase.CreateAsset(bottleInfo, BottleInfoPath);
+            }
+            bottleInfo.id = bottle.objectId;
+            bottleInfo.displayName = bottle.displayName;
+            bottleInfo.description = bottle.viewerDescription;
+            bottleInfo.thumbnail = bottle.thumbnail;
+            bottleInfo.supportsModelViewer = true;
+            bottleInfo.supportsArtifactAR = false;
+            bottleInfo.supportsOverlayAR = true;
+            bottleInfo.overlayProfile = bottle;
+            ding.thumbnail = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Resources/UI/shengding_thumbnail.png");
+            ding.supportsModelViewer = true;
+            ding.supportsArtifactAR = true;
+            ding.supportsOverlayAR = false;
+            ding.overlayProfile = null;
+            catalog.artifacts = new[] { bottleInfo, ding };
+            EditorUtility.SetDirty(bottleInfo);
+            EditorUtility.SetDirty(ding);
+            EditorUtility.SetDirty(catalog);
+            AssetDatabase.SaveAssets();
+            Debug.Log("ARTIFACT_CATALOG_READY count=" + catalog.artifacts.Length);
+        }
+
+        [MenuItem("URP AR/Setup Prototype Scene")]
+        public static void SetupPrototypeScene()
+        {
+            EnsureFolders();
+            ConfigureAndroidProject();
+            ConfigureXRManagement();
+            ConfigureRenderPipeline();
+            AssetDatabase.Refresh();
+            ConfigureImportedAssets();
+            RestorationObjectCatalog catalog = CreateProfiles();
+            UpdateArtifactCatalogFromCommandLine();
+            CreatePrototypeScene(catalog);
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+        }
+
+        public static void SetupFromCommandLine() => SetupPrototypeScene();
+
+        public static void BuildAndroidFromCommandLine()
+        {
+            ConfigureAndroidProject();
+            BuildIdentityData identity = BuildIdentityGenerator.Generate();
+            if (!File.Exists(ScenePath))
+            {
+                throw new BuildFailedException(
+                    $"Saved production scene is missing: {ScenePath}");
+            }
+            AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+            CleanStaleSimulationTempAssets();
+            Directory.CreateDirectory("Builds");
+            BuildReport report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
+            {
+                scenes = new[] { ScenePath, "Assets/Scenes/ArtifactARScene.unity" },
+                locationPathName = AndroidApkPath,
+                target = BuildTarget.Android,
+                targetGroup = BuildTargetGroup.Android,
+                options = BuildOptions.None
+            });
+            if (report.summary.result != BuildResult.Succeeded)
+            {
+                throw new BuildFailedException($"Android build failed: {report.summary.result}");
+            }
+            BuildIdentityGenerator.VerifyApk(AndroidApkPath, identity);
+            BuildIdentityGenerator.VerifyNativePluginInApk(AndroidApkPath);
+            Debug.Log($"[BuildIdentity] APK SHA256: {BuildIdentityGenerator.Sha256(AndroidApkPath)}");
+            DeleteBurstDebugArtifacts();
+            DeleteSupersededBuildArtifacts();
+        }
+
+        private static void DeleteSupersededBuildArtifacts()
+        {
+            string buildsRoot =
+                Path.GetFullPath("Builds") + Path.DirectorySeparatorChar;
+            string targetApk = Path.GetFullPath(AndroidApkPath);
+            foreach (string candidate in
+                     Directory.GetFiles("Builds", "BottleRepairAR_v*.apk"))
+            {
+                string fullPath = Path.GetFullPath(candidate);
+                if (fullPath.StartsWith(
+                        buildsRoot,
+                        StringComparison.OrdinalIgnoreCase)
+                    && !fullPath.Equals(
+                        targetApk,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    Debug.Log($"Deleting superseded APK: {fullPath}");
+                    File.Delete(fullPath);
+                }
+            }
+            foreach (string candidate in Directory.GetDirectories(
+                         "Builds",
+                         "*_BurstDebugInformation_DoNotShip"))
+            {
+                string fullPath = Path.GetFullPath(candidate);
+                if (fullPath.StartsWith(
+                        buildsRoot,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    Debug.Log($"Deleting superseded build diagnostics: {fullPath}");
+                    Directory.Delete(fullPath, true);
+                }
+            }
+        }
+
+        private static void DeleteBurstDebugArtifacts()
+        {
+            string buildsRoot =
+                Path.GetFullPath("Builds") + Path.DirectorySeparatorChar;
+            foreach (string candidate in Directory.GetDirectories(
+                         "Builds",
+                         "*_BurstDebugInformation_DoNotShip"))
+            {
+                string fullPath = Path.GetFullPath(candidate);
+                if (fullPath.StartsWith(
+                        buildsRoot,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    Debug.Log($"Deleting non-shipping build diagnostics: {fullPath}");
+                    Directory.Delete(fullPath, true);
+                }
+            }
+        }
+
+        private static void CleanStaleSimulationTempAssets()
+        {
+            foreach (string path in new[]
+                     {
+                         "Assets/XR/Temp/XRSimulationPreferences.asset",
+                         "Assets/XR/Temp/XRSimulationRuntimeSettings.asset"
+                     })
+            {
+                if (AssetDatabase.LoadMainAssetAtPath(path) != null)
+                    AssetDatabase.DeleteAsset(path);
+            }
+            AssetDatabase.Refresh();
+        }
+
+        private static void EnsureFolders()
+        {
+            string[] folders =
+            {
+                "Assets/Calibration", "Assets/Docs", "Assets/Materials",
+                "Assets/Objects/CoconutBottle/Profiles",
+                "Assets/Objects/CoconutBottle/Prefabs",
+                "Assets/Shaders", "Assets/Resources"
+            };
+            foreach (string folder in folders) Directory.CreateDirectory(folder);
+        }
+
+        private static void ConfigureAndroidProject()
+        {
+            PlayerSettings.productName = "文化遗址数字修复与AR呈现 v64";
+            PlayerSettings.companyName = "qfgeeee";
+            PlayerSettings.bundleVersion = "4.18.0";
+            PlayerSettings.SetApplicationIdentifier(
+                BuildTargetGroup.Android, "com.qfgeeee.paper52objecttrackingar");
+            PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
+            PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
+            PlayerSettings.Android.bundleVersionCode = 560;
+            PlayerSettings.SetScriptingBackend(
+                BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
+            PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
+            PlayerSettings.allowUnsafeCode = true;
+            PlayerSettings.defaultInterfaceOrientation = UIOrientation.Portrait;
+            PlayerSettings.SetUseDefaultGraphicsAPIs(BuildTarget.Android, false);
+            PlayerSettings.SetGraphicsAPIs(
+                BuildTarget.Android, new[] { GraphicsDeviceType.OpenGLES3 });
+            EditorUserBuildSettings.SwitchActiveBuildTarget(
+                BuildTargetGroup.Android, BuildTarget.Android);
+        }
+
+        private static void ConfigureXRManagement()
+        {
+            XRGeneralSettingsPerBuildTarget settings = GetOrCreateXRSettings();
+            if (!settings.HasSettingsForBuildTarget(BuildTargetGroup.Android))
+                settings.CreateDefaultSettingsForBuildTarget(BuildTargetGroup.Android);
+            if (!settings.HasManagerSettingsForBuildTarget(BuildTargetGroup.Android))
+                settings.CreateDefaultManagerSettingsForBuildTarget(BuildTargetGroup.Android);
+            XRManagerSettings manager =
+                settings.ManagerSettingsForBuildTarget(BuildTargetGroup.Android);
+            const string loaderType = "UnityEngine.XR.ARCore.ARCoreLoader";
+            if (!XRPackageMetadataStore.IsLoaderAssigned(loaderType, BuildTargetGroup.Android))
+                XRPackageMetadataStore.AssignLoader(manager, loaderType, BuildTargetGroup.Android);
+            EditorUtility.SetDirty(settings);
+            EditorUtility.SetDirty(manager);
+        }
+
+        private static void ConfigureRenderPipeline()
+        {
+            const string pipelinePath = "Assets/Settings/UrpMobilePipeline.asset";
+            const string rendererPath = "Assets/Settings/UrpMobileRenderer.asset";
+            Directory.CreateDirectory("Assets/Settings");
+            UniversalRendererData renderer =
+                AssetDatabase.LoadAssetAtPath<UniversalRendererData>(rendererPath);
+            if (renderer == null)
+            {
+                renderer = ScriptableObject.CreateInstance<UniversalRendererData>();
+                AssetDatabase.CreateAsset(renderer, rendererPath);
+            }
+            EnsureArBackgroundRendererFeature(renderer);
+            EnsurePaperOcclusionRendererFeature(renderer);
+            UniversalRenderPipelineAsset pipeline =
+                AssetDatabase.LoadAssetAtPath<UniversalRenderPipelineAsset>(pipelinePath);
+            if (pipeline == null)
+            {
+                pipeline = UniversalRenderPipelineAsset.Create(renderer);
+                AssetDatabase.CreateAsset(pipeline, pipelinePath);
+            }
+            pipeline.renderScale = 1f;
+            pipeline.supportsHDR = false;
+            pipeline.msaaSampleCount = 2;
+            SerializedObject pipelineSerialized = new SerializedObject(pipeline);
+            pipelineSerialized.FindProperty("m_SupportsHDR").boolValue = false;
+            pipelineSerialized.FindProperty("m_MSAA").intValue = 2;
+            pipelineSerialized.ApplyModifiedPropertiesWithoutUndo();
+            GraphicsSettings.renderPipelineAsset = pipeline;
+            QualitySettings.renderPipeline = pipeline;
+            EditorUtility.SetDirty(pipeline);
+        }
+
+        private static void EnsureArBackgroundRendererFeature(UniversalRendererData renderer)
+        {
+            renderer.rendererFeatures.RemoveAll(feature => feature == null);
+            ARBackgroundRendererFeature feature = renderer.rendererFeatures
+                .OfType<ARBackgroundRendererFeature>()
+                .FirstOrDefault();
+            if (feature != null)
+            {
+                return;
+            }
+
+            feature = ScriptableObject.CreateInstance<ARBackgroundRendererFeature>();
+            feature.name = "AR Background Renderer Feature";
+            feature.Create();
+            AssetDatabase.AddObjectToAsset(feature, renderer);
+            renderer.rendererFeatures.Add(feature);
+
+            AssetDatabase.TryGetGUIDAndLocalFileIdentifier(feature, out _, out long localId);
+            SerializedObject serializedRenderer = new SerializedObject(renderer);
+            SerializedProperty featureMap = serializedRenderer.FindProperty("m_RendererFeatureMap");
+            if (featureMap != null)
+            {
+                int index = featureMap.arraySize;
+                featureMap.InsertArrayElementAtIndex(index);
+                featureMap.GetArrayElementAtIndex(index).longValue = localId;
+                serializedRenderer.ApplyModifiedPropertiesWithoutUndo();
+            }
+            EditorUtility.SetDirty(feature);
+            EditorUtility.SetDirty(renderer);
+        }
+
+        private static void EnsurePaperOcclusionRendererFeature(
+            UniversalRendererData renderer)
+        {
+            RepairOcclusionRendererFeature feature = renderer.rendererFeatures
+                .OfType<RepairOcclusionRendererFeature>()
+                .FirstOrDefault();
+            if (feature == null)
+            {
+                feature = ScriptableObject.CreateInstance<RepairOcclusionRendererFeature>();
+                feature.name = "Bottle B Main Camera Depth Occlusion";
+                AssetDatabase.AddObjectToAsset(feature, renderer);
+                renderer.rendererFeatures.Add(feature);
+                AssetDatabase.TryGetGUIDAndLocalFileIdentifier(
+                    feature,
+                    out _,
+                    out long localId);
+                SerializedObject serializedRenderer = new SerializedObject(renderer);
+                SerializedProperty featureMap =
+                    serializedRenderer.FindProperty("m_RendererFeatureMap");
+                int index = featureMap.arraySize;
+                featureMap.InsertArrayElementAtIndex(index);
+                featureMap.GetArrayElementAtIndex(index).longValue = localId;
+                serializedRenderer.ApplyModifiedPropertiesWithoutUndo();
+            }
+            feature.Settings.bottleDepthOnlyMaterial =
+                AssetDatabase.LoadAssetAtPath<Material>(PaperDepthMaterialPath);
+            feature.Settings.passEvent = RenderPassEvent.BeforeRenderingOpaques;
+            feature.Create();
+            MoveBottleDepthFeatureAfterArBackground(renderer, feature);
+            EditorUtility.SetDirty(feature);
+            EditorUtility.SetDirty(renderer);
+        }
+
+        private static void MoveBottleDepthFeatureAfterArBackground(
+            UniversalRendererData renderer,
+            RepairOcclusionRendererFeature feature)
+        {
+            int depthIndex = renderer.rendererFeatures.IndexOf(feature);
+            int backgroundIndex = renderer.rendererFeatures.FindIndex(value =>
+                value != null && value.name == "AR Background Renderer Feature");
+            if (depthIndex < 0 || backgroundIndex < 0 || depthIndex > backgroundIndex)
+                return;
+
+            SerializedObject serializedRenderer = new SerializedObject(renderer);
+            SerializedProperty featureMap = serializedRenderer.FindProperty(
+                "m_RendererFeatureMap");
+            long depthLocalId = featureMap.GetArrayElementAtIndex(depthIndex).longValue;
+            renderer.rendererFeatures.RemoveAt(depthIndex);
+            featureMap.DeleteArrayElementAtIndex(depthIndex);
+            backgroundIndex--;
+            int insertIndex = backgroundIndex + 1;
+            renderer.rendererFeatures.Insert(insertIndex, feature);
+            featureMap.InsertArrayElementAtIndex(insertIndex);
+            featureMap.GetArrayElementAtIndex(insertIndex).longValue = depthLocalId;
+            serializedRenderer.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static XRGeneralSettingsPerBuildTarget GetOrCreateXRSettings()
+        {
+            var method = typeof(XRGeneralSettingsPerBuildTarget).GetMethod(
+                "GetOrCreate",
+                System.Reflection.BindingFlags.Static |
+                System.Reflection.BindingFlags.NonPublic);
+            if (method == null)
+                throw new MissingMethodException("XRGeneralSettingsPerBuildTarget.GetOrCreate");
+            return (XRGeneralSettingsPerBuildTarget)method.Invoke(null, null);
+        }
+
+        private static void ConfigureImportedAssets()
+        {
+            foreach (string path in new[] { BottleRegisteredPairPath })
+            {
+                RequireFile(path);
+                AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
+                if (AssetImporter.GetAtPath(path) is ModelImporter importer)
+                {
+                    importer.importAnimation = false;
+                    importer.addCollider = false;
+                    importer.importCameras = false;
+                    importer.importLights = false;
+                    importer.isReadable = true;
+                    importer.preserveHierarchy = path == BottleRegisteredPairPath;
+                    // Preserve the exporter-authored FBX root conversion.  Unity
+                    // imports this asset with a measured Rx(-90); calibration applies
+                    // its exact inverse once, without altering the baked ORB-to-B Sim(3).
+                    importer.bakeAxisConversion = false;
+                    importer.materialImportMode =
+                        path == BottleRegisteredPairPath
+                            ? ModelImporterMaterialImportMode.ImportStandard
+                            : ModelImporterMaterialImportMode.None;
+                    importer.SaveAndReimport();
+                }
+            }
+
+            ConfigureTexture(BottleThumbnailPath, 1024);
+            ConfigureTexture(BottleAlbedoPath, 4096);
+        }
+
+        private static void ConfigureTexture(string path, int maximumSize)
+        {
+            RequireFile(path);
+            AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
+            if (AssetImporter.GetAtPath(path) is TextureImporter importer)
+            {
+                importer.sRGBTexture = true;
+                importer.mipmapEnabled = true;
+                importer.alphaSource = TextureImporterAlphaSource.None;
+                importer.maxTextureSize = maximumSize;
+                importer.textureCompression = TextureImporterCompression.Compressed;
+                importer.SaveAndReimport();
+            }
+        }
+
+        private static RestorationObjectCatalog CreateProfiles()
+        {
+            Material bottleSurfaceMaterial = CreateLitMaterial(
+                BottleSurfaceMaterialPath, BottleAlbedoPath, 0.12f, false);
+            Material bottleCapMaterial = CreateLitMaterial(
+                BottleCapMaterialPath, null, 0.28f, true);
+            bottleCapMaterial.SetColor(
+                "_BaseColor",
+                new Color(0.96f, 0.96f, 0.94f, 1f));
+            GameObject bottlePair =
+                AssetDatabase.LoadAssetAtPath<GameObject>(BottleRegisteredPairPath);
+            if (bottlePair == null)
+                throw new MissingReferenceException("BottleFullAlignedV2 FBX import failed.");
+
+            RestorationObjectProfile bottle = LoadOrCreate<RestorationObjectProfile>(
+                BottleProfilePath);
+            bottle.objectId = "bottle_orb_v42_proven_observations";
+            bottle.displayName = "无盖饮料瓶";
+            bottle.shortDescription =
+                "该对象是一只缺少瓶盖的饮料瓶。项目通过多视角图像建立瓶身三维模型，"
+                + "并在原有瓶口位置完成瓶盖的数字补全。";
+            bottle.viewerDescription =
+                "该对象是一只缺少瓶盖的饮料瓶。项目使用实际拍摄图像重建瓶身，"
+                + "保留瓶体外形和表面纹理，再依据瓶口尺寸补全瓶盖。";
+            bottle.trackingDescription =
+                "进入页面后 B+C 以正面初始位姿显示在画面中央，"
+                + "同时使用真实无盖瓶照片的 ORB 特征识别 A→B 六自由度位姿。"
+                + "点击开始后，在姿态稳定时关闭 B 的 Renderer，"
+                + "但保留 B 的跟踪位姿和 B/C 刚性关系。"
+                + "手机运动由 AR 世界相机提供连续透视，可靠 PnP 通过置信度加权 SE(3) 滤波持续更新完整位姿。"
+                + "C 不单独识别，不挂在屏幕或摄像机下。"
+                + "C 的外观结合真实瓶身 HSV 样本和 AR 光照估计平滑校正。";
+            bottle.missingPartName = "瓶盖 C";
+            bottle.thumbnail =
+                AssetDatabase.LoadAssetAtPath<Texture2D>(BottleThumbnailPath);
+            bottle.introductionImage =
+                AssetDatabase.LoadAssetAtPath<Texture2D>(BottleIntroductionImagePath);
+            bottle.repairBeforeImage = bottle.thumbnail;
+            bottle.repairAfterImage = bottle.introductionImage;
+            bottle.damagedViewerPrefab = bottlePair;
+            bottle.completeViewerPrefab = bottlePair;
+            bottle.trackingReferencePrefab = bottlePair;
+            bottle.registeredBottlePairPrefab = bottlePair;
+            bottle.trackingReferenceDatabase =
+                AssetDatabase.LoadAssetAtPath<TextAsset>(BottleReferenceOrbPath);
+            RepairCalibrationProfile bottleCalibration =
+                LoadOrCreate<RepairCalibrationProfile>(BottleCalibrationPath);
+            bottleCalibration.objectOriginInModel = Vector3.zero;
+            // v43 bakes the complete semantic Sim(3) into production B+neck+C.
+            // The A046 object origin is intentionally not forced to the mouth.
+            Vector3 mouth = new Vector3(
+                0.045759562f, 0.03868117f, 0.089144155f);
+            bottleCalibration.mouthCenterInModel = mouth;
+            bottleCalibration.mouthRightInModel = mouth + Vector3.right * 0.1f;
+            bottleCalibration.mouthFrontInModel = mouth + Vector3.forward * 0.1f;
+            bottleCalibration.neckAxisPointInModel = mouth - Vector3.up * 0.2f;
+            bottleCalibration.hasAuthoredBLandmarks = false;
+            bottleCalibration.authoredBOrigin = Vector3.zero;
+            bottleCalibration.authoredBMouthCenter = Vector3.zero;
+            bottleCalibration.authoredBMouthRight = Vector3.zero;
+            bottleCalibration.authoredBMouthFront = Vector3.zero;
+            bottleCalibration.authoredBNeckAxisPoint = Vector3.zero;
+            bottleCalibration.modelRegistrationArtifact =
+                AssetDatabase.LoadAssetAtPath<TextAsset>(
+                    BottleRegistrationArtifactPath);
+            bottleCalibration.metersPerModelUnit = 0.17f;
+            bottleCalibration.physicalScaleVerified = true;
+            bottleCalibration.expectedPhysicalNeckDiameter = 0.034f;
+            bottleCalibration.expectedPhysicalCapDiameter = 0.039f;
+            bottleCalibration.expectedPhysicalCapHeight = 0.010f;
+            bottleCalibration.orbToModelLocalPosition = Vector3.zero;
+            // Unity's FBX root conversion remains the only calibration TRS.
+            // The v42 v41-B -> v40-ORB bridge is applied explicitly by the
+            // tracking controller, not hidden in this calibration profile.
+            bottleCalibration.orbToModelLocalEulerAngles = new Vector3(90f, 0f, 0f);
+            bottleCalibration.orbToModelLocalScale = Vector3.one;
+            EditorUtility.SetDirty(bottleCalibration);
+            bottle.calibration = bottleCalibration;
+            bottle.viewerMaterial = bottleSurfaceMaterial;
+            // The user aligns the full-colour B+C mesh, not a translucent
+            // silhouette. Keep the legacy alignment material out of the
+            // production profile.
+            bottle.preAlignmentMaterial = bottleSurfaceMaterial;
+            bottle.repairMaterial = bottleCapMaterial;
+            bottle.occlusionDepthEpsilonMeters = 0.0005f;
+            bottle.defaultViewerEuler = Vector3.zero;
+            bottle.viewerMargin = 0.18f;
+            bottle.trackingSettings.minimumGoodMatches = 8;
+            bottle.trackingSettings.minimumPoseInliers = 6;
+            bottle.trackingSettings.minimumInlierRatio = 0.35f;
+            bottle.trackingSettings.maximumReprojectionErrorPixels = 3.0f;
+            bottle.trackingSettings.maximumReprojectionMaxPixels = 8.0f;
+            bottle.trackingSettings.minimumCoverageX = 0.05f;
+            bottle.trackingSettings.minimumCoverageY = 0.10f;
+            bottle.trackingSettings.registrationConfirmationFrames = 5;
+            bottle.trackingSettings.registrationPositionToleranceMeters = 0.025f;
+            bottle.trackingSettings.registrationRotationToleranceDegrees = 8f;
+            bottle.trackingSettings.temporaryLossHoldSeconds = 2.5f;
+            bottle.trackingSettings.positionSmoothing = 0.20f;
+            bottle.trackingSettings.rotationSmoothing = 0.18f;
+            bottle.trackingSettings.highConfidencePoseInliers = 20;
+            bottle.trackingSettings.highConfidenceInlierRatio = 0.45f;
+            bottle.trackingSettings.highConfidenceMaximumRmsPixels = 2.3f;
+            bottle.physicalScaleVerified =
+                bottle.calibration != null && bottle.calibration.physicalScaleVerified;
+            bottle.physicalMeasurements = new[]
+            {
+                new PhysicalMeasurement
+                {
+                    label = "瓶口螺纹最外侧直径",
+                    modelDistanceUnits = 0.2f,
+                    realDistanceMeters = 0.034f,
+                    verified = true
+                },
+                new PhysicalMeasurement
+                {
+                    label = "瓶盖外径",
+                    modelDistanceUnits = 0.039f / 0.17f,
+                    realDistanceMeters = 0.039f,
+                    verified = true
+                },
+                new PhysicalMeasurement
+                {
+                    label = "瓶盖高度",
+                    modelDistanceUnits = 0.010f / 0.17f,
+                    realDistanceMeters = 0.010f,
+                    verified = true
+                }
+            };
+            EditorUtility.SetDirty(bottle);
+
+            RestorationObjectCatalog catalog =
+                LoadOrCreate<RestorationObjectCatalog>(CatalogPath);
+            catalog.objects = new[] { bottle };
+            EditorUtility.SetDirty(catalog);
+            return catalog;
+        }
+
+        private static void CreatePrototypeScene(RestorationObjectCatalog catalog)
+        {
+            Scene scene = EditorSceneManager.NewScene(
+                NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            GameObject sessionObject = new GameObject("AR Session");
+            ARSession arSession = sessionObject.AddComponent<ARSession>();
+            sessionObject.AddComponent<ARInputManager>();
+            arSession.enabled = false;
+
+            GameObject originObject = new GameObject("XR Origin");
+            var origin = originObject.AddComponent<Unity.XR.CoreUtils.XROrigin>();
+            GameObject offset = new GameObject("Camera Offset");
+            offset.transform.SetParent(originObject.transform, false);
+            origin.CameraFloorOffsetObject = offset;
+
+            GameObject cameraObject = new GameObject("AR Camera");
+            cameraObject.transform.SetParent(offset.transform, false);
+            Camera arCamera = cameraObject.AddComponent<Camera>();
+            cameraObject.tag = "MainCamera";
+            arCamera.clearFlags = CameraClearFlags.SolidColor;
+            arCamera.backgroundColor = Color.black;
+            arCamera.nearClipPlane = 0.02f;
+            arCamera.farClipPlane = 20f;
+            arCamera.cullingMask |= 1 << 0;
+            cameraObject.AddComponent<UniversalAdditionalCameraData>();
+            cameraObject.AddComponent<AudioListener>();
+            ARCameraManager cameraManager = cameraObject.AddComponent<ARCameraManager>();
+            cameraManager.requestedLightEstimation =
+                LightEstimation.AmbientIntensity
+                | LightEstimation.AmbientColor
+                | LightEstimation.AmbientSphericalHarmonics
+                | LightEstimation.MainLightDirection
+                | LightEstimation.MainLightIntensity;
+            ARCameraBackground cameraBackground = cameraObject.AddComponent<ARCameraBackground>();
+            AROcclusionManager occlusionManager =
+                cameraObject.AddComponent<AROcclusionManager>();
+            occlusionManager.requestedEnvironmentDepthMode =
+                EnvironmentDepthMode.Fastest;
+            occlusionManager.requestedOcclusionPreferenceMode =
+                OcclusionPreferenceMode.PreferEnvironmentOcclusion;
+            cameraBackground.enabled = false;
+            cameraManager.enabled = false;
+            occlusionManager.enabled = false;
+            arCamera.enabled = false;
+            origin.Camera = arCamera;
+            Light estimatedMainLight = CreateRepairLighting();
+
+            GameObject trackedRoot = new GameObject("TrackedBottleRoot");
+            GameObject alignment = new GameObject("ModelCoordinateAlignment");
+            alignment.transform.SetParent(trackedRoot.transform, false);
+            GameObject occlusionRoot = new GameObject("OcclusionRoot");
+            occlusionRoot.transform.SetParent(alignment.transform, false);
+            occlusionRoot.SetActive(false);
+            GameObject debugRoot = new GameObject("DebugRoot");
+            debugRoot.transform.SetParent(alignment.transform, false);
+            debugRoot.SetActive(false);
+            trackedRoot.SetActive(true);
+
+            GameObject application = new GameObject("URP Application");
+            application.AddComponent<BuildIdentityRuntime>();
+            RepairOverlayController overlay = application.AddComponent<RepairOverlayController>();
+            OrbImageTrackingController tracker =
+                originObject.AddComponent<OrbImageTrackingController>();
+            RepairAppearanceConsistencyController appearance =
+                originObject.AddComponent<RepairAppearanceConsistencyController>();
+            CapVisibilityDiagnostic capDiagnostic =
+                originObject.AddComponent<CapVisibilityDiagnostic>();
+            PoseCoordinateDiagnostic poseDiagnostic =
+                originObject.AddComponent<PoseCoordinateDiagnostic>();
+            AssignReference(appearance, "cameraManager", cameraManager);
+            AssignReference(appearance, "estimatedMainLight", estimatedMainLight);
+            AssignReference(capDiagnostic, "arCamera", arCamera);
+            AssignReference(capDiagnostic, "arCameraBackground", cameraBackground);
+            AssignReference(capDiagnostic, "arOcclusionManager", occlusionManager);
+            AssignReference(poseDiagnostic, "arCamera", arCamera);
+            AssignReference(poseDiagnostic, "cameraManager", cameraManager);
+            AssignReference(tracker, "cameraManager", cameraManager);
+            AssignReference(tracker, "arCamera", arCamera);
+            AssignReference(tracker, "appearanceConsistency", appearance);
+            AssignReference(tracker, "capVisibilityDiagnostic", capDiagnostic);
+            AssignReference(tracker, "poseCoordinateDiagnostic", poseDiagnostic);
+            AssignReference(tracker, "trackedObjectPoseRoot", trackedRoot.transform);
+            AssignReference(tracker, "modelCoordinateAlignment", alignment.transform);
+            AssignReference(tracker, "occlusionRoot", occlusionRoot.transform);
+            AssignReference(tracker, "debugRoot", debugRoot.transform);
+            AssignReference(overlay, "orbTracker", tracker);
+
+            ModelViewerController viewer = CreateModelViewer(arCamera);
+            UrpAppController app = application.AddComponent<UrpAppController>();
+            AssignReference(app, "chineseFont", AssetDatabase.LoadAssetAtPath<Font>(FontPath));
+            AssignReference(app, "catalog", catalog);
+            AssignReference(app, "orbTracker", tracker);
+            AssignReference(app, "repairController", overlay);
+            AssignReference(app, "modelViewer", viewer);
+            AssignReference(app, "arSession", arSession);
+            AssignReference(app, "arCamera", arCamera);
+            AssignReference(app, "arCameraManager", cameraManager);
+            AssignReference(app, "arCameraBackground", cameraBackground);
+            AssignReference(app, "arOcclusionManager", occlusionManager);
+
+            CreateEventSystem();
+            EditorSceneManager.SaveScene(scene, ScenePath);
+            EditorBuildSettings.scenes = new[]
+            {
+                new EditorBuildSettingsScene(ScenePath, true),
+                new EditorBuildSettingsScene("Assets/Scenes/ArtifactARScene.unity", true)
+            };
+        }
+
+        private static ModelViewerController CreateModelViewer(Camera arCamera)
+        {
+            const int viewerLayer = 8;
+            GameObject root = new GameObject("Three Dimensional Resource Viewer");
+            GameObject modelRoot = new GameObject("ModelViewRoot");
+            modelRoot.transform.SetParent(root.transform, false);
+            modelRoot.layer = viewerLayer;
+            ModelViewerController controller = root.AddComponent<ModelViewerController>();
+            GameObject cameraObject = new GameObject("Resource Viewer Camera");
+            cameraObject.transform.SetParent(root.transform, false);
+            cameraObject.layer = viewerLayer;
+            Camera viewerCamera = cameraObject.AddComponent<Camera>();
+            cameraObject.AddComponent<UniversalAdditionalCameraData>();
+            viewerCamera.clearFlags = CameraClearFlags.SolidColor;
+            viewerCamera.backgroundColor = new Color32(235, 241, 248, 255);
+            viewerCamera.fieldOfView = 32f;
+            viewerCamera.allowHDR = false;
+            viewerCamera.allowMSAA = true;
+            viewerCamera.depth = 5f;
+            viewerCamera.cullingMask = 1 << viewerLayer;
+            viewerCamera.targetTexture = null;
+            cameraObject.SetActive(false);
+            arCamera.cullingMask &= ~(1 << viewerLayer);
+
+            GameObject lightObject = new GameObject("Resource Viewer Key Light");
+            lightObject.transform.SetParent(root.transform, false);
+            Light light = lightObject.AddComponent<Light>();
+            light.type = LightType.Directional;
+            light.intensity = 0.72f;
+            light.color = new Color(1f, 0.98f, 0.94f);
+            light.cullingMask = 1 << viewerLayer;
+            lightObject.transform.rotation = Quaternion.Euler(42f, -38f, 0f);
+            AssignReference(controller, "viewerCamera", viewerCamera);
+            AssignReference(controller, "modelViewRoot", modelRoot.transform);
+            return controller;
+        }
+
+        private static Light CreateRepairLighting()
+        {
+            GameObject keyObject = new GameObject("AR Estimated Main Light");
+            keyObject.transform.rotation = Quaternion.Euler(38f, -32f, 0f);
+            Light key = keyObject.AddComponent<Light>();
+            key.type = LightType.Directional;
+            key.intensity = 0.8f;
+            key.color = Color.white;
+            key.cullingMask = 1;
+            key.shadows = LightShadows.None;
+            return key;
+        }
+
+        private static Material CreateLitMaterial(
+            string path, string texturePath, float smoothness, bool doubleSided = false)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path) ?? "Assets");
+            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+            if (shader == null)
+                throw new InvalidOperationException("Universal Render Pipeline/Lit shader is missing.");
+            Material material = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (material == null)
+            {
+                material = new Material(shader);
+                AssetDatabase.CreateAsset(material, path);
+            }
+            material.shader = shader;
+            material.SetColor("_BaseColor", Color.white);
+            material.SetFloat("_Metallic", 0f);
+            material.SetFloat("_Smoothness", smoothness);
+            material.SetFloat(
+                "_Cull",
+                (float)(doubleSided ? CullMode.Off : CullMode.Back));
+            material.doubleSidedGI = doubleSided;
+            material.DisableKeyword("_EMISSION");
+            if (material.HasProperty("_EmissionColor"))
+                material.SetColor("_EmissionColor", Color.black);
+            if (!string.IsNullOrEmpty(texturePath))
+                material.SetTexture("_BaseMap",
+                    AssetDatabase.LoadAssetAtPath<Texture2D>(texturePath));
+            EditorUtility.SetDirty(material);
+            return material;
+        }
+
+        private static T LoadOrCreate<T>(string path) where T : ScriptableObject
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path) ?? "Assets");
+            T asset = AssetDatabase.LoadAssetAtPath<T>(path);
+            if (asset == null)
+            {
+                asset = ScriptableObject.CreateInstance<T>();
+                AssetDatabase.CreateAsset(asset, path);
+            }
+            return asset;
+        }
+
+        private static void RequireFile(string path)
+        {
+            if (!File.Exists(path)) throw new FileNotFoundException(path);
+        }
+
+        private static void CreateEventSystem()
+        {
+            GameObject eventSystem = new GameObject("EventSystem");
+            eventSystem.AddComponent<EventSystem>();
+            eventSystem.AddComponent<UnityEngine.InputSystem.UI.InputSystemUIInputModule>();
+        }
+
+        private static void AssignReference(
+            UnityEngine.Object target, string propertyName, UnityEngine.Object value)
+        {
+            SerializedObject serialized = new SerializedObject(target);
+            SerializedProperty property = serialized.FindProperty(propertyName);
+            if (property == null)
+                throw new MissingFieldException(target.GetType().Name, propertyName);
+            property.objectReferenceValue = value;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+    }
+}

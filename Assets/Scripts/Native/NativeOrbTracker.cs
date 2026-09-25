@@ -1,0 +1,333 @@
+using System;
+using System.Runtime.InteropServices;
+using UnityEngine;
+
+namespace Urp.ArDemo.Native
+{
+    internal sealed class NativeOrbTracker : IDisposable
+    {
+        private const string DllName = "UrpOrbNative";
+
+        private readonly int handle;
+        private bool disposed;
+
+        public NativeOrbTracker(int featureCount, float ratioTest, int minGoodMatches, int maxFrameWidth)
+        {
+            handle = urp_orb_create(featureCount, ratioTest, minGoodMatches, maxFrameWidth);
+        }
+
+        public bool IsValid => handle != 0 && !disposed;
+
+        public static string BuildVersion
+        {
+            get
+            {
+                try
+                {
+                    IntPtr value = urp_orb_get_build_version();
+                    return value == IntPtr.Zero ? "unknown" : Marshal.PtrToStringAnsi(value);
+                }
+                catch
+                {
+                    return "unavailable";
+                }
+            }
+        }
+
+        public unsafe bool SetModel(TextAsset model)
+        {
+            if (!IsValid || model == null || model.bytes == null || model.bytes.Length == 0)
+            {
+                return false;
+            }
+
+            byte[] bytes = model.bytes;
+            fixed (byte* ptr = bytes)
+            {
+                return urp_orb_set_model(handle, ptr, bytes.Length) != 0;
+            }
+        }
+
+        /// <summary>
+        /// Supplies a coarse model-to-camera pose only to guide descriptor
+        /// correspondence search. The final pose still comes from natural
+        /// feature correspondences and solvePnPRansac.
+        /// </summary>
+        public unsafe bool SetPosePrior(float[] rotationTranslation, float searchRadiusFraction)
+        {
+            if (!IsValid || rotationTranslation == null || rotationTranslation.Length != 12)
+            {
+                return false;
+            }
+            fixed (float* values = rotationTranslation)
+            {
+                return urp_orb_set_pose_prior(
+                    handle,
+                    values,
+                    searchRadiusFraction) != 0;
+            }
+        }
+
+        public void ClearPosePrior()
+        {
+            if (IsValid)
+            {
+                urp_orb_clear_pose_prior(handle);
+            }
+        }
+
+        public unsafe bool Track(Texture2D texture, CameraIntrinsics intrinsics, out NativeOrbResult result)
+        {
+            result = default;
+            if (!IsValid || texture == null)
+            {
+                return false;
+            }
+
+            byte[] rgba = GetRgbaBytes(texture);
+            return Track(rgba, texture.width, texture.height, intrinsics, 0, out result);
+        }
+
+        public unsafe bool Track(
+            byte[] rgba,
+            int width,
+            int height,
+            CameraIntrinsics intrinsics,
+            int rotationClockwise,
+            out NativeOrbResult result)
+        {
+            result = default;
+            if (!IsValid || rgba == null || rgba.Length != width * height * 4)
+            {
+                return false;
+            }
+
+            fixed (byte* ptr = rgba)
+            {
+                return urp_orb_track(
+                    handle,
+                    ptr,
+                    width,
+                    height,
+                    intrinsics.FocalLengthX,
+                    intrinsics.FocalLengthY,
+                    intrinsics.PrincipalPointX,
+                    intrinsics.PrincipalPointY,
+                    rotationClockwise,
+                    out result) != 0;
+            }
+        }
+
+        public unsafe bool TryGetLastInliers(out NativeInlierSet inliers)
+        {
+            inliers = default;
+            if (!IsValid)
+            {
+                return false;
+            }
+            const int Capacity = 128;
+            float[] model = new float[Capacity * 3];
+            float[] frame = new float[Capacity * 2];
+            float[] intrinsics = new float[4];
+            int frameWidth;
+            int frameHeight;
+            int count;
+            fixed (float* modelPtr = model)
+            fixed (float* framePtr = frame)
+            fixed (float* intrinsicsPtr = intrinsics)
+            {
+                count = urp_orb_get_last_inliers(
+                    handle,
+                    modelPtr,
+                    framePtr,
+                    Capacity,
+                    out frameWidth,
+                    out frameHeight,
+                    intrinsicsPtr);
+            }
+            if (count <= 0 || frameWidth <= 0 || frameHeight <= 0)
+            {
+                return false;
+            }
+            Vector3[] modelPoints = new Vector3[count];
+            Vector2[] framePoints = new Vector2[count];
+            for (int i = 0; i < count; i++)
+            {
+                modelPoints[i] = new Vector3(
+                    model[i * 3],
+                    model[i * 3 + 1],
+                    model[i * 3 + 2]);
+                framePoints[i] = new Vector2(
+                    frame[i * 2],
+                    frame[i * 2 + 1]);
+            }
+            inliers = new NativeInlierSet(
+                modelPoints,
+                framePoints,
+                frameWidth,
+                frameHeight,
+                new CameraIntrinsics(
+                    intrinsics[0], intrinsics[1], intrinsics[2], intrinsics[3]));
+            return true;
+        }
+
+        public void Dispose()
+        {
+            if (disposed)
+            {
+                return;
+            }
+
+            disposed = true;
+            if (handle != 0)
+            {
+                urp_orb_destroy(handle);
+            }
+        }
+
+        [DllImport(DllName)]
+        private static extern int urp_orb_create(int featureCount, float ratio, int minMatches, int maxWidth);
+
+        [DllImport(DllName)]
+        private static extern IntPtr urp_orb_get_build_version();
+
+        [DllImport(DllName)]
+        private static extern void urp_orb_destroy(int handle);
+
+        [DllImport(DllName)]
+        private static extern unsafe int urp_orb_set_model(int handle, byte* data, int length);
+
+        [DllImport(DllName)]
+        private static extern unsafe int urp_orb_set_pose_prior(
+            int handle, float* rotationTranslation, float searchRadiusFraction);
+
+        [DllImport(DllName)]
+        private static extern int urp_orb_clear_pose_prior(int handle);
+
+        [DllImport(DllName)]
+        private static extern unsafe int urp_orb_track(
+            int handle,
+            byte* rgba,
+            int width,
+            int height,
+            float fx,
+            float fy,
+            float cx,
+            float cy,
+            int rotationClockwise,
+            out NativeOrbResult result);
+
+        [DllImport(DllName)]
+        private static extern unsafe int urp_orb_get_last_inliers(
+            int handle,
+            float* modelXyz,
+            float* frameXy,
+            int capacity,
+            out int frameWidth,
+            out int frameHeight,
+            float* intrinsics);
+
+        internal static byte[] GetRgbaBytes(Texture2D texture)
+        {
+            int expectedLength = texture.width * texture.height * 4;
+            if (texture.format == TextureFormat.RGBA32)
+            {
+                byte[] raw = texture.GetRawTextureData<byte>().ToArray();
+                if (raw.Length == expectedLength)
+                {
+                    return raw;
+                }
+            }
+
+            Color32[] pixels = texture.GetPixels32();
+            byte[] rgba = new byte[expectedLength];
+            for (int i = 0; i < pixels.Length; i++)
+            {
+                int offset = i * 4;
+                rgba[offset] = pixels[i].r;
+                rgba[offset + 1] = pixels[i].g;
+                rgba[offset + 2] = pixels[i].b;
+                rgba[offset + 3] = pixels[i].a;
+            }
+
+            return rgba;
+        }
+    }
+
+
+    public readonly struct CameraIntrinsics
+    {
+        public CameraIntrinsics(float focalLengthX, float focalLengthY, float principalPointX, float principalPointY)
+        {
+            FocalLengthX = focalLengthX;
+            FocalLengthY = focalLengthY;
+            PrincipalPointX = principalPointX;
+            PrincipalPointY = principalPointY;
+        }
+
+        public float FocalLengthX { get; }
+        public float FocalLengthY { get; }
+        public float PrincipalPointX { get; }
+        public float PrincipalPointY { get; }
+    }
+
+    public readonly struct NativeInlierSet
+    {
+        public NativeInlierSet(
+            Vector3[] modelPoints,
+            Vector2[] framePoints,
+            int frameWidth,
+            int frameHeight,
+            CameraIntrinsics intrinsics)
+        {
+            ModelPoints = modelPoints;
+            FramePoints = framePoints;
+            FrameWidth = frameWidth;
+            FrameHeight = frameHeight;
+            Intrinsics = intrinsics;
+        }
+
+        public Vector3[] ModelPoints { get; }
+        public Vector2[] FramePoints { get; }
+        public int FrameWidth { get; }
+        public int FrameHeight { get; }
+        public CameraIntrinsics Intrinsics { get; }
+        public int Count => ModelPoints?.Length ?? 0;
+    }
+
+    [Serializable, StructLayout(LayoutKind.Sequential)]
+    public struct NativeOrbResult
+    {
+        public int tracked;
+        public int poseValid;
+        public int poseInliers;
+        public int uniqueMatches;
+        public int detectedKeypoints;
+        public int ratioMatches;
+        public int guidedMatches;
+        public int occupiedGridCells;
+        public int rejectionCode;
+        public float tvecX;
+        public float tvecY;
+        public float tvecZ;
+        public float r00;
+        public float r01;
+        public float r02;
+        public float r10;
+        public float r11;
+        public float r12;
+        public float r20;
+        public float r21;
+        public float r22;
+        public float reprojectionError;
+        public float reprojectionMax;
+        public float inlierRatio;
+        public float coverageX;
+        public float coverageY;
+        public float processingMilliseconds;
+        public float sampledHue;
+        public float sampledSaturation;
+        public float sampledValue;
+        public float sampledConfidence;
+    }
+}

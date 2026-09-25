@@ -1,0 +1,25 @@
+{
+  "version": "bottle-orb-frame-contract-v42",
+  "orb_database_sha256": "A046CD3386245B4A255A45088ECD9087366FF32A1352B2E20C3AC713253AC1EF",
+  "orb_database_records": 4100,
+  "runtime_observation_policy": "aeb5a36/v40 records, descriptors, ordering, and 3D coordinates are byte-for-byte unchanged",
+  "coordinate_frame_origin": "device-proven v40 physical bottle mouth origin",
+  "+X_definition": "bottle right",
+  "+Y_definition": "physical bottle long axis from base to mouth",
+  "+Z_definition": "printed red-logo/front side",
+  "metersPerModelUnit": 0.17,
+  "v41_geometry_retained": true,
+  "v41_independent_measurements_retained": true,
+  "v41B_to_v40ORB_bridge_artifact": "Assets\\Calibration\\bottle_v42_v41b_to_v40orb_frame_bridge.json",
+  "T_V40_ORB_FROM_V41_B": [
+    0.992102548022601, 0.018853338881554, -0.041932210463208, 0.0,
+    -0.017493476907616, 0.992486228081339, 0.032346403027380, 0.0,
+    0.042517489660092, -0.031573139472411, 0.991754316547757, 0.0,
+    0.0, 0.0, 0.0, 1.0
+  ],
+  "blender_policy": "v41 B/ReferenceNeck are fixed into the v40 ORB frame; inherited C already occupies that frame; no independent C offset is allowed",
+  "unity_policy": "TrackedBottleRoot is the v40 ORB frame; the fixed B frame bridge is below BottleRepairRoot and ModelCoordinateAlignment only cancels the imported FBX axis conversion",
+  "first_acquisition_prior": "NONE",
+  "registered_tracking_prior": "RELIABLE_LAST_POSE",
+  "device_verified": false
+}

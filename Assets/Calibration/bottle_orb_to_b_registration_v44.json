@@ -1,0 +1,154 @@
+﻿{
+    "version":  "bottle-v44-current-4100-to-current-production-b-real-sim3",
+    "registration_method":  "actual iterative closest-point-on-triangle; 75% trimmed; Huber robust constrained Sim(3); high independent mouth/base/front weights; rotation bounded to +/-5deg",
+    "independent_model_registration_verified":  true,
+    "device_verified":  false,
+    "source_orb_sha256":  "A046CD3386245B4A255A45088ECD9087366FF32A1352B2E20C3AC713253AC1EF",
+    "source_b_mesh_sha256":  "F34A9546EC22142C93068D0FD7D0B65963323B4DE87D6AA19AECB4E00FD17A49",
+    "target_b_mesh_sha256":  "F0661ADB5E953A1DA4605A943995E251ACD4039C0397A14B99F0418319562D21",
+    "T_ORB_FROM_B":  [
+                         1.157849521825846,
+                         -0.009241975030546069,
+                         2.8776770386912155E-05,
+                         -4.1746633142481582E-05,
+                         0.009241511747506993,
+                         1.1577424524113165,
+                         -0.015746061988944588,
+                         -0.0034213223075726944,
+                         9.6908144349004186E-05,
+                         0.015745790074612274,
+                         1.1577793359818813,
+                         -0.007863030396962453,
+                         0.0,
+                         0.0,
+                         0.0,
+                         1.0
+                     ],
+    "scale":  1.1578864063987053,
+    "determinant":  1.5523793820354161,
+    "translation":  [
+                        -4.1746633142481582E-05,
+                        -0.0034213223075726944,
+                        -0.007863030396962453
+                    ],
+    "rotation_quaternion_xyzw":  [
+                                     0.00679963741327726,
+                                     -1.4710746083642724E-05,
+                                     0.003990905583139909,
+                                     0.9999689182105953
+                                 ],
+    "actual_fit_iterations":  4,
+    "actual_total_observation_count":  4100,
+    "actual_correspondence_count":  3075,
+    "actual_trimmed_count":  1025,
+    "trim_fraction":  0.25,
+    "robust_loss":  "Huber",
+    "before_refinement":  {
+                              "rms_mm":  16.37975352891611,
+                              "median_mm":  14.493625630097503,
+                              "p90_mm":  25.130620865267865,
+                              "p95_mm":  26.712477225620553,
+                              "max_mm":  30.795534354276686
+                          },
+    "after_refinement":  {
+                             "rms_mm":  6.8674975071754005,
+                             "median_mm":  6.364741068938846,
+                             "p90_mm":  9.785784776136115,
+                             "p95_mm":  10.551208608950366,
+                             "max_mm":  18.69514833626609
+                         },
+    "orb_point_to_b_surface_mm":  {
+                                      "rms_mm":  6.8674975071754005,
+                                      "median_mm":  6.364741068938846,
+                                      "p90_mm":  9.785784776136115,
+                                      "p95_mm":  10.551208608950366,
+                                      "max_mm":  18.69514833626609
+                                  },
+    "mouth_center_independently_measured":  true,
+    "base_center_independently_measured":  true,
+    "front_semantics_independently_measured":  true,
+    "mouth_center_error_mm":  1.350169583953769,
+    "base_center_error_mm":  0.10957064294592234,
+    "bottle_axis_endpoint_error_mm":  0.10957064294592234,
+    "bottle_height_error_mm":  0.025516654986854626,
+    "front_axis_error_deg":  0.7791888799148543,
+    "up_axis_error_deg":  0.9034851143504204,
+    "landmark_rms_mm":  1.1031875504251416,
+    "orb_origin_definition":  "A046 canonicalizer physical-mouth frame; independently defined before production-B registration",
+    "mouth_center_orb":  [
+                             -1.1102230246251565E-16,
+                             4.5102810375396984E-17,
+                             0.0
+                         ],
+    "base_center_orb":  [
+                            0.0,
+                            -1.4250578383091925,
+                            0.0
+                        ],
+    "front_axis_orb":  [
+                           0,
+                           0,
+                           1
+                       ],
+    "front_point_orb":  [
+                            -1.1102230246251565E-16,
+                            4.5102810375396984E-17,
+                            0.1
+                        ],
+    "mouth_center_b":  [
+                           6.1583826631958139E-05,
+                           0.003356974571943283,
+                           -0.00010213030759421664
+                       ],
+    "base_center_b":  [
+                          -0.009758248824567828,
+                          -1.226987600326538,
+                          0.023545574713084452
+                      ],
+    "registered_mouth_center_b_orb":  [
+                                          -1.4698430769521386E-06,
+                                          0.0004673669438429555,
+                                          -0.007928410571802519
+                                      ],
+    "registered_base_center_b_orb":  [
+                                         1.3596207868501325E-07,
+                                         -1.42441788683804,
+                                         7.67146269846225E-05
+                                     ],
+    "registered_front_point_b_orb":  [
+                                         1.4078339617390779E-06,
+                                         -0.0011072392550515032,
+                                         0.10784952302638562
+                                     ],
+    "production_b_mouth_center":  [
+                                      6.1583826631958139E-05,
+                                      0.003356974571943283,
+                                      -0.00010213030759421664
+                                  ],
+    "production_b_mouth_normal":  [
+                                      0,
+                                      1,
+                                      0
+                                  ],
+    "production_b_mouth_diameter_model_units":  0.19873666726472974,
+    "production_b_mouth_diameter_mm":  33.78523343500406,
+    "production_b_mouth_ring_inlier_count":  17,
+    "production_b_mouth_ring_mad":  3.6119783089483271E-07,
+    "production_b_base_center":  [
+                                     -0.009758248824567828,
+                                     -1.226987600326538,
+                                     0.023545574713084452
+                                 ],
+    "production_b_base_plane_normal":  [
+                                           0,
+                                           1,
+                                           0
+                                       ],
+    "production_b_base_radius_model_units":  0.20253208882194496,
+    "production_b_base_inlier_count":  654,
+    "production_b_base_ring_mad":  0.010619402471691589,
+    "single_rigid_sim3_assessment":  {
+                                         "mouth_base_front_all_below_3mm":  true,
+                                         "requires_meshroom_reconstruction":  false
+                                     }
+}

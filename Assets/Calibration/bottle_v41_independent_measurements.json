@@ -1,0 +1,769 @@
+{
+  "version": "same-reconstruction-independent-landmark-measurement-v41",
+  "raw_orb_reconstruction_surface": {
+    "path": "F:\\Meshroom_work\\bottle_damaged\\v41_same_reconstruction_mesh\\mesh.obj",
+    "sha256": "31B21C682E398AFEF7CB10FD61A22BF8A5BEED6DCF7E100F1244BAA12859CAAA",
+    "vertices": 88914,
+    "faces": 181145,
+    "bounds": [
+      [
+        -0.404612064,
+        0.0797475129,
+        -0.842067063
+      ],
+      [
+        -0.00010777323,
+        1.20018697,
+        -0.469617784
+      ]
+    ],
+    "mouth_radius_mesh_units": 0.07220510542019017,
+    "axis_height_mesh_units": 1.0289645144498356,
+    "mouth_fit": {
+      "plane_y": 1.1645675657792272,
+      "ring_center_xyz": [
+        -0.21853816124341643,
+        1.1645675657792272,
+        -0.6781877243166394
+      ],
+      "ring_radius_sfm_units": 0.07220510542019017,
+      "ring_mad_sfm_units": 0.007048337902179291,
+      "ring_vertex_count": 299
+    },
+    "base_fit": {
+      "plane_y": 0.13644641990838752,
+      "ring_center_xyz": [
+        -0.17865049236814529,
+        0.13644641990838752,
+        -0.6901816928806378
+      ],
+      "ring_radius_sfm_units": 0.16522093137621652,
+      "ring_mad_sfm_units": 0.004540037092961455,
+      "ring_vertex_count": 82
+    },
+    "mouth_center_mesh": [
+      -0.21853816124341643,
+      1.1645675657792272,
+      -0.6781877243166394
+    ],
+    "base_center_mesh": [
+      -0.17865049236814529,
+      0.13644641990838752,
+      -0.6901816928806378
+    ],
+    "up_axis_mesh": [
+      -0.03876486342835467,
+      0.9991803715607755,
+      0.011656348100994793
+    ]
+  },
+  "production_b_surface": {
+    "path": "F:\\Meshroom_work\\bottle_damaged\\v41_same_reconstruction_mesh\\mesh_filtered.obj",
+    "sha256": "99C377511AF8410AA0B1E75E69B48A0684317A5437569460F01B812880681A2A",
+    "vertices": 89224,
+    "faces": 179634,
+    "bounds": [
+      [
+        -0.393573135,
+        0.0847296789,
+        -0.840021253
+      ],
+      [
+        -0.00276330486,
+        1.19459629,
+        -0.478337765
+      ]
+    ],
+    "mouth_radius_mesh_units": 0.07218507102536331,
+    "axis_height_mesh_units": 1.0287131053650298,
+    "mouth_fit": {
+      "plane_y": 1.1645271613613641,
+      "ring_center_xyz": [
+        -0.21835332127806062,
+        1.1645271613613641,
+        -0.678562759363672
+      ],
+      "ring_radius_sfm_units": 0.07218507102536331,
+      "ring_mad_sfm_units": 0.007362984051188966,
+      "ring_vertex_count": 300
+    },
+    "base_fit": {
+      "plane_y": 0.13665116958831877,
+      "ring_center_xyz": [
+        -0.17831169212994968,
+        0.13665116958831877,
+        -0.68943780517998
+      ],
+      "ring_radius_sfm_units": 0.16539434341427006,
+      "ring_mad_sfm_units": 0.004306023983355459,
+      "ring_vertex_count": 88
+    },
+    "mouth_center_mesh": [
+      -0.21835332127806062,
+      1.1645271613613641,
+      -0.678562759363672
+    ],
+    "base_center_mesh": [
+      -0.17831169212994968,
+      0.13665116958831877,
+      -0.68943780517998
+    ],
+    "up_axis_mesh": [
+      -0.03892400022832655,
+      0.9991862516501261,
+      0.010571505077160481
+    ]
+  },
+  "semantic_evidence": {
+    "red_logo_detection": "HSV connected-component centroid on actual masked photographs",
+    "red_logo_front_frame_ids": [
+      356,
+      84,
+      40,
+      416,
+      1,
+      52,
+      296,
+      88,
+      212,
+      92,
+      364,
+      368,
+      360,
+      424,
+      48,
+      44,
+      292,
+      208
+    ],
+    "red_logo_pixel_observations": [
+      {
+        "frame_id": 356,
+        "view_id": "188151071",
+        "pixel": [
+          436.0,
+          611.5
+        ],
+        "component_area_px": 12702
+      },
+      {
+        "frame_id": 84,
+        "view_id": "238057621",
+        "pixel": [
+          549.5,
+          704.5
+        ],
+        "component_area_px": 8747
+      },
+      {
+        "frame_id": 40,
+        "view_id": "260932805",
+        "pixel": [
+          633.5,
+          579.0
+        ],
+        "component_area_px": 8196
+      },
+      {
+        "frame_id": 416,
+        "view_id": "322271968",
+        "pixel": [
+          442.0,
+          472.5
+        ],
+        "component_area_px": 8169
+      },
+      {
+        "frame_id": 1,
+        "view_id": "497825262",
+        "pixel": [
+          701.5,
+          461.0
+        ],
+        "component_area_px": 7621
+      },
+      {
+        "frame_id": 52,
+        "view_id": "1040305661",
+        "pixel": [
+          404.5,
+          716.5
+        ],
+        "component_area_px": 9919
+      },
+      {
+        "frame_id": 296,
+        "view_id": "1142311719",
+        "pixel": [
+          584.0,
+          558.5
+        ],
+        "component_area_px": 13049
+      },
+      {
+        "frame_id": 88,
+        "view_id": "1261335989",
+        "pixel": [
+          414.5,
+          709.5
+        ],
+        "component_area_px": 9987
+      },
+      {
+        "frame_id": 212,
+        "view_id": "1373632937",
+        "pixel": [
+          455.5,
+          657.0
+        ],
+        "component_area_px": 12587
+      },
+      {
+        "frame_id": 92,
+        "view_id": "1379113943",
+        "pixel": [
+          637.5,
+          802.0
+        ],
+        "component_area_px": 8829
+      },
+      {
+        "frame_id": 364,
+        "view_id": "1671709872",
+        "pixel": [
+          568.0,
+          496.5
+        ],
+        "component_area_px": 15562
+      },
+      {
+        "frame_id": 368,
+        "view_id": "1676688048",
+        "pixel": [
+          645.5,
+          613.5
+        ],
+        "component_area_px": 14075
+      },
+      {
+        "frame_id": 360,
+        "view_id": "1727236160",
+        "pixel": [
+          517.0,
+          625.5
+        ],
+        "component_area_px": 12149
+      },
+      {
+        "frame_id": 424,
+        "view_id": "1861547790",
+        "pixel": [
+          598.0,
+          563.5
+        ],
+        "component_area_px": 11546
+      },
+      {
+        "frame_id": 48,
+        "view_id": "1978941929",
+        "pixel": [
+          341.5,
+          610.5
+        ],
+        "component_area_px": 11470
+      },
+      {
+        "frame_id": 44,
+        "view_id": "2046608818",
+        "pixel": [
+          395.0,
+          611.0
+        ],
+        "component_area_px": 10248
+      },
+      {
+        "frame_id": 292,
+        "view_id": "2051227699",
+        "pixel": [
+          576.0,
+          550.0
+        ],
+        "component_area_px": 12517
+      },
+      {
+        "frame_id": 208,
+        "view_id": "2114087696",
+        "pixel": [
+          488.5,
+          471.5
+        ],
+        "component_area_px": 11625
+      }
+    ],
+    "triangulated_logo_point_sfm": [
+      -0.054379572553563384,
+      -0.9408364238612564,
+      0.6324505307974667
+    ],
+    "triangulated_logo_point_mesh": [
+      -0.054379572553563384,
+      0.9408364238612564,
+      -0.6324505307974667
+    ],
+    "triangulation_ray_median_mm_at_physical_scale": 0.6110057855396915,
+    "barcode_side_frame_ids": [
+      320,
+      321,
+      322,
+      323,
+      324,
+      339,
+      340,
+      341
+    ],
+    "front_axis_mesh": [
+      0.954134926710139,
+      0.03354674219178793,
+      0.2974914414233716
+    ],
+    "barcode_axis_mesh": [
+      -0.11342344265183443,
+      -0.015989576575935728,
+      0.9934180671288038
+    ],
+    "front_barcode_separation_deg": 79.2353224131966,
+    "production_texture_front": {
+      "method": "actual production OBJ UV vertices sampled from texture atlas red-logo cluster",
+      "textured_mesh": "F:\\Meshroom_work\\bottle_damaged\\v41_same_reconstruction_textured\\texturedMesh.obj",
+      "textured_mesh_sha256": "4E99A9F0D7EB3E3D40E581891A9F23600FF5625AE118B45C0E09E93A8E339858",
+      "red_vertex_count": 3102,
+      "robust_red_vertex_count": 1633,
+      "front_axis_mesh": [
+        0.9516325525170206,
+        0.033840672376625906,
+        0.30536911088556074
+      ],
+      "front_point_mesh": [
+        -0.0502086915,
+        0.942400455,
+        -0.630083203
+      ]
+    },
+    "source_to_production_front_axis_error_deg": 0.47388264334155283
+  },
+  "physical_scale_source": {
+    "neck_outer_diameter_m": 0.034,
+    "source": "user-supplied physical measurement 2026-07-16"
+  },
+  "historical_mouth_origin_rejected": {
+    "value": [
+      0.419225,
+      -4.514827,
+      0.314265
+    ],
+    "reason": "source correspondence file is marked provisional_unverified_physical_dimensions"
+  },
+  "result": {
+    "version": "bottle-orb-same-reconstruction-registration-v41",
+    "registration_method": "same Meshroom reconstruction; raw surface and filtered production B measured independently; robust mouth/base rings plus center-line axis; red-logo front and barcode side use real source frames; 34 mm measured neck diameter establishes physical scale",
+    "independent_model_registration_verified": true,
+    "device_verified": false,
+    "source_orb_sha256": "32913A73152D61CC9312132A1F9D565FC316F811C3D8F4E83E7C9236D5CD9122",
+    "source_b_mesh_sha256": "99C377511AF8410AA0B1E75E69B48A0684317A5437569460F01B812880681A2A",
+    "target_b_mesh_sha256": "AAA471C5BFBBCEA20F7F3C636BC5080FAA00A62FB8652732642BCA01D7B17F62",
+    "T_ORB_FROM_B": [
+      0.4111296212994733,
+      0.03137443509998305,
+      -1.3221410313209494,
+      -0.843349955297806,
+      -0.05368715024064648,
+      1.3838084796721069,
+      0.016143384921553507,
+      -1.6123229182896726,
+      1.3214230782680108,
+      0.04646034653168376,
+      0.4120088734614414,
+      0.5140945173747211,
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "sfm_to_orb_matrix": [
+      0.4111296212994733,
+      -0.03137443509998305,
+      1.3221410313209494,
+      -0.843349955297806,
+      -0.05368715024064648,
+      -1.3838084796721069,
+      -0.016143384921553507,
+      -1.6123229182896726,
+      1.3214230782680108,
+      -0.04646034653168376,
+      -0.4120088734614414,
+      0.5140945173747211,
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "alicevision_mesh_from_sfm_matrix": [
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      -1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      -1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "scale": 1.3849436188488378,
+    "rotation_quaternion_xyzw": [
+      0.006796386701148353,
+      -0.5926281198324315,
+      -0.019068910493803486,
+      0.8052217690576089
+    ],
+    "translation": [
+      -0.843349955297806,
+      -1.6123229182896726,
+      0.5140945173747211
+    ],
+    "determinant": 2.656417183006813,
+    "mouth_center_independently_measured": true,
+    "base_center_independently_measured": true,
+    "front_semantics_independently_measured": true,
+    "landmark_rms_mm": 0.1567515676844771,
+    "mouth_center_error_mm": 0.09889888016660317,
+    "base_center_error_mm": 0.19839636953551915,
+    "bottle_axis_endpoint_error_mm": 0.27211375861539405,
+    "bottle_height_error_mm": 0.059191859312813414,
+    "orb_point_to_b_surface_mm": {
+      "rms_mm": 1.863045772794043,
+      "median_mm": 0.8975328932706665,
+      "p90_mm": 3.2944819633050053,
+      "p95_mm": 4.127278005872207,
+      "max_mm": 4.999735081481376
+    },
+    "up_axis_error_deg": 0.06282302870468175,
+    "front_axis_error_deg": 0.47388264334155283,
+    "translation_residual_orb_mm": [
+      0.09699770631629191,
+      -0.012221273168711093,
+      0.014935660337670466
+    ],
+    "yaw_error_deg": 0.47388264334155283,
+    "pitch_error_deg": 0.06282302870468175,
+    "roll_error_deg": 0.0,
+    "orb_origin_definition": "physical mouth-ring centroid measured from the raw same-reconstruction AliceVision surface; not the historical provisional MOUTH_ORIGIN",
+    "mouth_center_orb": [
+      -1.1102230246251565e-16,
+      4.5102810375396984e-17,
+      0.0
+    ],
+    "mouth_center_b": [
+      -0.21835332127806062,
+      1.1645271613613641,
+      -0.678562759363672
+    ],
+    "registered_mouth_center_b_orb": [
+      0.0005705747430369001,
+      -7.188984216884367e-05,
+      8.785682551570861e-05
+    ],
+    "base_center_orb": [
+      0.0,
+      -1.4250578383091925,
+      0.0
+    ],
+    "base_center_b": [
+      -0.17831169212994968,
+      0.13665116958831877,
+      -0.68943780517998
+    ],
+    "registered_base_center_b_orb": [
+      -0.0008378097325644207,
+      -1.4247806843196928,
+      0.0007636995282861436
+    ],
+    "front_axis_orb": [
+      0.0,
+      0.0,
+      1.0
+    ],
+    "front_point_orb": [
+      -1.1102230246251565e-16,
+      -0.31767590504688437,
+      0.2253724507843619
+    ],
+    "registered_front_point_b_orb": [
+      -0.001366097874123895,
+      -0.3156972915285084,
+      0.231931974752892
+    ],
+    "semantic_evidence": {
+      "red_logo_detection": "HSV connected-component centroid on actual masked photographs",
+      "red_logo_front_frame_ids": [
+        356,
+        84,
+        40,
+        416,
+        1,
+        52,
+        296,
+        88,
+        212,
+        92,
+        364,
+        368,
+        360,
+        424,
+        48,
+        44,
+        292,
+        208
+      ],
+      "red_logo_pixel_observations": [
+        {
+          "frame_id": 356,
+          "view_id": "188151071",
+          "pixel": [
+            436.0,
+            611.5
+          ],
+          "component_area_px": 12702
+        },
+        {
+          "frame_id": 84,
+          "view_id": "238057621",
+          "pixel": [
+            549.5,
+            704.5
+          ],
+          "component_area_px": 8747
+        },
+        {
+          "frame_id": 40,
+          "view_id": "260932805",
+          "pixel": [
+            633.5,
+            579.0
+          ],
+          "component_area_px": 8196
+        },
+        {
+          "frame_id": 416,
+          "view_id": "322271968",
+          "pixel": [
+            442.0,
+            472.5
+          ],
+          "component_area_px": 8169
+        },
+        {
+          "frame_id": 1,
+          "view_id": "497825262",
+          "pixel": [
+            701.5,
+            461.0
+          ],
+          "component_area_px": 7621
+        },
+        {
+          "frame_id": 52,
+          "view_id": "1040305661",
+          "pixel": [
+            404.5,
+            716.5
+          ],
+          "component_area_px": 9919
+        },
+        {
+          "frame_id": 296,
+          "view_id": "1142311719",
+          "pixel": [
+            584.0,
+            558.5
+          ],
+          "component_area_px": 13049
+        },
+        {
+          "frame_id": 88,
+          "view_id": "1261335989",
+          "pixel": [
+            414.5,
+            709.5
+          ],
+          "component_area_px": 9987
+        },
+        {
+          "frame_id": 212,
+          "view_id": "1373632937",
+          "pixel": [
+            455.5,
+            657.0
+          ],
+          "component_area_px": 12587
+        },
+        {
+          "frame_id": 92,
+          "view_id": "1379113943",
+          "pixel": [
+            637.5,
+            802.0
+          ],
+          "component_area_px": 8829
+        },
+        {
+          "frame_id": 364,
+          "view_id": "1671709872",
+          "pixel": [
+            568.0,
+            496.5
+          ],
+          "component_area_px": 15562
+        },
+        {
+          "frame_id": 368,
+          "view_id": "1676688048",
+          "pixel": [
+            645.5,
+            613.5
+          ],
+          "component_area_px": 14075
+        },
+        {
+          "frame_id": 360,
+          "view_id": "1727236160",
+          "pixel": [
+            517.0,
+            625.5
+          ],
+          "component_area_px": 12149
+        },
+        {
+          "frame_id": 424,
+          "view_id": "1861547790",
+          "pixel": [
+            598.0,
+            563.5
+          ],
+          "component_area_px": 11546
+        },
+        {
+          "frame_id": 48,
+          "view_id": "1978941929",
+          "pixel": [
+            341.5,
+            610.5
+          ],
+          "component_area_px": 11470
+        },
+        {
+          "frame_id": 44,
+          "view_id": "2046608818",
+          "pixel": [
+            395.0,
+            611.0
+          ],
+          "component_area_px": 10248
+        },
+        {
+          "frame_id": 292,
+          "view_id": "2051227699",
+          "pixel": [
+            576.0,
+            550.0
+          ],
+          "component_area_px": 12517
+        },
+        {
+          "frame_id": 208,
+          "view_id": "2114087696",
+          "pixel": [
+            488.5,
+            471.5
+          ],
+          "component_area_px": 11625
+        }
+      ],
+      "triangulated_logo_point_sfm": [
+        -0.054379572553563384,
+        -0.9408364238612564,
+        0.6324505307974667
+      ],
+      "triangulated_logo_point_mesh": [
+        -0.054379572553563384,
+        0.9408364238612564,
+        -0.6324505307974667
+      ],
+      "triangulation_ray_median_mm_at_physical_scale": 0.6110057855396915,
+      "barcode_side_frame_ids": [
+        320,
+        321,
+        322,
+        323,
+        324,
+        339,
+        340,
+        341
+      ],
+      "front_axis_mesh": [
+        0.954134926710139,
+        0.03354674219178793,
+        0.2974914414233716
+      ],
+      "barcode_axis_mesh": [
+        -0.11342344265183443,
+        -0.015989576575935728,
+        0.9934180671288038
+      ],
+      "front_barcode_separation_deg": 79.2353224131966,
+      "production_texture_front": {
+        "method": "actual production OBJ UV vertices sampled from texture atlas red-logo cluster",
+        "textured_mesh": "F:\\Meshroom_work\\bottle_damaged\\v41_same_reconstruction_textured\\texturedMesh.obj",
+        "textured_mesh_sha256": "4E99A9F0D7EB3E3D40E581891A9F23600FF5625AE118B45C0E09E93A8E339858",
+        "red_vertex_count": 3102,
+        "robust_red_vertex_count": 1633,
+        "front_axis_mesh": [
+          0.9516325525170206,
+          0.033840672376625906,
+          0.30536911088556074
+        ],
+        "front_point_mesh": [
+          -0.0502086915,
+          0.942400455,
+          -0.630083203
+        ]
+      },
+      "source_to_production_front_axis_error_deg": 0.47388264334155283
+    },
+    "strict_gate": {
+      "landmark_rms_mm_max": 1.0,
+      "mouth_center_error_mm_max": 2.0,
+      "base_center_error_mm_max": 3.0,
+      "surface_median_mm_max": 2.5,
+      "surface_p95_mm_max": 5.0,
+      "up_axis_error_deg_max": 1.5,
+      "front_axis_error_deg_max": 1.5
+    },
+    "canonical_bounds_min": [
+      -0.2955164235097093,
+      -1.4966118954471757,
+      -0.2766771753694256
+    ],
+    "canonical_bounds_max": [
+      0.25313177941167264,
+      0.035488047372961296,
+      0.24008380979091348
+    ]
+  }
+}

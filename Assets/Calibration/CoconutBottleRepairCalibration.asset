@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fcce13aa6d109aa44a6ea0d548e8bd43, type: 3}
+  m_Name: CoconutBottleRepairCalibration
+  m_EditorClassIdentifier: 
+  objectOriginInModel: {x: 0, y: 0, z: 0}
+  mouthCenterInModel: {x: 0.045759562, y: 0.03868117, z: 0.089144155}
+  mouthRightInModel: {x: 0.14575957, y: 0.03868117, z: 0.089144155}
+  mouthFrontInModel: {x: 0.045759562, y: 0.03868117, z: 0.18914416}
+  neckAxisPointInModel: {x: 0.045759562, y: -0.16131884, z: 0.089144155}
+  hasAuthoredBLandmarks: 0
+  authoredBOrigin: {x: 0, y: 0, z: 0}
+  authoredBMouthCenter: {x: 0, y: 0, z: 0}
+  authoredBMouthRight: {x: 0, y: 0, z: 0}
+  authoredBMouthFront: {x: 0, y: 0, z: 0}
+  authoredBNeckAxisPoint: {x: 0, y: 0, z: 0}
+  modelRegistrationArtifact: {fileID: 4900000, guid: 19d1caf69430b6740874658c9c5e4d03, type: 3}
+  metersPerModelUnit: 0.17
+  physicalScaleVerified: 1
+  expectedPhysicalNeckDiameter: 0.034
+  expectedPhysicalCapDiameter: 0.039
+  expectedPhysicalCapHeight: 0.01
+  orbToModelLocalPosition: {x: 0, y: 0, z: 0}
+  orbToModelLocalEulerAngles: {x: 90, y: 0, z: 0}
+  orbToModelLocalScale: {x: 1, y: 1, z: 1}

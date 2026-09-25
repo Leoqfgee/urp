@@ -1,0 +1,62 @@
+{
+  "date": "2026-07-24",
+  "purpose": "Replay the supplied on-device failure screenshots against the production real-photo open/no-cap bottle database and document the runtime failure cause.",
+  "common_settings": {
+    "frame_orb_features": 2600,
+    "descriptor": "ORB 256-bit",
+    "matcher": "Hamming KNN ratio test",
+    "pose": "independent strict/guided candidate solving with SQPnP, EPNP and iterative RANSAC followed by LM refinement"
+  },
+  "real_no_cap_observation_database": {
+    "version": "bottle-full-aligned-v2-reference-b-real-observations-v2",
+    "records": 4100,
+    "source": "F:\\Meshroom_work\\bottle_damaged real open/no-cap bottle photographs",
+    "rendered_mesh_descriptors_used": false,
+    "repair_cap_descriptors_used": false
+  },
+  "supplied_failure_frame_replay": {
+    "frames": 4,
+    "accepted": 4,
+    "success_rate": 1.0,
+    "unique_matches": [
+      61,
+      54,
+      59,
+      45
+    ],
+    "occupied_grid_cells": [
+      13,
+      14,
+      12,
+      10
+    ],
+    "pose_inliers": [
+      30,
+      28,
+      30,
+      25
+    ],
+    "inlier_ratio": [
+      0.4918032786885246,
+      0.5185185185185185,
+      0.5084745762711864,
+      0.5555555555555556
+    ],
+    "reprojection_rms_pixels": [
+      1.6735103131863467,
+      1.512399288639203,
+      1.969894500366726,
+      1.5402857377894128
+    ],
+    "reprojection_max_pixels": [
+      2.504351854324341,
+      2.471198320388794,
+      3.0552937984466553,
+      2.7861733436584473
+    ]
+  },
+  "root_cause": "The r7 phone runtime selected the coarse-pose-guided match set whenever it contained eight records. A bad initial mesh projection could therefore replace a valid strict real-photo set and send many false correspondences into a single iterative pose attempt. This explains failures such as 0/53 and 20/63 despite the same screenshots having valid strict solutions offline.",
+  "fix": "r8 solves strict real-photo and guided match sets independently, tries multiple robust pose solvers, refines each candidate, and selects using pose inliers, spatial coverage and reprojection error. The coarse B pose is a hint only and cannot suppress a valid global match set.",
+  "scope_boundary": "Offline screenshot replay confirms feature and pose solvability. It does not prove continuous real-device AR tracking or physical B-to-A overlay.",
+  "device_overlay_verified": false
+}

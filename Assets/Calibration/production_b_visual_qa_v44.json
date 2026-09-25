@@ -1,0 +1,18 @@
+{
+  "version": "production-b-visual-qa-v44",
+  "geometric_min_vertex_y": -1.2452011108398438,
+  "robust_main_component_base_y": -1.226987600326538,
+  "difference_mm": 3.096296787261963,
+  "largest_component_vertex_count": 46665,
+  "excluded_component_count": 1,
+  "mouth_measurement": [
+    6.158382663195814e-05,
+    0.003356974571943283,
+    -0.00010213030759421664
+  ],
+  "base_measurement": [
+    -0.009758248824567828,
+    -1.226987600326538,
+    0.023545574713084452
+  ]
+}
