@@ -23,10 +23,14 @@ namespace Urp.ArDemo
             Resource,
             Introduction,
             RepairExplanation,
-            Tracking
+            Tracking,
+            History,
+            Favorites
         }
 
         [SerializeField] private Font chineseFont;
+        private Font titleFont;
+        private Font bodyFont;
         [SerializeField] private RestorationObjectCatalog catalog;
         [SerializeField] private OrbImageTrackingController orbTracker;
         [SerializeField] private RepairOverlayController repairController;
@@ -63,13 +67,28 @@ namespace Urp.ArDemo
         private Button resourceRepairExplanationButton;
         private Button resourceResetButton;
         private Button resourceIntroductionButton;
+        private Button resourceFavoriteButton;
+        private Text resourceFavoriteLabel;
         private Button damagedButton;
         private Button completeButton;
         private Button arBeforeButton;
         private Button arAfterButton;
+        private Text musicToggleLabel;
         private Coroutine arActivationRoutine;
+        private Transform historyCards;
+        private Transform favoriteCards;
+        private readonly List<string> browsingHistory = new List<string>();
+        private readonly HashSet<string> favoriteArtifactIds = new HashSet<string>(StringComparer.Ordinal);
+        private const string HistoryKey = "URP_BrowsingHistory_v1";
+        private const string FavoritesKey = "URP_FavoriteArtifacts_v1";
+#if UNITY_EDITOR
+        private Camera editorDisplayCamera;
+#endif
         public static bool ReturnToArDisplayMenu;
         public static bool ReturnToArtifactSelection;
+        public static bool ReturnToOverlaySelection;
+        public static ArtifactInfo SelectedArtifactForAR;
+        public static bool SelectedArtifactLaunchedFromOverlay;
 
         private static readonly Color Ink = new Color32(24, 50, 67, 255);
         private static readonly Color Muted = new Color32(100, 116, 126, 255);
@@ -83,18 +102,43 @@ namespace Urp.ArDemo
 
         private void Awake()
         {
+            bodyFont = Resources.Load<Font>("Fonts/HuiwenMinchoGBK");
+            if (bodyFont != null) chineseFont = bodyFont;
+            titleFont = bodyFont != null ? bodyFont : chineseFont;
+            HeritageAudioController.EnsureExists();
+#if UNITY_EDITOR
+            CreateEditorDisplayCamera();
+#endif
+            LoadSavedCollections();
             BuildInterface();
             selectedProfile = catalog != null && catalog.objects.Length > 0 ? catalog.objects[0] : null;
             bool openArMenu = ReturnToArDisplayMenu;
             ReturnToArDisplayMenu = false;
             bool openArtifactSelection = ReturnToArtifactSelection;
             ReturnToArtifactSelection = false;
-            if (openArtifactSelection) OpenSelection(Page.ArtifactAR);
+            bool openOverlaySelection = ReturnToOverlaySelection;
+            ReturnToOverlaySelection = false;
+            if (openOverlaySelection) OpenSelection(Page.Tracking);
+            else if (openArtifactSelection) OpenSelection(Page.ArtifactAR);
             else ShowPage(openArMenu ? Page.ArDisplayMenu : Page.Home);
         }
 
+#if UNITY_EDITOR
+        private void CreateEditorDisplayCamera()
+        {
+            GameObject cameraObject = new GameObject("Editor Display Camera");
+            cameraObject.transform.SetParent(transform, false);
+            editorDisplayCamera = cameraObject.AddComponent<Camera>();
+            editorDisplayCamera.clearFlags = CameraClearFlags.SolidColor;
+            editorDisplayCamera.backgroundColor = new Color32(238, 240, 240, 255);
+            editorDisplayCamera.cullingMask = 0;
+            editorDisplayCamera.depth = -100f;
+        }
+#endif
+
         private void Update()
         {
+            RefreshMusicToggleLabel();
             RefreshTrackingStatusAppearance();
             if (Keyboard.current == null
                 || !Keyboard.current.escapeKey.wasPressedThisFrame)
@@ -118,6 +162,8 @@ namespace Urp.ArDemo
                     ShowPage(selectionDestination == Page.Resource ? Page.Home : Page.ArDisplayMenu);
                     break;
                 case Page.ArDisplayMenu:
+                case Page.History:
+                case Page.Favorites:
                     ShowPage(Page.Home);
                     break;
                 case Page.Home:
@@ -169,6 +215,9 @@ namespace Urp.ArDemo
             pages[Page.Introduction] = BuildIntroductionPage();
             pages[Page.RepairExplanation] = BuildRepairExplanationPage();
             pages[Page.Tracking] = BuildTrackingPage();
+            pages[Page.History] = BuildCollectionPage(Page.History, "浏览记录");
+            pages[Page.Favorites] = BuildCollectionPage(Page.Favorites, "我的收藏");
+            RefreshCollectionPages();
 
             orbTracker?.BindStatusText(trackingStatus);
             repairController?.BindStatusText(trackingStatus);
@@ -177,9 +226,15 @@ namespace Urp.ArDemo
         private GameObject BuildHomePage()
         {
             GameObject page = CreatePage("HomePageContent");
-            Text homeTitle = CreateText(page.transform, "文化遗址\n数字修复与 AR 呈现", 52, Ink,
+            Text homeTitle = CreateText(page.transform, "文化遗址\n数字修复与AR呈现", 52, Ink,
                 new Vector2(0.07f, 0.70f), new Vector2(0.93f, 0.89f), TextAnchor.MiddleCenter);
             homeTitle.lineSpacing = 1.05f;
+            // The line break is intentional.  Do not let a narrow phone add a
+            // third line between “AR” and “呈现”.
+            homeTitle.horizontalOverflow = HorizontalWrapMode.Overflow;
+            if (titleFont != null) homeTitle.font = titleFont;
+            homeTitle.fontStyle = FontStyle.Normal;
+            page.AddComponent<HeritageTypewriterEffect>().Play(homeTitle);
             CreateGeneratedImage(page.transform, "HomeTitleCloudDivider",
                 "UI/ornament_cloud_divider_v57", new Vector2(0.22f, 0.655f),
                 new Vector2(0.78f, 0.68f), new Rect(0f, 0.35f, 1f, 0.30f));
@@ -197,6 +252,22 @@ namespace Urp.ArDemo
             ApplyGeneratedSkin(trackingEntry.gameObject, "UI/button_home_jade_v58");
             ConfigureFeatureButton(trackingEntry, "UI/icon_ar_scan_v57",
                 new Color32(255, 235, 196, 255));
+
+            Button history = CreateButton(page.transform, "浏览记录",
+                new Vector2(0.055f, 0.23f), new Vector2(0.49f, 0.305f),
+                () => ShowPage(Page.History), new Color32(249, 246, 238, 235), Ink, 28);
+            ApplyGeneratedSkin(history.gameObject, "UI/button_action_card_v58");
+            Button favorites = CreateButton(page.transform, "我的收藏",
+                new Vector2(0.51f, 0.23f), new Vector2(0.945f, 0.305f),
+                () => ShowPage(Page.Favorites), new Color32(249, 246, 238, 235), Ink, 28);
+            ApplyGeneratedSkin(favorites.gameObject, "UI/button_action_card_v58");
+
+            Button music = CreateButton(page.transform, "♫ 平生意 · 开",
+                new Vector2(0.66f, 0.915f), new Vector2(0.94f, 0.962f),
+                ToggleMusic, new Color32(247, 242, 230, 230), Ink, 22);
+            AddBorder(music.gameObject, new Color32(190, 142, 65, 150), Vector2.one);
+            musicToggleLabel = music.GetComponentInChildren<Text>();
+            RefreshMusicToggleLabel();
             return page;
         }
 
@@ -288,7 +359,7 @@ namespace Urp.ArDemo
             return page;
         }
 
-        private void BuildObjectCard(Transform parent, ArtifactInfo artifact)
+        private void BuildObjectCard(Transform parent, ArtifactInfo artifact, Action openAction = null)
         {
             GameObject card = CreatePanel(parent, artifact.id + " Card", Card,
                 Vector2.zero, Vector2.one, true);
@@ -313,11 +384,7 @@ namespace Urp.ArDemo
                 SetAnchors(rect, new Vector2(0.05f, 0.12f), new Vector2(0.40f, 0.88f));
                 RawImage image = preview.AddComponent<RawImage>();
                 image.texture = artifact.thumbnail;
-                // The reconstruction thumbnail is stored camera-upside-down.
-                // Flip both UV axes (a 180-degree rotation) only in this card;
-                // never rotate the tracking texture, model, or PnP frame.
-                image.uvRect = artifact.overlayProfile != null
-                    ? new Rect(1f, 1f, -1f, -1f) : new Rect(0f, 0f, 1f, 1f);
+                image.uvRect = ImageUvRect(artifact);
                 image.raycastTarget = false;
             }
 
@@ -330,7 +397,7 @@ namespace Urp.ArDemo
             // raycast target.  Text and thumbnails never participate in raycasts.
             Button tapTarget = CreateButton(card.transform, string.Empty,
                 Vector2.zero, Vector2.one,
-                () => SelectArtifact(artifact),
+                openAction ?? (() => SelectArtifact(artifact)),
                 new Color(1f, 1f, 1f, 0.001f), Color.clear, 1);
             tapTarget.gameObject.name = artifact.id + " Card Tap Target";
             tapTarget.transition = Selectable.Transition.ColorTint;
@@ -342,6 +409,39 @@ namespace Urp.ArDemo
             colors.disabledColor = Color.clear;
             colors.colorMultiplier = 1f;
             tapTarget.colors = colors;
+        }
+
+        private GameObject BuildCollectionPage(Page pageType, string title)
+        {
+            GameObject page = CreatePage(pageType + "PageContent");
+            CreateHeader(page.transform, title, () => ShowPage(Page.Home));
+            GameObject viewport = CreatePanel(page.transform, title + "Viewport", Color.clear,
+                new Vector2(.06f, .04f), new Vector2(.94f, .91f), false);
+            viewport.AddComponent<RectMask2D>();
+            GameObject content = new GameObject(title + "Content");
+            content.transform.SetParent(viewport.transform, false);
+            RectTransform rect = content.AddComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(1f, 1f);
+            rect.pivot = new Vector2(.5f, 1f);
+            rect.anchoredPosition = Vector2.zero;
+            VerticalLayoutGroup layout = content.AddComponent<VerticalLayoutGroup>();
+            layout.padding = new RectOffset(18, 18, 18, 18);
+            layout.spacing = 28f;
+            layout.childAlignment = TextAnchor.UpperCenter;
+            layout.childControlHeight = true;
+            layout.childForceExpandHeight = false;
+            layout.childControlWidth = true;
+            layout.childForceExpandWidth = true;
+            ScrollRect scroll = viewport.AddComponent<ScrollRect>();
+            scroll.viewport = viewport.GetComponent<RectTransform>();
+            scroll.content = rect;
+            scroll.horizontal = false;
+            scroll.vertical = true;
+            scroll.movementType = ScrollRect.MovementType.Clamped;
+            if (pageType == Page.History) historyCards = content.transform;
+            else favoriteCards = content.transform;
+            return page;
         }
 
         private void BuildCatalogErrorCard(Transform parent)
@@ -387,23 +487,29 @@ namespace Urp.ArDemo
             ConfigureSegmentChoice(damagedButton);
             ConfigureSegmentChoice(completeButton);
             Button resetViewButton = CreateButton(page.transform, "重置视角",
-                new Vector2(0.025f, 0.018f), new Vector2(0.33f, 0.115f),
-                modelViewer != null ? modelViewer.ResetView : (Action)null, Color.clear, Ink, 28);
+                new Vector2(0.02f, 0.018f), new Vector2(0.255f, 0.115f),
+                modelViewer != null ? modelViewer.ResetView : (Action)null, Color.clear, Ink, 24);
             ApplyGeneratedSkin(resetViewButton.gameObject, "UI/button_action_card_v58");
             ConfigureActionButton(resetViewButton, 0);
             resourceResetButton = resetViewButton;
             Button introductionButton = CreateButton(page.transform, "文物介绍",
-                new Vector2(0.3475f, 0.018f), new Vector2(0.6525f, 0.115f),
-                ShowInformation, Color.clear, Ink, 28);
+                new Vector2(0.265f, 0.018f), new Vector2(0.495f, 0.115f),
+                ShowInformation, Color.clear, Ink, 24);
             ApplyGeneratedSkin(introductionButton.gameObject, "UI/button_action_card_v58");
             ConfigureActionButton(introductionButton, 1);
             resourceIntroductionButton = introductionButton;
             Button explanationButton = CreateButton(page.transform, "修复说明",
-                new Vector2(0.67f, 0.018f), new Vector2(0.975f, 0.115f),
-                ShowRepairExplanation, Color.clear, Ink, 28);
+                new Vector2(0.505f, 0.018f), new Vector2(0.735f, 0.115f),
+                ShowRepairExplanation, Color.clear, Ink, 24);
             ApplyGeneratedSkin(explanationButton.gameObject, "UI/button_action_card_v58");
             ConfigureActionButton(explanationButton, 2);
             resourceRepairExplanationButton = explanationButton;
+            Button favoriteButton = CreateButton(page.transform, "☆ 收藏",
+                new Vector2(0.745f, 0.018f), new Vector2(0.98f, 0.115f),
+                ToggleFavorite, Color.clear, Ink, 24);
+            ApplyGeneratedSkin(favoriteButton.gameObject, "UI/button_action_card_v58");
+            resourceFavoriteButton = favoriteButton;
+            resourceFavoriteLabel = favoriteButton.GetComponentInChildren<Text>();
             return page;
         }
 
@@ -430,19 +536,18 @@ namespace Urp.ArDemo
             ApplyGeneratedSkin(controls, "UI/button_ar_toolbar_v56");
             string[] labels =
             {
-                "重新识别", "文物介绍", "退出 AR"
+                "重新识别", "退出 AR"
             };
             Action[] actions =
             {
                 repairController != null ? repairController.ResetRecognition : (Action)null,
-                ShowInformation,
                 () => ShowPage(Page.Selection)
             };
             for (int i = 0; i < labels.Length; i++)
             {
-                float left = 0.015f + i * 0.33f;
+                float left = 0.025f + i * 0.49f;
                 Button actionButton = CreateButton(controls.transform, labels[i],
-                    new Vector2(left, 0.14f), new Vector2(left + 0.31f, 0.86f),
+                    new Vector2(left, 0.14f), new Vector2(left + 0.465f, 0.86f),
                     actions[i], Color.clear, Ink, 27);
                 ConfigureCompactActionButton(actionButton, i);
             }
@@ -571,16 +676,27 @@ namespace Urp.ArDemo
 
         private void SelectArtifact(ArtifactInfo artifact)
         {
+            if (artifact == null) return;
             selectedArtifact = artifact;
+            RecordHistory(artifact);
             if (selectionDestination == Page.ArtifactAR)
             {
                 if (!artifact.supportsArtifactAR) return;
+                SelectedArtifactForAR = artifact;
+                SelectedArtifactLaunchedFromOverlay = false;
                 SceneManager.LoadScene("ArtifactARScene");
             }
             else if (selectionDestination == Page.Tracking)
             {
-                if (artifact.supportsOverlayAR && artifact.overlayProfile != null)
+                if (artifact.supportsOverlayAR && artifact.overlayProfile != null
+                    && artifact.overlayProfile.HasTrackingAssets)
                     SelectAndOpen(artifact.overlayProfile, Page.Tracking);
+                else if (artifact.supportsOverlayAR && artifact.importedViewerPrefab != null)
+                {
+                    SelectedArtifactForAR = artifact;
+                    SelectedArtifactLaunchedFromOverlay = true;
+                    SceneManager.LoadScene("ArtifactARScene");
+                }
             }
             else if (artifact.supportsModelViewer)
             {
@@ -620,17 +736,23 @@ namespace Urp.ArDemo
                 resourceRepairSegment?.SetActive(hasRepair);
                 if (resourceRepairExplanationButton != null)
                     resourceRepairExplanationButton.gameObject.SetActive(hasRepair);
-                if (resourceResetButton != null && resourceIntroductionButton != null)
+                if (resourceResetButton != null && resourceIntroductionButton != null
+                    && resourceFavoriteButton != null)
                 {
                     SetAnchors(resourceResetButton.GetComponent<RectTransform>(),
-                        hasRepair ? new Vector2(.025f,.018f) : new Vector2(.15f,.018f),
-                        hasRepair ? new Vector2(.33f,.115f) : new Vector2(.48f,.115f));
+                        hasRepair ? new Vector2(.02f,.018f) : new Vector2(.08f,.018f),
+                        hasRepair ? new Vector2(.255f,.115f) : new Vector2(.35f,.115f));
                     SetAnchors(resourceIntroductionButton.GetComponent<RectTransform>(),
-                        hasRepair ? new Vector2(.3475f,.018f) : new Vector2(.52f,.018f),
-                        hasRepair ? new Vector2(.6525f,.115f) : new Vector2(.85f,.115f));
+                        hasRepair ? new Vector2(.265f,.018f) : new Vector2(.365f,.018f),
+                        hasRepair ? new Vector2(.495f,.115f) : new Vector2(.635f,.115f));
+                    SetAnchors(resourceFavoriteButton.GetComponent<RectTransform>(),
+                        hasRepair ? new Vector2(.745f,.018f) : new Vector2(.65f,.018f),
+                        hasRepair ? new Vector2(.98f,.115f) : new Vector2(.92f,.115f));
                 }
+                RefreshFavoriteButton();
                 if (hasRepair) ShowDamagedResource();
             }
+            if (page == Page.History || page == Page.Favorites) RefreshCollectionPages();
             if (page == Page.Introduction)
             {
                 RefreshIntroductionPage();
@@ -749,7 +871,7 @@ namespace Urp.ArDemo
                 introductionBody.text = selectedArtifact.period + " · " + selectedArtifact.category
                     + "\n\n" + selectedArtifact.description;
                 introductionImage.texture = selectedArtifact.thumbnail;
-                introductionImage.uvRect = new Rect(0f, 0f, 1f, 1f);
+                introductionImage.uvRect = ImageUvRect(selectedArtifact);
                 FitRawImage(introductionImage);
                 return;
             }
@@ -759,6 +881,8 @@ namespace Urp.ArDemo
             introductionImage.texture = selectedProfile.introductionImage != null
                 ? selectedProfile.introductionImage
                 : selectedProfile.thumbnail;
+            // The bottle introduction/after capture is already upright.  Its
+            // thumbnail/before capture is a different source file stored inverted.
             introductionImage.uvRect = new Rect(0f, 0f, 1f, 1f);
             FitRawImage(introductionImage);
         }
@@ -772,12 +896,109 @@ namespace Urp.ArDemo
             repairAfterImage.texture = selectedProfile.repairAfterImage != null
                 ? selectedProfile.repairAfterImage
                 : selectedProfile.introductionImage;
-            repairBeforeImage.uvRect = selectedProfile.repairBeforeImage == selectedProfile.thumbnail
-                ? new Rect(1f, 1f, -1f, -1f)
-                : new Rect(0f, 0f, 1f, 1f);
+            repairBeforeImage.uvRect = ImageUvRect(selectedArtifact);
             repairAfterImage.uvRect = new Rect(0f, 0f, 1f, 1f);
             FitRawImage(repairBeforeImage);
             FitRawImage(repairAfterImage);
+        }
+
+        private static Rect ImageUvRect(ArtifactInfo artifact)
+        {
+            // The legacy bottle captures were written bottom-up by the render
+            // pipeline.  Jar screenshots are normal top-down images.
+            bool flipVertically = artifact != null
+                && !string.IsNullOrEmpty(artifact.id)
+                && artifact.id.StartsWith("bottle_", StringComparison.OrdinalIgnoreCase);
+            return flipVertically
+                ? new Rect(0f, 1f, 1f, -1f)
+                : new Rect(0f, 0f, 1f, 1f);
+        }
+
+        private void LoadSavedCollections()
+        {
+            foreach (string id in PlayerPrefs.GetString(HistoryKey, string.Empty)
+                .Split(new[] { '|' }, StringSplitOptions.RemoveEmptyEntries))
+                if (!browsingHistory.Contains(id)) browsingHistory.Add(id);
+            foreach (string id in PlayerPrefs.GetString(FavoritesKey, string.Empty)
+                .Split(new[] { '|' }, StringSplitOptions.RemoveEmptyEntries))
+                favoriteArtifactIds.Add(id);
+        }
+
+        private void RecordHistory(ArtifactInfo artifact)
+        {
+            if (artifact == null || string.IsNullOrEmpty(artifact.id)) return;
+            browsingHistory.Remove(artifact.id);
+            browsingHistory.Insert(0, artifact.id);
+            if (browsingHistory.Count > 20) browsingHistory.RemoveRange(20, browsingHistory.Count - 20);
+            PlayerPrefs.SetString(HistoryKey, string.Join("|", browsingHistory));
+            PlayerPrefs.Save();
+            RefreshCollectionPages();
+        }
+
+        private void ToggleFavorite()
+        {
+            if (selectedArtifact == null || string.IsNullOrEmpty(selectedArtifact.id)) return;
+            if (!favoriteArtifactIds.Add(selectedArtifact.id)) favoriteArtifactIds.Remove(selectedArtifact.id);
+            PlayerPrefs.SetString(FavoritesKey, string.Join("|", favoriteArtifactIds));
+            PlayerPrefs.Save();
+            RefreshFavoriteButton();
+            RefreshCollectionPages();
+        }
+
+        private void RefreshFavoriteButton()
+        {
+            if (resourceFavoriteLabel == null) return;
+            bool saved = selectedArtifact != null && favoriteArtifactIds.Contains(selectedArtifact.id);
+            resourceFavoriteLabel.text = saved ? "★ 已收藏" : "☆ 收藏";
+        }
+
+        private void RefreshCollectionPages()
+        {
+            RefreshCollectionContent(historyCards, browsingHistory, "暂无浏览记录");
+            RefreshCollectionContent(favoriteCards, new List<string>(favoriteArtifactIds), "暂无收藏文物");
+        }
+
+        private void RefreshCollectionContent(Transform content, IList<string> ids, string emptyMessage)
+        {
+            if (content == null) return;
+            for (int index = content.childCount - 1; index >= 0; index--)
+                Destroy(content.GetChild(index).gameObject);
+            int count = 0;
+            foreach (string id in ids)
+            {
+                ArtifactInfo artifact = FindArtifact(id);
+                if (artifact == null) continue;
+                count++;
+                BuildObjectCard(content, artifact, () => OpenStoredArtifact(artifact));
+            }
+            if (count == 0)
+            {
+                GameObject empty = CreateRoundedPanel(content, "EmptyState", Card,
+                    Vector2.zero, Vector2.one, false);
+                LayoutElement element = empty.AddComponent<LayoutElement>();
+                element.preferredHeight = 260f;
+                element.minHeight = 260f;
+                CreateText(empty.transform, emptyMessage, 30, Muted,
+                    new Vector2(.08f,.1f), new Vector2(.92f,.9f), TextAnchor.MiddleCenter);
+            }
+            RectTransform rect = content.GetComponent<RectTransform>();
+            rect.sizeDelta = new Vector2(0f, Mathf.Max(700f, 36f + Mathf.Max(1, count) * 300f
+                + Mathf.Max(0, count - 1) * 28f));
+            LayoutRebuilder.ForceRebuildLayoutImmediate(rect);
+        }
+
+        private ArtifactInfo FindArtifact(string id)
+        {
+            if (catalog == null || catalog.artifacts == null) return null;
+            foreach (ArtifactInfo artifact in catalog.artifacts)
+                if (artifact != null && artifact.id == id) return artifact;
+            return null;
+        }
+
+        private void OpenStoredArtifact(ArtifactInfo artifact)
+        {
+            selectionDestination = Page.Resource;
+            SelectArtifact(artifact);
         }
 
         private GameObject CreatePage(string name)
@@ -791,8 +1012,10 @@ namespace Urp.ArDemo
                 new Vector2(0f, 0.94f), new Vector2(1f, 1.02f), true);
             CreateButton(header.transform, "‹", new Vector2(0.01f, 0f), new Vector2(0.14f, 1f),
                 backAction, new Color(1f, 1f, 1f, 0.001f), Ink, 50);
-            CreateText(header.transform, title, 36, Ink,
+            Text heading = CreateText(header.transform, title, 36, Ink,
                 new Vector2(0.14f, 0.22f), new Vector2(0.94f, 0.96f), TextAnchor.MiddleCenter);
+            if (titleFont != null) heading.font = titleFont;
+            heading.fontStyle = FontStyle.Normal;
             CreateGeneratedImage(header.transform, "HeaderCloudDivider",
                 "UI/ornament_cloud_divider_v57", new Vector2(0.24f, 0.00f),
                 new Vector2(0.76f, 0.30f), new Rect(0f, 0.35f, 1f, 0.30f));
@@ -927,6 +1150,32 @@ namespace Urp.ArDemo
             AspectRatioFitter fitter = imageObject.AddComponent<AspectRatioFitter>();
             fitter.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
             fitter.aspectRatio = texture.width / (float)texture.height;
+
+        }
+
+        private void CreateFloatingCloud(Transform parent, string name, Vector2 min,
+            Vector2 max, float phase, float cycle)
+        {
+            RawImage cloud = CreateGeneratedImage(parent, name,
+                "UI/ornament_cloud_divider_v57", min, max, new Rect(0f, .25f, 1f, .5f));
+            if (cloud == null) return;
+            cloud.color = new Color(1f, 1f, 1f, .12f);
+            HeritageFloatingCloud effect = cloud.gameObject.AddComponent<HeritageFloatingCloud>();
+            effect.phase = phase;
+            effect.cycleSeconds = cycle;
+        }
+
+        private void ToggleMusic()
+        {
+            HeritageAudioController.Instance.Toggle();
+            RefreshMusicToggleLabel();
+        }
+
+        private void RefreshMusicToggleLabel()
+        {
+            if (musicToggleLabel == null) return;
+            musicToggleLabel.text = HeritageAudioController.Instance.IsPlaying
+                ? "♫ 平生意 · 开" : "♫ 平生意 · 关";
         }
 
         private GameObject CreateFixedButton(Transform parent, string label, float width,
@@ -1007,8 +1256,10 @@ namespace Urp.ArDemo
             colors.disabledColor = new Color(0.8f, 0.82f, 0.82f, 0.5f);
             colors.colorMultiplier = 1f;
             button.colors = colors;
-            CreateText(buttonObject.transform, label, fontSize, foreground,
+            Text buttonLabel = CreateText(buttonObject.transform, label, fontSize, foreground,
                 Vector2.zero, Vector2.one, TextAnchor.MiddleCenter);
+            buttonLabel.fontStyle = FontStyle.Bold;
+            if (!string.IsNullOrEmpty(label)) buttonObject.AddComponent<HeritageButtonEffect>();
             return button;
         }
 
@@ -1144,14 +1395,19 @@ namespace Urp.ArDemo
             rect.offsetMax = new Vector2(-12f, -8f);
             Text text = textObject.AddComponent<Text>();
             text.text = value;
-            text.font = chineseFont != null ? chineseFont
+            text.font = bodyFont != null ? bodyFont : chineseFont != null ? chineseFont
                 : Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            text.fontSize = fontSize;
+            int preferredSize = Mathf.RoundToInt(fontSize * 2.0f);
+            text.fontSize = preferredSize;
+            text.resizeTextForBestFit = true;
+            text.resizeTextMinSize = Mathf.Max(18, fontSize);
+            text.resizeTextMaxSize = preferredSize;
             text.alignment = alignment;
             text.color = color;
             text.raycastTarget = false;
             text.horizontalOverflow = HorizontalWrapMode.Wrap;
             text.verticalOverflow = VerticalWrapMode.Truncate;
+            text.fontStyle = FontStyle.Normal;
             return text;
         }
 

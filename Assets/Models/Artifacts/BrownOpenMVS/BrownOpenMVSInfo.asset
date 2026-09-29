@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4d0b2ccbebf381a4b9bff737448649f5, type: 3}
+  m_Name: BrownOpenMVSInfo
+  m_EditorClassIdentifier: 
+  id: jar_brown_openmvs
+  displayName: "\u68D5\u9676\u7F50"
+  period: "\u6C11\u95F4\u65E5\u7528\u9676\u5668"
+  category: "\u7D20\u9762\u9676\u8D28\u5BB9\u5668"
+  description: "\u8FD9\u4EF6\u68D5\u9676\u7F50\u662F\u6C11\u95F4\u65E5\u7528\u9676\u8D28\u5BB9\u5668\uFF0C\u5668\u578B\u89C4\u6574\uFF0C\u53E3\u6CBF\u5916\u6487\uFF0C\u77ED\u9888\uFF0C\u5706\u9F13\u8179\uFF0C\u5E73\u5E95\uFF0C\u6574\u4F53\u9020\u578B\u7B80\u7EA6\u7A33\u91CD\u3002\u80CE\u4F53\u5448\u6D45\u68D5\u7EA2\u9676\u8272\uFF0C\u5668\u8868\u53EF\u89C1\u81EA\u7136\u98CE\u5316\u5F62\u6210\u7684\u6591\u9A73\u767D\u6C81\uFF0C\u8868\u9762\u65E0\u7E41\u590D\u5F69\u7ED8\uFF0C\u8D28\u6734\u7D20\u51C0\uFF0C\u4F53\u73B0\u6C11\u95F4\u9676\u5668\u5B9E\u7528\u4F18\u5148\u7684\u7279\u5F81\u3002\u5B83\u91C7\u7528\u624B\u5DE5\u8F6E\u5236\u6210\u578B\uFF0C\u80CE\u8D28\u6734\u5B9E\uFF0C\u662F\u53E4\u4EBA\u7528\u6765\u50A8\u5B58\u3001\u76DB\u653E\u7269\u8D44\u7684\u65E5\u5E38\u5668\u5177\u3002\u8FD9\u7C7B\u7D20\u9762\u9676\u7F50\u5728\u53E4\u4EE3\u6C11\u95F4\u5E7F\u6CDB\u4F7F\u7528\uFF0C\u5236\u4F5C\u95E8\u69DB\u4F4E\u3001\u5B9E\u7528\u6027\u5F3A\u3002\u5668\u7269\u7559\u5B58\u7684\u98CE\u5316\u75D5\u8FF9\uFF0C\u8BB0\u5F55\u4E86\u6F2B\u957F\u57CB\u85CF\u73AF\u5883\u5E26\u6765\u7684\u6750\u8D28\u53D8\u5316\uFF0C\u662F\u7814\u7A76\u57FA\u5C42\u6C11\u4F17\u751F\u6D3B\u65B9\u5F0F\u3001\u6C11\u95F4\u5236\u9676\u6280\u672F\u7684\u76F4\u89C2\u5B9E\u7269\u6807\u672C\uFF0C\u89C1\u8BC1\u4E86\u4E61\u571F\u793E\u4F1A\u7684\u751F\u6D3B\u56FE\u666F\u3002"
+  streamingAssetsModelPath: 
+  defaultHeight: 0.2
+  thumbnail: {fileID: 2800000, guid: d114ad1e8a87b7f4a9c753962ea4722e, type: 3}
+  supportsModelViewer: 1
+  supportsArtifactAR: 0
+  supportsOverlayAR: 1
+  overlayProfile: {fileID: 11400000, guid: 88bbf77994b141749b04a15e1666025a, type: 2}
+  importedViewerPrefab: {fileID: 919132149155446097, guid: 0e88da9ff7bf11f469ba161c47662d54, type: 3}
+  importedModelEuler: {x: 180, y: 0, z: 0}
+  importedModelMaterials:
+  - {fileID: 2100000, guid: 88c3f8caecebdac4fae6f1e5d64f157d, type: 2}
+  - {fileID: 2100000, guid: 682340ab089fd7840a3089d8714a8576, type: 2}

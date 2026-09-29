@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections;
+using System.IO;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
@@ -18,6 +19,7 @@ namespace Urp.ArDemo
     {
         [SerializeField] private ArtifactInfo artifact;
         [SerializeField] private Font chineseFont;
+        private Font titleFont;
         [SerializeField] private ARRaycastManager raycastManager;
         [SerializeField] private ARPlaneManager planeManager;
         [SerializeField] private ARAnchorManager anchorManager;
@@ -33,8 +35,6 @@ namespace Urp.ArDemo
         private bool hasPlacementPose;
         private Text status;
         private Button replaceButton;
-        private Button informationButton;
-        private GameObject informationPanel;
         private float baseHeight;
         private float displayedHeight;
         private bool modelReady;
@@ -69,6 +69,11 @@ namespace Urp.ArDemo
 
         private void Start()
         {
+            chineseFont = Resources.Load<Font>("Fonts/HuiwenMinchoGBK") ?? chineseFont;
+            titleFont = chineseFont;
+            HeritageAudioController.EnsureExists();
+            if (UrpAppController.SelectedArtifactForAR != null)
+                artifact = UrpAppController.SelectedArtifactForAR;
             planeManager.requestedDetectionMode = PlaneDetectionMode.Horizontal;
             anchorManager.anchorsChanged += OnAnchorsChanged;
             arCamera = Camera.main;
@@ -134,7 +139,12 @@ namespace Urp.ArDemo
                 modelRoot = null;
                 return;
             }
-            if (!ArtifactMeshGeometry.TryMeasure(modelVisual, out var unscaled))
+            modelVisual.localRotation = Quaternion.Euler(artifact.importedModelEuler);
+            ApplyImportedMaterials(modelVisual, artifact.importedModelMaterials);
+            // Measure in the root coordinate system after the artifact-specific
+            // axis correction. Measuring relative to modelVisual cancels its own
+            // rotation and leaves off-centre photogrammetry origins uncorrected.
+            if (!ArtifactMeshGeometry.TryMeasure(modelRoot.transform, out var unscaled))
             {
                 Fail("imported mesh has no readable, visible vertices");
                 Destroy(modelRoot);
@@ -184,6 +194,18 @@ namespace Urp.ArDemo
             modelReady = true;
         }
 
+        private static void ApplyImportedMaterials(Transform root, Material[] materials)
+        {
+            if (root == null || materials == null || materials.Length == 0) return;
+            foreach (Renderer renderer in root.GetComponentsInChildren<Renderer>(true))
+            {
+                Material[] slots = renderer.sharedMaterials;
+                for (int index = 0; index < slots.Length && index < materials.Length; index++)
+                    if (materials[index] != null) slots[index] = materials[index];
+                renderer.sharedMaterials = slots;
+            }
+        }
+
         private IEnumerator RefreshStaticText()
         {
             yield return null;
@@ -198,8 +220,7 @@ namespace Urp.ArDemo
                 LayoutHeader();
             if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
             {
-                if (informationPanel.activeSelf) informationPanel.SetActive(false);
-                else BackToMenu();
+                BackToMenu();
             }
             if (anchorRemovedNotified && !placed)
                 ResetPlacement("放置失败，请重新选择", true);
@@ -218,7 +239,6 @@ namespace Urp.ArDemo
             EnhancedTouch primary = first.Value;
             if (primary.phase == UnityEngine.InputSystem.TouchPhase.Began)
                 Debug.Log("[ArtifactAR] touch received position=" + primary.screenPosition);
-            if (informationPanel.activeSelf) return;
             if (!placed)
             {
                 if (primary.phase == UnityEngine.InputSystem.TouchPhase.Began)
@@ -573,20 +593,9 @@ namespace Urp.ArDemo
         private void BackToMenu()
         {
             Debug.Log("[ArtifactAR] back button clicked");
-            UrpAppController.ReturnToArtifactSelection = true;
+            UrpAppController.ReturnToOverlaySelection = UrpAppController.SelectedArtifactLaunchedFromOverlay;
+            UrpAppController.ReturnToArtifactSelection = !UrpAppController.SelectedArtifactLaunchedFromOverlay;
             SceneManager.LoadScene("UrpARPrototype");
-        }
-
-        private void ShowInformation()
-        {
-            Debug.Log("[ArtifactAR] info button clicked");
-            informationPanel.SetActive(true);
-        }
-
-        private void CloseInformation()
-        {
-            Debug.Log("[ArtifactAR] info close button clicked");
-            informationPanel.SetActive(false);
         }
 
         private void BuildUi()
@@ -618,10 +627,18 @@ namespace Urp.ArDemo
             Skin(header.transform, "CloudDivider", "UI/ornament_cloud_divider_v57",
                 new Vector2(.24f, 0f), new Vector2(.76f, .30f), new Rect(0f,.35f,1f,.30f));
             headerDividerRect = header.transform.Find("CloudDivider")?.GetComponent<RectTransform>();
-            headerTitleRect = Label(header.transform, "文物实景展示",
-                new Vector2(.2f, .30f), new Vector2(.8f, 1f), 34, Ink).rectTransform;
+            string pageTitle = artifact != null && artifact.supportsOverlayAR
+                ? "虚实叠加展示" : "文物实景展示";
+            Text headerTitle = Label(header.transform, pageTitle,
+                new Vector2(.2f, .30f), new Vector2(.8f, 1f), 34, Ink);
+            if (titleFont != null) headerTitle.font = titleFont;
+            headerTitleRect = headerTitle.rectTransform;
             headerGlyphRect = Label(header.transform, "‹",
                 new Vector2(.015f, .30f), new Vector2(.15f, 1f), 48, Ink).rectTransform;
+            Button music = Button(header.transform, "♫", new Vector2(.84f, .30f),
+                new Vector2(.985f, 1f), ToggleMusic);
+            music.GetComponent<Image>().color = new Color(1f, 1f, 1f, .001f);
+            music.GetComponentInChildren<Text>().fontSize = 34;
             LayoutHeader();
             GameObject statusBar = Panel(safe.transform, "StatusBar", new Color32(24,50,67,198),
                 new Vector2(.14f,.895f), new Vector2(.86f,.923f));
@@ -631,33 +648,77 @@ namespace Urp.ArDemo
                 new Vector2(.055f,.34f), new Vector2(.10f,.66f));
             GameObject toolbar = Panel(safe.transform, "ArtifactToolbar", Color.clear,
                 new Vector2(.035f,.01f), new Vector2(.965f,.082f));
-            Skin(toolbar.transform, "InkGoldToolbar", "UI/button_ar_toolbar_v56", Vector2.zero, Vector2.one,
+            Skin(toolbar.transform, "InkGoldToolbar", "UI/button_segment_v56", Vector2.zero, Vector2.one,
                 new Rect(0,0,1,1));
-            replaceButton = Button(toolbar.transform, "重新放置", new Vector2(.035f,.14f), new Vector2(.49f,.86f), Replace);
-            informationButton = Button(toolbar.transform, "文物介绍", new Vector2(.51f,.14f), new Vector2(.965f,.86f), ShowInformation);
+            replaceButton = Button(toolbar.transform, "重新放置", new Vector2(.02f,.14f), new Vector2(.49f,.86f), Replace);
             StyleToolbarButton(replaceButton, 0);
-            StyleToolbarButton(informationButton, 1);
             replaceButton.GetComponentInChildren<Text>().enabled = false;
-            informationButton.GetComponentInChildren<Text>().enabled = false;
-            Label(toolbar.transform, "重新放置", new Vector2(.045f,.20f), new Vector2(.49f,.80f), 26, Ink);
-            Label(toolbar.transform, "文物介绍", new Vector2(.51f,.20f), new Vector2(.955f,.80f), 26, Ink);
-            informationPanel = Panel(safe.transform, "Artifact Information", new Color32(249,248,244,250),
-                new Vector2(.07f,.35f), new Vector2(.93f,.67f));
-            Skin(informationPanel.transform, "PanelOrnament", "UI/ornament_cloud_divider_v57",
-                new Vector2(.18f,.89f), new Vector2(.82f,.98f), new Rect(0f,.35f,1f,.30f));
-            Label(informationPanel.transform, artifact != null ? artifact.displayName : "青铜升鼎",
-                new Vector2(.06f,.77f), new Vector2(.94f,.94f), 40, Ink);
-            Label(informationPanel.transform, artifact != null ? artifact.period + " · " + artifact.category : "",
-                new Vector2(.06f,.67f), new Vector2(.94f,.78f), 28, Ink);
-            Text body = Label(informationPanel.transform, artifact != null ? artifact.description : "",
-                new Vector2(.06f,.23f), new Vector2(.94f,.65f), 27, Ink);
-            body.alignment = TextAnchor.UpperLeft;
-            Button close = Button(informationPanel.transform, "关闭", new Vector2(.3f,.04f), new Vector2(.7f,.16f),
-                CloseInformation);
-            close.GetComponent<Image>().color = new Color(1f, 1f, 1f, .001f);
-            Skin(close.transform, "IvoryButton", "UI/button_home_ivory_v58", Vector2.zero, Vector2.one,
-                new Rect(0,0,1,1));
-            informationPanel.SetActive(false);
+            Button photoButton = Button(toolbar.transform, "拍照", new Vector2(.51f,.14f), new Vector2(.98f,.86f), CapturePhoto);
+            StyleToolbarButton(photoButton, 1);
+            photoButton.GetComponentInChildren<Text>().enabled = false;
+            Label(toolbar.transform, "重新放置", new Vector2(.02f,.20f), new Vector2(.49f,.80f), 22, Ink);
+            Label(toolbar.transform, "拍照", new Vector2(.51f,.20f), new Vector2(.98f,.80f), 22, Ink);
+        }
+
+        private void CapturePhoto()
+        {
+            StartCoroutine(CapturePhotoAtEndOfFrame());
+        }
+
+        private IEnumerator CapturePhotoAtEndOfFrame()
+        {
+            if (status != null) status.text = "正在保存虚拟合照…";
+            yield return new WaitForEndOfFrame();
+            Texture2D capture = new Texture2D(Screen.width, Screen.height,
+                TextureFormat.RGB24, false);
+            capture.ReadPixels(new Rect(0f, 0f, Screen.width, Screen.height), 0, 0);
+            capture.Apply(false, false);
+            byte[] png = capture.EncodeToPNG();
+            Destroy(capture);
+            string name = "HeritageAR_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".png";
+            bool saved = SavePhotoToGallery(png, name);
+            if (status != null)
+                status.text = saved ? "虚拟合照已保存到系统相册" : "照片保存失败，请重试";
+        }
+
+        private static bool SavePhotoToGallery(byte[] png, string fileName)
+        {
+            try
+            {
+#if UNITY_ANDROID && !UNITY_EDITOR
+                using AndroidJavaClass version = new AndroidJavaClass("android.os.Build$VERSION");
+                int sdk = version.GetStatic<int>("SDK_INT");
+                if (sdk >= 29)
+                {
+                    using AndroidJavaClass unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer");
+                    using AndroidJavaObject activity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity");
+                    using AndroidJavaObject resolver = activity.Call<AndroidJavaObject>("getContentResolver");
+                    using AndroidJavaClass media = new AndroidJavaClass("android.provider.MediaStore$Images$Media");
+                    using AndroidJavaObject collection = media.GetStatic<AndroidJavaObject>("EXTERNAL_CONTENT_URI");
+                    using AndroidJavaObject values = new AndroidJavaObject("android.content.ContentValues");
+                    values.Call("put", "_display_name", fileName);
+                    values.Call("put", "mime_type", "image/png");
+                    values.Call("put", "relative_path", "Pictures/文化遗址AR");
+                    using AndroidJavaObject uri = resolver.Call<AndroidJavaObject>("insert", collection, values);
+                    if (uri == null) return false;
+                    using AndroidJavaObject stream = resolver.Call<AndroidJavaObject>("openOutputStream", uri);
+                    if (stream == null) return false;
+                    stream.Call("write", png);
+                    stream.Call("flush");
+                    stream.Call("close");
+                    return true;
+                }
+#endif
+                string directory = Path.Combine(Application.persistentDataPath, "Photos");
+                Directory.CreateDirectory(directory);
+                File.WriteAllBytes(Path.Combine(directory, fileName), png);
+                return true;
+            }
+            catch (Exception exception)
+            {
+                Debug.LogError("[ArtifactAR][PHOTO] " + exception);
+                return false;
+            }
         }
 
         private void LayoutHeader()
@@ -705,7 +766,13 @@ namespace Urp.ArDemo
             Text label = obj.AddComponent<Text>();
             label.font = chineseFont;
             label.text = value;
-            label.fontSize = size;
+            int preferredSize = Mathf.RoundToInt(size * 2.0f);
+            label.fontSize = preferredSize;
+            label.resizeTextForBestFit = true;
+            label.resizeTextMinSize = Mathf.Max(18, size);
+            label.resizeTextMaxSize = preferredSize;
+            label.horizontalOverflow = HorizontalWrapMode.Wrap;
+            label.verticalOverflow = VerticalWrapMode.Truncate;
             label.color = color;
             label.alignment = TextAnchor.MiddleCenter;
             label.raycastTarget = false;
@@ -720,7 +787,16 @@ namespace Urp.ArDemo
             button.onClick.AddListener(() => action());
             Text label = Label(obj.transform, value, Vector2.zero, Vector2.one, 30, Ink);
             label.alignment = TextAnchor.MiddleCenter;
+            if (!string.IsNullOrEmpty(value)) obj.AddComponent<HeritageButtonEffect>();
             return button;
+        }
+
+        private void ToggleMusic()
+        {
+            HeritageAudioController.Instance.Toggle();
+            if (status != null)
+                status.text = HeritageAudioController.Instance.IsPlaying
+                    ? "背景音乐《平生意》已开启" : "背景音乐已关闭";
         }
 
         private void StyleToolbarButton(Button button, int iconIndex)

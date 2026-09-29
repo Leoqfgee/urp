@@ -17,3 +17,6 @@ MonoBehaviour:
   artifacts:
   - {fileID: 11400000, guid: 32ca5cecb09d8e34aa22af088d9cb9f4, type: 2}
   - {fileID: 11400000, guid: 4c3f228341a94be4b96901d0673b97b6, type: 2}
+  - {fileID: 11400000, guid: 0d3f45c9a03fb494187fec064daa6b3c, type: 2}
+  - {fileID: 11400000, guid: de0a0d7002b94f64da43ecb4d0da3344, type: 2}
+  - {fileID: 11400000, guid: 15002b7fd7a80d344bc5272c09e8d299, type: 2}

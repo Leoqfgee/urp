@@ -97,8 +97,8 @@ namespace Urp.ArDemo.Editor
             if (EventSystem.current == null ||
                 !(EventSystem.current.currentInputModule is InputSystemUIInputModule))
                 throw new InvalidOperationException("Artifact AR requires InputSystemUIInputModule");
-            Button reset = null, info = null, close = null;
-            foreach (string name in new[] { "‹ Button", "重新放置 Button", "文物介绍 Button", "关闭 Button" })
+            Button reset = null;
+            foreach (string name in new[] { "‹ Button", "重新放置 Button" })
             {
                 Button found = null;
                 foreach (Button button in canvas.GetComponentsInChildren<Button>(true))
@@ -107,23 +107,14 @@ namespace Urp.ArDemo.Editor
                     !found.GetComponent<Image>().raycastTarget)
                     throw new InvalidOperationException("Artifact AR button cannot receive input: " + name);
                 if (name == "重新放置 Button") reset = found;
-                if (name == "文物介绍 Button") info = found;
-                if (name == "关闭 Button") close = found;
             }
             foreach (Graphic graphic in canvas.GetComponentsInChildren<Graphic>(true))
                 if (graphic.raycastTarget && graphic.GetComponent<Button>() == null)
                     throw new InvalidOperationException("Decorative UI intercepts AR input: " + graphic.name);
             Debug.Log("ARTIFACT_AR_UI_INPUT_VALID");
-            GameObject panel = null;
             foreach (Transform child in canvas.GetComponentsInChildren<Transform>(true))
-                if (child.name == "Artifact Information") panel = child.gameObject;
-            if (panel == null || panel.activeSelf)
-                throw new InvalidOperationException("Information panel initial state invalid");
-            info.onClick.Invoke();
-            if (!panel.activeSelf) throw new InvalidOperationException("Information button did not open panel");
-            Capture(canvas, "F:/Au/buildlogs/artifact_ar_info_v64.png", 1080, 2400);
-            close.onClick.Invoke();
-            if (panel.activeSelf) throw new InvalidOperationException("Close button did not close panel");
+                if (child.name == "Artifact Information" || child.name == "文物介绍 Button")
+                    throw new InvalidOperationException("Removed AR information UI is still present");
             reset.onClick.Invoke();
             Debug.Log("ARTIFACT_AR_UI_ACTIONS_VALID");
         }

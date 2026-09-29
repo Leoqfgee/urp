@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4d0b2ccbebf381a4b9bff737448649f5, type: 3}
+  m_Name: BlueHybridRestoredInfo
+  m_EditorClassIdentifier: 
+  id: jar_blue_hybrid_restored
+  displayName: "\u84DD\u9676\u7F50"
+  period: "\u65E5\u7528\u65BD\u91C9\u9676\u5668"
+  category: "\u84DD\u91C9\u9676\u8D28\u6C34\u5668"
+  description: "\u8FD9\u4EF6\u84DD\u91C9\u9676\u7F50\u4E3A\u65BD\u91C9\u9676\u8D28\u6C34\u5668\uFF0C\u5668\u8EAB\u4FEE\u957F\uFF0C\u5C5E\u4E8E\u5B9E\u7528\u578B\u76DB\u5668\u3002\u7F50\u8EAB\u65BD\u84DD\u91C9\uFF0C\u91C9\u9762\u5206\u5E03\u81EA\u7136\u7A91\u53D8\u767D\u6591\uFF0C\u91C9\u8272\u6DF1\u6D45\u9519\u843D\uFF0C\u53E4\u6734\u5BCC\u6709\u53D8\u5316\uFF0C\u7F50\u53E3\u6709\u7834\u635F\u3002\u91C9\u9676\u76F8\u8F83\u4E8E\u65E0\u91C9\u9676\u5668\uFF0C\u5BC6\u5C01\u6027\u66F4\u597D\uFF0C\u53EF\u51CF\u5C11\u6DB2\u4F53\u6E17\u6F0F\uFF0C\u591A\u7528\u4E8E\u76DB\u653E\u6C34\u3001\u9152\u7B49\u3002\u8FD9\u4EF6\u5668\u7269\u878D\u5408\u4E86\u5236\u80CE\u4E0E\u65BD\u91C9\u6280\u827A\uFF0C\u53CD\u6620\u51FA\u5F53\u65F6\u91C9\u9676\u70E7\u5236\u6280\u672F\u7684\u53D1\u5C55\uFF0C\u517C\u5177\u5B9E\u7528\u529F\u80FD\u4E0E\u6734\u7D20\u5BA1\u7F8E\uFF0C\u662F\u7814\u7A76\u53E4\u4EE3\u91C9\u9676\u5DE5\u827A\u3001\u65E5\u7528\u5668\u5177\u5F62\u5236\u6F14\u53D8\u7684\u91CD\u8981\u5B9E\u7269\u8D44\u6599\u3002"
+  streamingAssetsModelPath: 
+  defaultHeight: 0.24
+  thumbnail: {fileID: 2800000, guid: 71380675d2e14614ca5b0500e64870ea, type: 3}
+  supportsModelViewer: 1
+  supportsArtifactAR: 0
+  supportsOverlayAR: 1
+  overlayProfile: {fileID: 11400000, guid: 6a637c3f90b06db4c88f4f7ee6135e67, type: 2}
+  importedViewerPrefab: {fileID: 919132149155446097, guid: da38ab07559bf03429c24e184fcfb165, type: 3}
+  importedModelEuler: {x: 90, y: 0, z: 0}
+  importedModelMaterials:
+  - {fileID: 2100000, guid: e92acc62bcc7f9d40b698e861c9fee12, type: 2}
+  - {fileID: 2100000, guid: 443c9bafeeba73b448a487d12480a53a, type: 2}

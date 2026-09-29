@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4d0b2ccbebf381a4b9bff737448649f5, type: 3}
+  m_Name: BlackJarInfo
+  m_EditorClassIdentifier: 
+  id: jar_nerfiller_restored_stl
+  displayName: "\u9ED1\u9676\u7F50"
+  period: "\u6C11\u95F4\u65E5\u7528\u9676\u5668"
+  category: "\u9ED1\u9676\u50A8\u76DB\u5668"
+  description: "\u8FD9\u4EF6\u9ED1\u9676\u7F50\u4E3A\u65E5\u7528\u50A8\u76DB\u9676\u5668\uFF0C\u6574\u4F53\u5668\u578B\u9971\u6EE1\u6D51\u539A\uFF0C\u9F13\u8179\u3001\u675F\u9888\uFF0C\u53E3\u6CBF\u4E00\u4FA7\u4FDD\u7559\u6B8B\u7CFB\u8033\uFF0C\u662F\u5178\u578B\u7684\u672C\u571F\u624B\u5DE5\u5236\u9676\u9057\u5B58\u3002\u5668\u8868\u5448\u6DF1\u9ED1\u7070\u8C03\uFF0C\u7559\u5B58\u7740\u6E05\u6670\u7684\u7EF3\u7EB9\u4E0E\u7F51\u683C\u523B\u5212\u7EB9\u9970\uFF0C\u8FD9\u4EF6\u5668\u7269\u4EE5\u6CE5\u6599\u7ECF\u9AD8\u6E29\u70E7\u5236\u800C\u6210\uFF0C\u7EB9\u9970\u517C\u5177\u88C5\u9970\u4E0E\u52A0\u56FA\u80CE\u4F53\u7684\u4F5C\u7528\uFF0C\u662F\u5F53\u65F6\u5148\u6C11\u50A8\u5B58\u7CAE\u98DF\u3001\u6C34\u9152\u7684\u751F\u6D3B\u7528\u5177\u3002\u5B83\u76F4\u89C2\u53CD\u6620\u4E86\u5F7C\u65F6\u7684\u5236\u9676\u5DE5\u827A\u6C34\u5E73\uFF0C\u627F\u8F7D\u7740\u533A\u57DF\u5148\u6C11\u7684\u751F\u4EA7\u751F\u6D3B\u4FE1\u606F\uFF0C\u4E3A\u7814\u7A76\u53E4\u4EE3\u6C11\u95F4\u624B\u5DE5\u4E1A\u4E0E\u65E5\u5E38\u751F\u6D3B\u98CE\u8C8C\u63D0\u4F9B\u73CD\u8D35\u5B9E\u7269\u53C2\u8003\u3002"
+  streamingAssetsModelPath: 
+  defaultHeight: 0.22
+  thumbnail: {fileID: 2800000, guid: 21177257913213f439a3c01bbef2d9ef, type: 3}
+  supportsModelViewer: 1
+  supportsArtifactAR: 0
+  supportsOverlayAR: 1
+  overlayProfile: {fileID: 11400000, guid: e6a84fbcda4602b4fa2d11b099db28fa, type: 2}
+  importedViewerPrefab: {fileID: 919132149155446097, guid: 4a5637c2b13612340a4e49f6cff2283f, type: 3}
+  importedModelEuler: {x: 0, y: 0, z: 0}
+  importedModelMaterials:
+  - {fileID: 2100000, guid: 67b10e4407bd2684799dc5ad11e07038, type: 2}

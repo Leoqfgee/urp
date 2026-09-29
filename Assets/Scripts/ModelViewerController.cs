@@ -89,6 +89,8 @@ namespace Urp.ArDemo
                 else if (!await import.InstantiateMainSceneAsync(visual.transform))
                     throw new InvalidOperationException("GLB instantiate failed");
                 if (this == null || version != artifactLoadVersion) { Destroy(pivot); return; }
+                visual.transform.localRotation = Quaternion.Euler(artifact.importedModelEuler);
+                ApplyImportedMaterials(visual, artifact.importedModelMaterials);
                 SetLayerRecursively(pivot, viewerCamera.gameObject.layer);
                 Bounds bounds = CalculateBounds(visual);
                 if (bounds.size.y <= 0f) throw new InvalidOperationException("No GLB renderers");
@@ -105,6 +107,18 @@ namespace Urp.ArDemo
                 if (pivot != null) Destroy(pivot);
                 Debug.LogError("[ArtifactViewer][ERROR] " + exception);
                 UpdateStatus("文物模型加载失败");
+            }
+        }
+
+        private static void ApplyImportedMaterials(GameObject root, Material[] materials)
+        {
+            if (root == null || materials == null || materials.Length == 0) return;
+            foreach (Renderer renderer in root.GetComponentsInChildren<Renderer>(true))
+            {
+                Material[] slots = renderer.sharedMaterials;
+                for (int index = 0; index < slots.Length && index < materials.Length; index++)
+                    if (materials[index] != null) slots[index] = materials[index];
+                renderer.sharedMaterials = slots;
             }
         }
 
@@ -304,11 +318,7 @@ namespace Urp.ArDemo
 
         private void Rotate(Vector2 delta)
         {
-            activeState.Yaw -= delta.x * rotationSensitivity;
-            activeState.Pitch = Mathf.Clamp(
-                activeState.Pitch + delta.y * rotationSensitivity,
-                -80f,
-                80f);
+            activeState.Rotate(delta, rotationSensitivity);
             activeState.Apply();
         }
 
@@ -330,16 +340,19 @@ namespace Urp.ArDemo
             }
 
             damagedInstance = InstantiateModel(
-                profile?.damagedViewerPrefab, "Damaged Viewer Model");
+                profile?.damagedViewerPrefab, "Damaged Viewer Model",
+                profile?.damagedViewerMaterials);
             completeInstance = InstantiateModel(
-                profile?.completeViewerPrefab, "Complete Viewer Model");
+                profile?.completeViewerPrefab, "Complete Viewer Model",
+                profile?.completeViewerMaterials);
             SetCompletionPartVisible(damagedInstance, false);
             SetCompletionPartVisible(completeInstance, true);
             damagedState = damagedInstance == null ? null : new ModelViewState(damagedInstance.transform);
             completeState = completeInstance == null ? null : new ModelViewState(completeInstance.transform);
         }
 
-        private GameObject InstantiateModel(GameObject prefab, string instanceName)
+        private GameObject InstantiateModel(GameObject prefab, string instanceName,
+            Material[] overrideMaterials)
         {
             if (prefab == null)
             {
@@ -359,6 +372,10 @@ namespace Urp.ArDemo
                 {
                     renderer.sharedMaterial = profile.viewerMaterial;
                 }
+            }
+            else if (overrideMaterials != null && overrideMaterials.Length > 0)
+            {
+                ApplyImportedMaterials(instance, overrideMaterials);
             }
 
             Bounds bounds = CalculateBounds(instance);
@@ -550,8 +567,7 @@ namespace Urp.ArDemo
             }
 
             public Transform Transform { get; }
-            public float Yaw { get; set; }
-            public float Pitch { get; set; }
+            private Quaternion userRotation = Quaternion.identity;
             public float Zoom { get; set; } = 1f;
             public bool IsDragging { get; private set; }
 
@@ -560,8 +576,7 @@ namespace Urp.ArDemo
 
             public void Reset()
             {
-                Yaw = 0f;
-                Pitch = 0f;
+                userRotation = Quaternion.identity;
                 Zoom = 1f;
                 Transform.localPosition = initialPosition;
                 Transform.localRotation = initialRotation;
@@ -569,10 +584,20 @@ namespace Urp.ArDemo
                 IsDragging = false;
             }
 
+            public void Rotate(Vector2 delta, float sensitivity)
+            {
+                // Incremental trackball-style rotation has no +/-80 degree pole.
+                // Users can pass over the top/bottom and continue rotating freely.
+                Quaternion yaw = Quaternion.AngleAxis(
+                    -delta.x * sensitivity, Vector3.up);
+                Quaternion pitch = Quaternion.AngleAxis(
+                    delta.y * sensitivity, Vector3.right);
+                userRotation = yaw * pitch * userRotation;
+            }
+
             public void Apply()
             {
-                Transform.localRotation =
-                    initialRotation * Quaternion.Euler(Pitch, Yaw, 0f);
+                Transform.localRotation = initialRotation * userRotation;
                 Transform.localScale = initialScale * Zoom;
             }
         }

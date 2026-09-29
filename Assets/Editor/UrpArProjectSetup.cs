@@ -42,7 +42,7 @@ namespace Urp.ArDemo.Editor
             "Assets/Materials/PaperLinearEyeDepth.mat";
         private const string PaperCompositeMaterialPath =
             "Assets/Materials/PaperDepthComposite.mat";
-        private const string AndroidApkPath = "Builds/BottleRepairAR_v64.apk";
+        private const string AndroidApkPath = "Builds/BottleRepairAR_v71.apk";
         private const string BottleReferenceOrbPath =
             "Assets/OrbModels/bottle_reference_b.bytes";
         private const string BottleCalibrationPath =
@@ -108,16 +108,20 @@ namespace Urp.ArDemo.Editor
 
         public static void SetupFromCommandLine() => SetupPrototypeScene();
 
+        [MenuItem("URP AR/Build Android APK")]
         public static void BuildAndroidFromCommandLine()
         {
             ConfigureAndroidProject();
+            // Newly supplied jar OBJ/PNG assets must be imported and written into
+            // their profiles before BuildPipeline snapshots scene dependencies.
+            AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+            ThreeJarCatalogSetup.Configure();
             BuildIdentityData identity = BuildIdentityGenerator.Generate();
             if (!File.Exists(ScenePath))
             {
                 throw new BuildFailedException(
                     $"Saved production scene is missing: {ScenePath}");
             }
-            AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
             CleanStaleSimulationTempAssets();
             Directory.CreateDirectory("Builds");
             BuildReport report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
@@ -221,14 +225,14 @@ namespace Urp.ArDemo.Editor
 
         private static void ConfigureAndroidProject()
         {
-            PlayerSettings.productName = "文化遗址数字修复与AR呈现 v64";
+            PlayerSettings.productName = "文化遗址数字修复与AR呈现";
             PlayerSettings.companyName = "qfgeeee";
-            PlayerSettings.bundleVersion = "4.18.0";
+            PlayerSettings.bundleVersion = "4.25.0";
             PlayerSettings.SetApplicationIdentifier(
                 BuildTargetGroup.Android, "com.qfgeeee.paper52objecttrackingar");
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
-            PlayerSettings.Android.bundleVersionCode = 560;
+            PlayerSettings.Android.bundleVersionCode = 630;
             PlayerSettings.SetScriptingBackend(
                 BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;

@@ -57,6 +57,8 @@ namespace Urp.ArDemo
         public GameObject damagedViewerPrefab;
         public GameObject completeViewerPrefab;
         public Material viewerMaterial;
+        public Material[] damagedViewerMaterials = Array.Empty<Material>();
+        public Material[] completeViewerMaterials = Array.Empty<Material>();
         public Vector3 defaultViewerEuler;
         [Range(0.05f, 0.5f)] public float viewerMargin = 0.18f;
 

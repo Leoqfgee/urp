@@ -18,5 +18,9 @@ namespace Urp.ArDemo
         public bool supportsOverlayAR;
         public RestorationObjectProfile overlayProfile;
         public GameObject importedViewerPrefab;
+        [Tooltip("Extra rotation applied to directly imported OBJ/FBX models.")]
+        public Vector3 importedModelEuler;
+        [Tooltip("Optional materials used to replace the imported renderer slots in order.")]
+        public Material[] importedModelMaterials;
     }
 }
